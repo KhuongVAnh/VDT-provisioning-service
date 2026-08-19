@@ -1,0 +1,19 @@
+[Unit]
+Description=Drone Zero-Touch Provisioning Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Path to the onboard-agent.sh script
+ExecStart=/opt/drone/onboard-agent.sh
+# Ensure it runs as root to configure network interfaces and write to /etc
+User=root
+Group=root
+
+# Keep service enabled if it fails so it can retry next boot
+Restart=on-failure
+RestartSec=30s
+
+[Install]
+WantedBy=multi-user.target

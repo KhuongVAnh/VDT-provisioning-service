@@ -1,0 +1,6 @@
+# /etc/sudoers.d/nest-wireguard
+# Allow the user running NestJS (e.g., 'nestuser') to configure WireGuard peers without a password
+# Replace 'nestuser' with the actual username running the NestJS application
+
+nestuser ALL=(root) NOPASSWD: /usr/bin/wg set wg0 peer * allowed-ips *
+nestuser ALL=(root) NOPASSWD: /usr/bin/wg set wg0 peer * remove

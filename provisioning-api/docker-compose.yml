@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  provisioning-api:
+    build: .
+    container_name: drone-provisioning-api
+    # BẮT BUỘC: Dùng chung mạng với Host VPS để cấu hình trực tiếp card mạng thật
+    network_mode: "host"
+    # BẮT BUỘC: Quyền Admin Mạng để được phép cấu hình WireGuard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      # Mount thư mục data ra ngoài để không bị mất DB SQLite khi xóa container
+      - ./data:/data
+      - /lib/modules:/lib/modules:ro
+    environment:
+      - PORT=10004
+      # Ghi đè đường dẫn DB ra thư mục volume
+      - DATABASE_URL=file:/data/provisioning.db
+      # Sử dụng các biến môi trường từ file .env cùng cấp với thư mục này
+    env_file:
+      - .env
+    restart: unless-stopped

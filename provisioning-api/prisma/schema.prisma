@@ -1,0 +1,20 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Device {
+  id              String   @id @default(uuid())
+  deviceId        String   @unique
+  hardwareModel   String
+  vpnIp           String   @unique
+  vpnPublicKey    String
+  // We do not store the vpnPrivateKey in the database according to requirement #3
+  status          String   @default("PENDING") // PENDING, ACTIVE, REVOKED
+  lastSeen        DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
