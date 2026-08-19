@@ -1,0 +1,12 @@
+node_modules
+dist
+data
+*.db
+*.db-journal
+.git
+.gemini
+.claude
+.vscode
+.env
+npm-debug.log
+yarn-error.log
