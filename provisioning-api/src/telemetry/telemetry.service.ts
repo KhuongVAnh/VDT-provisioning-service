@@ -43,7 +43,7 @@ export class TelemetryService implements OnModuleInit {
       }
     });
 
-    subscriber.on('message', (channel, messageStr) => {
+    subscriber.on('message', async (channel, messageStr) => {
       if (channel === channelName) {
         try {
           const telemetryData = JSON.parse(messageStr);
@@ -53,6 +53,17 @@ export class TelemetryService implements OnModuleInit {
 
             // Phát sự kiện ra toàn bộ client Web đang kết nối WebSocket
             this.telemetryGateway.broadcastTelemetry(telemetryData);
+
+            // Tự động ghi danh vào Database nếu Drone chưa có bản ghi (ví dụ drone cấu hình thủ công)
+            const detectedIp = telemetryData.vpnIp || (telemetryData.deviceId.startsWith('DRONE-IP-') ? telemetryData.deviceId.replace('DRONE-IP-', '').replace(/-/g, '.') : '');
+            if (detectedIp && /^10\.13\.37\.\d+$/.test(detectedIp)) {
+              this.deviceService.findOrCreateManualDevice(
+                telemetryData.deviceId,
+                detectedIp,
+                'MANUAL_TELEMETRY',
+                'Manual / Discovered Drone',
+              ).catch(() => {});
+            }
           }
         } catch (error) {
           this.logger.debug(`Lỗi khi parse message Telemetry từ Redis: ${error.message}`);

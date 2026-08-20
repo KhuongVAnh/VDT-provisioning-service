@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 
 @Controller('api/v1/dashboard')
@@ -65,6 +65,15 @@ export class DashboardController {
       status: 'success',
       data: config,
     };
+  }
+
+  /**
+   * Ghi danh thủ công một Drone vào hệ thống (IP cấu hình bằng tay)
+   */
+  @Post('devices/manual')
+  @HttpCode(HttpStatus.CREATED)
+  async createManualDevice(@Body() body: { deviceId: string; vpnIp: string; hardwareModel?: string; vpnPublicKey?: string }) {
+    return this.dashboardService.createManualDevice(body);
   }
 
   /**

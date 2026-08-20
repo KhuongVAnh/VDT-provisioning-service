@@ -268,6 +268,32 @@ export class DashboardService {
   }
 
   /**
+   * Đăng ký thủ công một Drone vào hệ thống (dành cho Drone cấu hình VPN bằng tay)
+   */
+  async createManualDevice(dto: { deviceId: string; vpnIp: string; hardwareModel?: string; vpnPublicKey?: string }) {
+    const deviceId = dto.deviceId.trim();
+    const vpnIp = dto.vpnIp.trim();
+    const hardwareModel = dto.hardwareModel?.trim() || 'Manual Configured Drone';
+    const vpnPublicKey = dto.vpnPublicKey?.trim() || 'MANUAL_PUBLIC_KEY';
+
+    if (!deviceId) throw new BadRequestException('Mã Device ID không được để trống.');
+    if (!vpnIp) throw new BadRequestException('Địa chỉ IP VPN không được để trống.');
+
+    const device = await this.deviceService.findOrCreateManualDevice(
+      deviceId,
+      vpnIp,
+      vpnPublicKey,
+      hardwareModel,
+    );
+
+    return {
+      status: 'success',
+      message: `Đã ghi danh thành công Drone ${deviceId} với IP ${vpnIp}.`,
+      data: device,
+    };
+  }
+
+  /**
    * Lấy danh sách Live WireGuard Peers từ kernel
    */
   async getLivePeers() {

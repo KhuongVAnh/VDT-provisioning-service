@@ -757,6 +757,34 @@
 
     <!-- TAB 3: FLEET MANAGEMENT TABLE -->
     <div id="tab-fleet" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div style="font-weight: 600; font-size: 1rem; color: var(--text-main);"><i class="fa-solid fa-list-check text-accent"></i> QUẢN TRỊ DANH SÁCH PHI ĐỘI DRONE</div>
+        <button class="btn btn-primary" onclick="toggleManualRegisterModal()"><i class="fa-solid fa-plus"></i> + Ghi Danh Drone Thủ Công</button>
+      </div>
+
+      <!-- INLINE MODAL GHI DANH THỦ CÔNG -->
+      <div id="manual-register-box" style="display: none; background: var(--bg-surface-elevated); border: 1px solid var(--accent); border-radius: 8px; padding: 1.2rem; margin-bottom: 1.2rem;">
+        <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.75rem; color: var(--accent);"><i class="fa-solid fa-id-card"></i> GHI DANH DRONE CẤU HÌNH VPN THỦ CÔNG</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem;">
+          <div>
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Mã Drone (Device ID):</label>
+            <input type="text" id="manual-dev-id" placeholder="vd: DRONE-ALPHA-01" style="width: 100%;" />
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">IP VPN (10.13.37.X):</label>
+            <input type="text" id="manual-vpn-ip" placeholder="vd: 10.13.37.50" style="width: 100%;" />
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Mô hình phần cứng:</label>
+            <input type="text" id="manual-hardware" placeholder="vd: Pixhawk 4 / Pi 4" value="Pixhawk 4 / Pi 4" style="width: 100%;" />
+          </div>
+        </div>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+          <button class="btn btn-secondary" onclick="toggleManualRegisterModal()">Hủy</button>
+          <button class="btn btn-success" onclick="submitManualRegister()"><i class="fa-solid fa-check"></i> Lưu Ghi Danh</button>
+        </div>
+      </div>
+
       <div class="table-responsive">
         <table>
           <thead>
@@ -1180,7 +1208,49 @@
       }
     }
 
-    // --- ACTIONS: REVOKE / REACTIVATE ---
+    // --- ACTIONS: REVOKE / REACTIVATE / MANUAL REGISTER ---
+    function toggleManualRegisterModal() {
+      const box = document.getElementById('manual-register-box');
+      if (box) {
+        box.style.display = box.style.display === 'none' ? 'block' : 'none';
+      }
+    }
+
+    async function submitManualRegister() {
+      const devId = document.getElementById('manual-dev-id').value.trim();
+      const vpnIp = document.getElementById('manual-vpn-ip').value.trim();
+      const hardware = document.getElementById('manual-hardware').value.trim();
+
+      if (!devId || !vpnIp) {
+        alert('Vui lòng nhập đầy đủ Mã Drone (Device ID) và IP VPN (10.13.37.X)!');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/v1/dashboard/devices/manual', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: devId,
+            vpnIp: vpnIp,
+            hardwareModel: hardware || 'Manual Drone'
+          })
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
+          alert(`Đã ghi danh thành công Drone: ${devId} (IP: ${vpnIp})`);
+          toggleManualRegisterModal();
+          document.getElementById('manual-dev-id').value = '';
+          document.getElementById('manual-vpn-ip').value = '';
+          refreshAllData();
+        } else {
+          alert('Lỗi: ' + (json.message || 'Không thể ghi danh'));
+        }
+      } catch (err) {
+        alert('Lỗi kết nối: ' + err.message);
+      }
+    }
+
     async function revokeDrone(deviceId) {
       if (!confirm(`Bạn có chắc muốn KHÓA quyền truy cập của Drone ${deviceId}?`)) return;
       try {

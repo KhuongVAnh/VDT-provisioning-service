@@ -52,6 +52,41 @@ export class DeviceService implements OnModuleInit {
   }
 
   /**
+   * Tự động ghi danh hoặc tìm kiếm thiết bị được cấu hình thủ công qua VPN / Telemetry stream
+   */
+  async findOrCreateManualDevice(
+    deviceId: string,
+    vpnIp: string,
+    vpnPublicKey: string = 'MANUAL_VPN',
+    hardwareModel: string = 'Manual WireGuard Drone',
+  ): Promise<Device> {
+    const existing = await this.findByDeviceId(deviceId);
+    if (existing) {
+      if (!existing.vpnIp && vpnIp) {
+        return this.updateDevice(existing.id, { vpnIp, status: 'ACTIVE', lastSeen: new Date() });
+      }
+      return existing;
+    }
+
+    // Kiểm tra xem IP này đã bị gán cho thiết bị nào khác chưa để tránh lỗi Unique constraint
+    const existingByIp = await this.prisma.device.findUnique({
+      where: { vpnIp },
+    });
+    if (existingByIp) {
+      return existingByIp;
+    }
+
+    this.logger.log(`[AUTO-DISCOVERY] Tự động ghi danh Drone cấu hình thủ công: ${deviceId} (IP: ${vpnIp})`);
+    return this.createDevice({
+      deviceId,
+      hardwareModel,
+      vpnIp,
+      vpnPublicKey,
+      status: 'ACTIVE',
+    });
+  }
+
+  /**
    * Tìm kiếm thiết bị theo mã định danh duy nhất (CPU Serial / MAC)
    */
   async findByDeviceId(deviceId: string): Promise<Device | null> {
