@@ -4,9 +4,12 @@ import (
 	"math"
 
 	"github.com/KhuongVAnh/telemetry-ingestion-service/pkg/models"
+	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
 	"github.com/bluenviron/gomavlib/v3/pkg/dialects/ardupilotmega"
 	"github.com/bluenviron/gomavlib/v3/pkg/message"
 )
+
+var dialectRW, _ = dialect.NewReadWriter(ardupilotmega.Dialect)
 
 // ArduCopterModeToString chuyển đổi mã Custom Mode của ArduPilot Copter sang tên hiển thị
 func ArduCopterModeToString(customMode uint32) string {
@@ -46,8 +49,23 @@ func ArduCopterModeToString(customMode uint32) string {
 
 // DecodeMessage bóc tách thông tin từ các bản tin MAVLink và cập nhật vào TelemetryPayload của drone
 func DecodeMessage(msg message.Message, payload *models.TelemetryPayload) bool {
-	switch m := msg.(type) {
+	// Nếu gomavlib trả về MessageRaw (chưa decode), giải mã sang message struct tương ứng
+	if raw, ok := msg.(*message.MessageRaw); ok {
+		if dialectRW != nil {
+			if mrw := dialectRW.GetMessage(raw.ID); mrw != nil {
+				// Thử đọc theo chuẩn V2 trước, nếu lỗi thử V1
+				decoded, err := mrw.Read(raw, true)
+				if err != nil {
+					decoded, err = mrw.Read(raw, false)
+				}
+				if err == nil && decoded != nil {
+					msg = decoded
+				}
+			}
+		}
+	}
 
+	switch m := msg.(type) {
 	// 1. Bản tin HEARTBEAT (#0): Trạng thái động cơ, Armed/Disarmed, Chế độ bay (Flight Mode)
 	case *ardupilotmega.MessageHeartbeat:
 		// Kiểm tra cờ MAV_MODE_FLAG_SAFETY_ARMED (bit thứ 7 = 128)
@@ -100,10 +118,21 @@ func DecodeMessage(msg message.Message, payload *models.TelemetryPayload) bool {
 		payload.VfrHud.ThrottlePct = uint16(m.Throttle)
 		return true
 
-	// 6. Bản tin GPS_RAW_INT (#24): Trạng thái khóa vệ tinh GPS
+	// 6. Bản tin GPS_RAW_INT (#24): Trạng thái khóa vệ tinh GPS và tọa độ thô
 	case *ardupilotmega.MessageGpsRawInt:
 		payload.GPS.FixType = uint8(m.FixType)
 		payload.GPS.Satellites = m.SatellitesVisible
+		if m.Lat != 0 && m.Lon != 0 {
+			payload.GPS.Lat = float64(m.Lat) / 1e7
+			payload.GPS.Lon = float64(m.Lon) / 1e7
+			payload.GPS.AltMslM = float64(m.Alt) / 1000.0
+		}
+		if m.Cog != 65535 {
+			payload.GPS.HeadingDeg = float64(m.Cog) / 100.0
+		}
+		if m.Vel != 65535 {
+			payload.GPS.GroundSpeedMs = math.Round((float64(m.Vel)/100.0)*100) / 100
+		}
 		return true
 	}
 

@@ -787,7 +787,7 @@
   <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 
   <script>
-    // --- GLOBAL VARIABLES ---
+    // --- GLOBAL STATE & CACHED DOM ---
     let map = null;
     let droneMarkers = {};
     let droneFlightTrails = {};
@@ -796,6 +796,40 @@
     let socket = null;
     let term = null;
     let fitAddon = null;
+
+    const DOM = {};
+
+    function initDOM() {
+      DOM.wsStatus = document.getElementById('ws-status-text');
+      DOM.sshStatus = document.getElementById('ssh-status-info');
+      DOM.mapSelect = document.getElementById('map-drone-select');
+      DOM.sshSelect = document.getElementById('ssh-drone-select');
+      DOM.sshTarget = document.getElementById('ssh-target-input');
+      DOM.sshUser = document.getElementById('ssh-username');
+      DOM.sshPass = document.getElementById('ssh-password');
+      DOM.manualBox = document.getElementById('manual-register-box');
+      DOM.manualDevId = document.getElementById('manual-dev-id');
+      DOM.manualVpnIp = document.getElementById('manual-vpn-ip');
+      DOM.manualHardware = document.getElementById('manual-hardware');
+      DOM.kpiTotal = document.getElementById('kpi-total-devices');
+      DOM.kpiActivePending = document.getElementById('kpi-active-pending');
+      DOM.kpiOnline = document.getElementById('kpi-online-count');
+      DOM.kpiIpUsage = document.getElementById('kpi-ip-usage');
+      DOM.kpiIpCounts = document.getElementById('kpi-ip-counts');
+      DOM.fleetTable = document.getElementById('fleet-table-body');
+      DOM.ipMatrix = document.getElementById('ip-matrix-container');
+      DOM.hud = {
+        deviceId: document.getElementById('hud-device-id'),
+        flightMode: document.getElementById('hud-flight-mode'),
+        armed: document.getElementById('hud-armed-status'),
+        battery: document.getElementById('hud-battery'),
+        altitude: document.getElementById('hud-altitude'),
+        speed: document.getElementById('hud-speed'),
+        heading: document.getElementById('hud-heading'),
+        angles: document.getElementById('hud-angles'),
+        horizon: document.getElementById('mini-horizon-sphere'),
+      };
+    }
 
     // --- TAB SWITCHING ---
     function switchTab(tabId) {
@@ -808,12 +842,8 @@
       const btn = Array.from(document.querySelectorAll('.nav-tab')).find(b => b.getAttribute('onclick')?.includes(tabId));
       if (btn) btn.classList.add('active');
 
-      if (tabId === 'tab-tactical' && map) {
-        setTimeout(() => map.invalidateSize(), 150);
-      }
-      if (tabId === 'tab-terminal') {
-        setTimeout(() => fitTerminal(), 150);
-      }
+      if (tabId === 'tab-tactical' && map) setTimeout(() => map.invalidateSize(), 150);
+      if (tabId === 'tab-terminal') setTimeout(() => fitTerminal(), 150);
     }
 
     // --- MAP INITIALIZATION ---
@@ -826,7 +856,6 @@
       }).addTo(map);
     }
 
-    // SVG Marker xoay theo Heading
     function createDroneIcon(headingDeg, isArmed) {
       const color = isArmed ? '#10b981' : '#38bdf8';
       const svg = `
@@ -846,41 +875,34 @@
 
     // --- WEBSOCKET CONNECTION ---
     function initWebSocket() {
-      socket = io({
-        transports: ['websocket', 'polling']
-      });
+      socket = io({ transports: ['websocket', 'polling'] });
 
       socket.on('connect', () => {
-        document.getElementById('ws-status-text').innerText = 'WEBSOCKET LIVE';
-        document.getElementById('ws-status-text').style.color = '#10b981';
+        if (DOM.wsStatus) {
+          DOM.wsStatus.innerText = 'WEBSOCKET LIVE';
+          DOM.wsStatus.style.color = '#10b981';
+        }
       });
 
       socket.on('disconnect', () => {
-        document.getElementById('ws-status-text').innerText = 'OFFLINE (RECONNECTING)';
-        document.getElementById('ws-status-text').style.color = '#ef4444';
+        if (DOM.wsStatus) {
+          DOM.wsStatus.innerText = 'OFFLINE (RECONNECTING)';
+          DOM.wsStatus.style.color = '#ef4444';
+        }
       });
 
-      // Nhận luồng Telemetry thời gian thực
       socket.on('telemetry:update', (telemetry) => {
         handleIncomingTelemetry(telemetry);
       });
 
-      // Nhận dữ liệu SSH
       socket.on('ssh:data', (data) => {
         if (term) term.write(data);
       });
 
       socket.on('ssh:status', (statusData) => {
-        const infoEl = document.getElementById('ssh-status-info');
-        if (infoEl) {
-          infoEl.innerText = `Trạng thái: ${statusData.message || statusData.status}`;
-          if (statusData.status === 'connected') {
-            infoEl.style.color = '#10b981';
-          } else if (statusData.status === 'closed') {
-            infoEl.style.color = '#94a3b8';
-          } else if (statusData.status === 'error') {
-            infoEl.style.color = '#ef4444';
-          }
+        if (DOM.sshStatus) {
+          DOM.sshStatus.innerText = `Trạng thái: ${statusData.message || statusData.status}`;
+          DOM.sshStatus.style.color = statusData.status === 'connected' ? '#10b981' : (statusData.status === 'error' ? '#ef4444' : '#94a3b8');
         }
       });
     }
@@ -893,7 +915,6 @@
       const lon = t.gps?.lon || 0;
       const heading = t.gps?.headingDeg || 0;
 
-      // Cập nhật danh sách fleetDevices thời gian thực nếu có Drone mới phát sóng
       let existing = fleetDevices.find(d => d.deviceId === t.deviceId);
       if (!existing) {
         existing = {
@@ -914,25 +935,27 @@
         }
       }
 
-      // 1. Cập nhật Marker trên bản đồ (Nếu đang Online và có tọa độ)
+      // Cập nhật Marker trên bản đồ khi có GPS hợp lệ
       if (t.connected !== false && lat !== 0 && lon !== 0 && map) {
         if (!droneMarkers[t.deviceId]) {
           const marker = L.marker([lat, lon], {
             icon: createDroneIcon(heading, t.armed)
           }).addTo(map);
 
-          marker.bindTooltip(`<b>${t.deviceId}</b><br>Mode: ${t.flightMode}<br>Alt: ${t.gps?.altRelativeM?.toFixed(1)}m`, {
+          marker.bindTooltip(`<b>${t.deviceId}</b><br>Mode: ${t.flightMode}<br>Alt: ${(t.gps?.altRelativeM || t.gps?.altMslM || 0).toFixed(1)}m`, {
             permanent: false,
             direction: 'top'
           });
 
-          marker.on('click', () => {
-            selectDroneForHud(t.deviceId);
-          });
-
+          marker.on('click', () => selectDroneForHud(t.deviceId));
           droneMarkers[t.deviceId] = marker;
           droneFlightTrails[t.deviceId] = L.polyline([[lat, lon]], { color: '#38bdf8', weight: 2, opacity: 0.6 }).addTo(map);
           populateDroneDropdowns(fleetDevices);
+
+          // Tự động căn chỉnh bản đồ nếu đây là Drone đầu tiên phát GPS
+          if (Object.keys(droneMarkers).length === 1) {
+            map.setView([lat, lon], 16);
+          }
         } else {
           droneMarkers[t.deviceId].setLatLng([lat, lon]);
           droneMarkers[t.deviceId].setIcon(createDroneIcon(heading, t.armed));
@@ -946,7 +969,6 @@
           }
         }
       } else if (t.connected === false && map) {
-        // Khi Drone mất tín hiệu Heartbeat -> Gỡ Marker khỏi bản đồ và làm mới danh sách chọn
         if (droneMarkers[t.deviceId]) {
           map.removeLayer(droneMarkers[t.deviceId]);
           delete droneMarkers[t.deviceId];
@@ -958,93 +980,95 @@
         populateDroneDropdowns(fleetDevices);
       }
 
-      // 2. Cập nhật Quick HUD nếu là drone đang chọn
-      if (!activeDroneId || activeDroneId === t.deviceId) {
-        if (!activeDroneId) activeDroneId = t.deviceId;
+      if (!activeDroneId || activeDroneId === t.deviceId || activeDroneId === 'all') {
+        if (!activeDroneId || activeDroneId === 'all') activeDroneId = t.deviceId;
         updateHudDisplay(t);
       }
     }
 
-    // --- HELPER FORMAT PIN & TRẠNG THÁI ---
     function formatBattery(pct) {
       if (pct === undefined || pct === null || pct < 0) return '--%';
       return `${Math.min(100, Math.max(0, Math.round(pct)))}%`;
     }
 
-    // --- CẬP NHẬT GIAO DIỆN HUD BAY ---
     function updateHudDisplay(t) {
-      if (!t || t.connected === false) {
-        resetHudDisplay();
-        return;
+      if (!t) return resetHudDisplay();
+      const isOnline = t.connected !== false;
+      if (DOM.hud.deviceId) DOM.hud.deviceId.innerText = t.deviceId || 'CHƯA CHỌN';
+      if (DOM.hud.flightMode) {
+        DOM.hud.flightMode.innerText = (t.flightMode && t.flightMode !== 'UNKNOWN') ? t.flightMode : (isOnline ? 'ONLINE' : 'OFFLINE');
+        DOM.hud.flightMode.style.color = isOnline ? '#f59e0b' : '#64748b';
       }
-
-      document.getElementById('hud-device-id').innerText = t.deviceId || 'CHƯA CHỌN';
-      const flightModeText = (t.flightMode && t.flightMode !== 'UNKNOWN') ? t.flightMode : (t.connected ? 'ONLINE' : '--');
-      document.getElementById('hud-flight-mode').innerText = flightModeText;
-      document.getElementById('hud-armed-status').innerText = t.armed ? 'ARMED' : 'DISARMED';
-      document.getElementById('hud-armed-status').style.color = t.armed ? '#10b981' : '#94a3b8';
-
-      document.getElementById('hud-battery').innerText = formatBattery(t.battery?.percentage);
-      document.getElementById('hud-altitude').innerText = `${(t.gps?.altRelativeM || 0).toFixed(1)} m`;
-      document.getElementById('hud-speed').innerText = `${(t.gps?.groundSpeedMs || 0).toFixed(1)} m/s`;
-      document.getElementById('hud-heading').innerText = `${Math.round(t.gps?.headingDeg || 0).toString().padStart(3, '0')}°`;
+      if (DOM.hud.armed) {
+        DOM.hud.armed.innerText = t.armed ? 'ARMED' : 'DISARMED';
+        DOM.hud.armed.style.color = t.armed ? '#10b981' : '#94a3b8';
+      }
+      if (DOM.hud.battery) DOM.hud.battery.innerText = formatBattery(t.battery?.percentage);
+      const alt = t.gps?.altRelativeM || t.gps?.altMslM || 0;
+      if (DOM.hud.altitude) DOM.hud.altitude.innerText = `${alt.toFixed(1)} m`;
+      if (DOM.hud.speed) DOM.hud.speed.innerText = `${(t.gps?.groundSpeedMs || 0).toFixed(1)} m/s`;
+      if (DOM.hud.heading) DOM.hud.heading.innerText = `${Math.round(t.gps?.headingDeg || 0).toString().padStart(3, '0')}°`;
 
       const roll = t.attitude?.rollDeg || 0;
       const pitch = t.attitude?.pitchDeg || 0;
-      document.getElementById('hud-angles').innerText = `${roll.toFixed(1)}° / ${pitch.toFixed(1)}°`;
-
-      const miniHorizon = document.getElementById('mini-horizon-sphere');
-      if (miniHorizon) {
-        const pitchOffsetMini = pitch * 1.5;
-        miniHorizon.style.transform = `rotate(${-roll}deg) translateY(${pitchOffsetMini}px)`;
-      }
+      if (DOM.hud.angles) DOM.hud.angles.innerText = `${roll.toFixed(1)}° / ${pitch.toFixed(1)}°`;
+      if (DOM.hud.horizon) DOM.hud.horizon.style.transform = `rotate(${-roll}deg) translateY(${pitch * 1.5}px)`;
     }
 
     function resetHudDisplay() {
-      document.getElementById('hud-device-id').innerText = 'CHƯA CHỌN';
-      document.getElementById('hud-flight-mode').innerText = '--';
-      document.getElementById('hud-armed-status').innerText = 'DISARMED';
-      document.getElementById('hud-armed-status').style.color = '#94a3b8';
-      document.getElementById('hud-battery').innerText = '--%';
-      document.getElementById('hud-altitude').innerText = '0.0 m';
-      document.getElementById('hud-speed').innerText = '0.0 m/s';
-      document.getElementById('hud-heading').innerText = '000°';
-      document.getElementById('hud-angles').innerText = '0.0° / 0.0°';
-      const miniHorizon = document.getElementById('mini-horizon-sphere');
-      if (miniHorizon) {
-        miniHorizon.style.transform = 'rotate(0deg) translateY(0px)';
-      }
+      if (DOM.hud.deviceId) DOM.hud.deviceId.innerText = 'CHƯA CHỌN';
+      if (DOM.hud.flightMode) { DOM.hud.flightMode.innerText = '--'; DOM.hud.flightMode.style.color = '#64748b'; }
+      if (DOM.hud.armed) { DOM.hud.armed.innerText = 'DISARMED'; DOM.hud.armed.style.color = '#94a3b8'; }
+      if (DOM.hud.battery) DOM.hud.battery.innerText = '--%';
+      if (DOM.hud.altitude) DOM.hud.altitude.innerText = '0.0 m';
+      if (DOM.hud.speed) DOM.hud.speed.innerText = '0.0 m/s';
+      if (DOM.hud.heading) DOM.hud.heading.innerText = '000°';
+      if (DOM.hud.angles) DOM.hud.angles.innerText = '0.0° / 0.0°';
+      if (DOM.hud.horizon) DOM.hud.horizon.style.transform = 'rotate(0deg) translateY(0px)';
     }
 
-    // --- DATA FETCHING & API CALLS ---
+    // --- HELPER KIỂM TRA TRẠNG THÁI ONLINE (10S TIMEOUT) ---
+    function isDroneOnline(t) {
+      if (!t) return false;
+      if (t.connected === false) return false;
+      if (t.timestamp && (Date.now() - t.timestamp > 10000)) return false;
+      return true;
+    }
+
+    // --- DATA FETCHING & RENDERING ---
     async function refreshAllData() {
       try {
-        // 1. Fetch Dashboard Stats
-        const statsRes = await fetch('/api/v1/dashboard/stats');
-        const statsJson = await statsRes.json();
-        if (statsJson.status === 'success') {
-          const d = statsJson.data;
-          document.getElementById('kpi-total-devices').innerText = d.devices?.total || 0;
-          document.getElementById('kpi-active-pending').innerText = `${d.devices?.active || 0} Active • ${d.devices?.pending || 0} Pending`;
-          document.getElementById('kpi-online-count').innerText = d.devices?.onlineNow || 0;
-          document.getElementById('kpi-ip-usage').innerText = `${d.ipPool?.utilizationPercentage || 0}%`;
-          document.getElementById('kpi-ip-counts').innerText = `${d.ipPool?.usedCount || 0} / ${d.ipPool?.totalCapacity || 253} IP`;
-        }
+        const [statsRes, fleetRes, ipRes] = await Promise.all([
+          fetch('/api/v1/dashboard/stats').then(r => r.json()).catch(() => null),
+          fetch('/api/v1/telemetry/fleet/states').then(r => r.json()).catch(() => null),
+          fetch('/api/v1/dashboard/ip-pool').then(r => r.json()).catch(() => null),
+        ]);
 
-        // 2. Fetch Fleet List
-        const fleetRes = await fetch('/api/v1/telemetry/fleet/states');
-        const fleetJson = await fleetRes.json();
-        if (fleetJson.status === 'success') {
-          fleetDevices = fleetJson.data || [];
+        if (fleetRes?.status === 'success') {
+          fleetDevices = fleetRes.data || [];
           renderFleetTable(fleetDevices);
           populateDroneDropdowns(fleetDevices);
+
+          // Đồng bộ ngay Marker lên bản đồ từ REST API snapshot
+          fleetDevices.forEach(d => {
+            if (d.telemetry) handleIncomingTelemetry(d.telemetry);
+          });
         }
 
-        // 3. Fetch IP Matrix
-        const ipRes = await fetch('/api/v1/dashboard/ip-pool');
-        const ipJson = await ipRes.json();
-        if (ipJson.status === 'success') {
-          renderIpMatrix(ipJson.data || []);
+        if (statsRes?.status === 'success') {
+          const d = statsRes.data;
+          const totalDrones = fleetDevices.length || d.devices?.total || 0;
+          const onlineCount = fleetDevices.filter(dev => isDroneOnline(dev.telemetry)).length;
+
+          if (DOM.kpiTotal) DOM.kpiTotal.innerText = totalDrones;
+          if (DOM.kpiActivePending) DOM.kpiActivePending.innerText = `${d.devices?.active || totalDrones} Active • ${d.devices?.pending || 0} Pending`;
+          if (DOM.kpiOnline) DOM.kpiOnline.innerText = onlineCount;
+          if (DOM.kpiIpUsage) DOM.kpiIpUsage.innerText = `${d.ipPool?.utilizationPercentage || 0}%`;
+          if (DOM.kpiIpCounts) DOM.kpiIpCounts.innerText = `${d.ipPool?.usedCount || 0} / ${d.ipPool?.totalCapacity || 253} IP`;
+        }
+
+        if (ipRes?.status === 'success') {
+          renderIpMatrix(ipRes.data || []);
         }
       } catch (err) {
         console.error('Lỗi khi tải dữ liệu:', err);
@@ -1052,24 +1076,20 @@
     }
 
     function renderFleetTable(devices) {
-      const tbody = document.getElementById('fleet-table-body');
+      if (!DOM.fleetTable) return;
       if (!devices || devices.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">Chưa có Drone nào trong hệ thống.</td></tr>';
+        DOM.fleetTable.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">Chưa có Drone nào trong hệ thống.</td></tr>';
         return;
       }
 
-      tbody.innerHTML = devices.map(d => {
+      DOM.fleetTable.innerHTML = devices.map(d => {
         const t = d.telemetry || {};
-        const isOnline = t.connected === true;
+        const isOnline = isDroneOnline(t);
         const statusBadge = d.status === 'ACTIVE' 
           ? '<span class="badge badge-active">ACTIVE</span>'
           : (d.status === 'REVOKED' ? '<span class="badge badge-revoked">REVOKED</span>' : '<span class="badge badge-pending">PENDING</span>');
 
-        let modeText = 'ONLINE';
-        if (t.flightMode && t.flightMode !== 'UNKNOWN') {
-          modeText = t.flightMode;
-        }
-
+        const modeText = (t.flightMode && t.flightMode !== 'UNKNOWN') ? t.flightMode : (isOnline ? 'ONLINE' : 'OFFLINE');
         const liveBadge = isOnline
           ? `<span style="color: #34d399; font-weight: 600;"><i class="fa-solid fa-circle-dot"></i> ${modeText}</span>`
           : '<span style="color: #64748b;"><i class="fa-regular fa-circle"></i> OFFLINE</span>';
@@ -1082,7 +1102,7 @@
             <td>${statusBadge}</td>
             <td>${liveBadge}</td>
             <td style="font-family: 'JetBrains Mono'; color: #34d399;">${formatBattery(t.battery?.percentage)}</td>
-            <td style="font-family: 'JetBrains Mono';">${(t.gps?.altRelativeM || 0).toFixed(1)}m</td>
+            <td style="font-family: 'JetBrains Mono';">${(t.gps?.altRelativeM || t.gps?.altMslM || 0).toFixed(1)}m</td>
             <td>
               <div style="display: flex; gap: 0.35rem;">
                 <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="selectDroneForHud('${d.deviceId}')" title="Xem trên HUD/Bản đồ"><i class="fa-solid fa-crosshairs"></i></button>
@@ -1099,8 +1119,8 @@
     }
 
     function renderIpMatrix(cells) {
-      const container = document.getElementById('ip-matrix-container');
-      container.innerHTML = cells.map(c => {
+      if (!DOM.ipMatrix) return;
+      DOM.ipMatrix.innerHTML = cells.map(c => {
         let cls = 'available';
         let tooltip = `IP: ${c.ip} (Trống)`;
         if (c.status === 'gateway') {
@@ -1115,71 +1135,56 @@
     }
 
     function populateDroneDropdowns(devices) {
-      const mapSelect = document.getElementById('map-drone-select');
-      const sshSelect = document.getElementById('ssh-drone-select');
-      const currentMapVal = mapSelect ? mapSelect.value : 'all';
-      const currentSshVal = sshSelect ? sshSelect.value : '';
+      const currentMapVal = DOM.mapSelect ? DOM.mapSelect.value : 'all';
+      const currentSshVal = DOM.sshSelect ? DOM.sshSelect.value : '';
 
-      // 1. Lọc toàn bộ Drone đang ONLINE (kết nối)
-      const onlineDrones = devices.filter(d => {
-        const t = d.telemetry;
-        return t && t.connected === true;
-      });
-
-      let mapOptionsHtml = '';
-      if (onlineDrones.length === 0) {
-        mapOptionsHtml = '<option value="none">-- Không có Drone nào đang bay / Online --</option>';
-        if (activeDroneId) {
-          activeDroneId = null;
-          resetHudDisplay();
-        }
-      } else {
-        mapOptionsHtml = `<option value="all">-- Theo dõi toàn bộ (${onlineDrones.length} Drone Online) --</option>` + 
-          onlineDrones.map(d => {
-            const t = d.telemetry || {};
-            const hasGps = t.gps && (t.gps.lat !== 0 || t.gps.lon !== 0);
-            const statusLabel = hasGps ? (d.vpnIp || 'Live GPS') : 'Chờ GPS';
-            const icon = hasGps ? '🟢' : '🟡';
-            return `<option value="${d.deviceId}">${icon} ${d.deviceId} (${statusLabel})</option>`;
-          }).join('');
+      if (!devices || devices.length === 0) {
+        if (DOM.mapSelect) DOM.mapSelect.innerHTML = '<option value="all">-- Chưa có Drone nào trong hệ thống --</option>';
+        if (DOM.sshSelect) DOM.sshSelect.innerHTML = '<option value="">-- Chưa có Drone nào --</option>';
+        return;
       }
 
-      // 2. Dropdown cho Web SSH: Hiển thị toàn bộ và gắn icon trạng thái Online/Offline
-      const sshOptionsHtml = '<option value="">-- Chọn Drone để SSH --</option>' + 
+      const onlineCount = devices.filter(d => isDroneOnline(d.telemetry)).length;
+
+      const mapOptionsHtml = `<option value="all">-- Theo dõi toàn bộ Phi Đội (${onlineCount} Online / ${devices.length} Drone) --</option>` + 
         devices.map(d => {
-          const isOnline = d.telemetry && d.telemetry.connected === true;
-          const statusIcon = isOnline ? '🟢' : '⚪';
-          return `<option value="${d.deviceId}">${statusIcon} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
+          const t = d.telemetry || {};
+          const isOnline = isDroneOnline(t);
+          const hasGps = t.gps && (t.gps.lat !== 0 || t.gps.lon !== 0);
+
+          let icon = isOnline ? (hasGps ? '🟢' : '🟡') : '⚪';
+          let statusText = isOnline ? (hasGps ? (d.vpnIp ? `Live GPS - ${d.vpnIp}` : 'Live GPS') : (d.vpnIp ? `Online - ${d.vpnIp} (Chờ GPS)` : 'Online (Chờ GPS)')) : (d.vpnIp ? `Offline - ${d.vpnIp}` : 'Offline');
+
+          return `<option value="${d.deviceId}">${icon} ${d.deviceId} (${statusText})</option>`;
         }).join('');
 
-      if (mapSelect) {
-        mapSelect.innerHTML = mapOptionsHtml;
-        if (currentMapVal && (currentMapVal === 'all' || onlineDrones.some(d => d.deviceId === currentMapVal))) {
-          mapSelect.value = currentMapVal;
-        } else {
-          mapSelect.value = onlineDrones.length > 0 ? 'all' : 'none';
-        }
+      const sshOptionsHtml = '<option value="">-- Chọn Drone để SSH --</option>' + 
+        devices.map(d => {
+          const isOnline = isDroneOnline(d.telemetry);
+          return `<option value="${d.deviceId}">${isOnline ? '🟢' : '⚪'} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
+        }).join('');
+
+      if (DOM.mapSelect) {
+        DOM.mapSelect.innerHTML = mapOptionsHtml;
+        DOM.mapSelect.value = (currentMapVal && (currentMapVal === 'all' || devices.some(d => d.deviceId === currentMapVal))) ? currentMapVal : 'all';
       }
-      if (sshSelect) {
-        sshSelect.innerHTML = sshOptionsHtml;
-        if (currentSshVal) sshSelect.value = currentSshVal;
+      if (DOM.sshSelect) {
+        DOM.sshSelect.innerHTML = sshOptionsHtml;
+        if (currentSshVal) DOM.sshSelect.value = currentSshVal;
       }
     }
 
     function onSshSelectChange(val) {
-      const input = document.getElementById('ssh-target-input');
-      if (input && val) {
+      if (DOM.sshTarget && val) {
         const drone = fleetDevices.find(d => d.deviceId === val);
-        input.value = (drone && drone.vpnIp && !drone.vpnIp.includes('X')) ? drone.vpnIp : val;
+        DOM.sshTarget.value = (drone && drone.vpnIp && !drone.vpnIp.includes('X')) ? drone.vpnIp : val;
       }
     }
 
     function selectDroneForHud(deviceId) {
       activeDroneId = deviceId;
       const drone = fleetDevices.find(d => d.deviceId === deviceId);
-      if (drone && drone.telemetry) {
-        updateHudDisplay(drone.telemetry);
-      }
+      if (drone && drone.telemetry) updateHudDisplay(drone.telemetry);
       switchTab('tab-tactical');
     }
 
@@ -1190,150 +1195,69 @@
       }
       activeDroneId = deviceId;
       const marker = droneMarkers[deviceId];
-      if (marker && map) {
-        map.setView(marker.getLatLng(), 17);
-      }
+      if (marker && map) map.setView(marker.getLatLng(), 17);
       const drone = fleetDevices.find(d => d.deviceId === deviceId);
-      if (drone && drone.telemetry) {
-        updateHudDisplay(drone.telemetry);
-      }
+      if (drone && drone.telemetry) updateHudDisplay(drone.telemetry);
     }
 
     function fitAllDronesOnMap() {
       const markers = Object.values(droneMarkers);
       if (markers.length > 0 && map) {
-        const group = L.featureGroup(markers);
-        map.fitBounds(group.getBounds().pad(0.2));
+        map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
       }
     }
 
-    // --- ACTIONS: KHÓA / MỞ KHÓA / XÓA VĨNH VIỄN DRONE ---
-    function toggleManualRegisterModal() {
-      const box = document.getElementById('manual-register-box');
-      if (box) {
-        box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    // --- ACTIONS API HELPER ---
+    async function apiAction(url, method, body, confirmMsg, successMsg) {
+      if (confirmMsg && !confirm(confirmMsg)) return;
+      try {
+        const options = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) options.body = JSON.stringify(body);
+        const res = await fetch(url, options);
+        const json = await res.json();
+        if (json.status === 'success') {
+          alert(successMsg || 'Thao tác thành công');
+          refreshAllData();
+          return json;
+        } else {
+          alert('Lỗi: ' + (json.message || 'Thao tác thất bại'));
+        }
+      } catch (err) {
+        alert('Lỗi kết nối: ' + err.message);
       }
+    }
+
+    function toggleManualRegisterModal() {
+      if (DOM.manualBox) DOM.manualBox.style.display = DOM.manualBox.style.display === 'none' ? 'block' : 'none';
     }
 
     async function submitManualRegister() {
-      const devId = document.getElementById('manual-dev-id').value.trim();
-      const vpnIp = document.getElementById('manual-vpn-ip').value.trim();
-      const hardware = document.getElementById('manual-hardware').value.trim();
+      const devId = DOM.manualDevId ? DOM.manualDevId.value.trim() : '';
+      const vpnIp = DOM.manualVpnIp ? DOM.manualVpnIp.value.trim() : '';
+      const hardware = DOM.manualHardware ? DOM.manualHardware.value.trim() : '';
 
-      if (!devId || !vpnIp) {
-        alert('Vui lòng nhập đầy đủ Mã Drone (Device ID) và IP VPN (10.13.37.X)!');
-        return;
-      }
+      if (!devId || !vpnIp) return alert('Vui lòng nhập đầy đủ Mã Drone và IP VPN (10.13.37.X)!');
 
-      try {
-        const res = await fetch('/api/v1/dashboard/devices/manual', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: devId,
-            vpnIp: vpnIp,
-            hardwareModel: hardware || 'Manual Drone'
-          })
-        });
-        const json = await res.json();
-        if (json.status === 'success') {
-          alert(`✅ ĐÃ GHI DANH THÀNH CÔNG:\n- Drone: ${devId}\n- IP VPN: ${vpnIp}`);
-          toggleManualRegisterModal();
-          document.getElementById('manual-dev-id').value = '';
-          document.getElementById('manual-vpn-ip').value = '';
-          refreshAllData();
-        } else {
-          alert('Lỗi: ' + (json.message || 'Không thể ghi danh'));
-        }
-      } catch (err) {
-        alert('Lỗi kết nối: ' + err.message);
+      const res = await apiAction('/api/v1/dashboard/devices/manual', 'POST', { deviceId: devId, vpnIp, hardwareModel: hardware || 'Manual Drone' }, null, `✅ GHI DANH THÀNH CÔNG: ${devId} (${vpnIp})`);
+      if (res) {
+        toggleManualRegisterModal();
+        if (DOM.manualDevId) DOM.manualDevId.value = '';
+        if (DOM.manualVpnIp) DOM.manualVpnIp.value = '';
       }
     }
 
-    // 1. KHÓA DRONE (REVOKE)
-    async function revokeDrone(deviceId) {
-      const confirmMsg = `⚠️ XÁC NHẬN KHÓA DRONE "${deviceId}":\n\n` +
-        `🔹 TÁC ĐỘNG HỆ THỐNG:\n` +
-        `1. Ngắt kết nối mạng VPN WireGuard của Drone ngay lập tức (Gỡ Peer khỏi Kernel).\n` +
-        `2. Thu hồi địa chỉ IP VPN hiện tại trả về kho IP Pool cho Drone khác sử dụng.\n` +
-        `3. Chuyển trạng thái sang REVOKED (Bản ghi vẫn được lưu để theo dõi lịch sử).\n` +
-        `4. Bạn có thể bấm "Mở khóa" bất kỳ lúc nào để cấp lại IP mới cho Drone.\n\n` +
-        `Bạn có chắc chắn muốn KHÓA Drone này?`;
-
-      if (!confirm(confirmMsg)) return;
-
-      try {
-        const res = await fetch(`/api/v1/dashboard/devices/${deviceId}/revoke`, { method: 'POST' });
-        const json = await res.json();
-        if (json.status === 'success') {
-          alert(`🔒 ĐÃ KHÓA DRONE THÀNH CÔNG:\n- Mã Drone: ${deviceId}\n- Trạng thái: Đã ngắt VPN và giải phóng IP.`);
-          refreshAllData();
-        } else {
-          alert('Lỗi: ' + (json.message || 'Không thể khóa Drone'));
-        }
-      } catch (err) {
-        alert('Lỗi kết nối: ' + err.message);
-      }
+    function revokeDrone(deviceId) {
+      apiAction(`/api/v1/dashboard/devices/${deviceId}/revoke`, 'POST', null, `⚠️ XÁC NHẬN KHÓA DRONE "${deviceId}":\n- Ngắt kết nối VPN WireGuard ngay lập tức.\n- Thu hồi IP VPN trả về kho IP Pool.\nBạn có chắc muốn khóa?`, `🔒 ĐÃ KHÓA DRONE ${deviceId}`);
     }
 
-    // 2. MỞ KHÓA DRONE (REACTIVATE)
-    async function reactivateDrone(deviceId) {
-      const confirmMsg = `🔄 XÁC NHẬN MỞ KHÓA DRONE "${deviceId}":\n\n` +
-        `🔹 TÁC ĐỘNG HỆ THỐNG:\n` +
-        `1. Tự động cấp 1 địa chỉ IP VPN mới từ kho IP Pool khả dụng.\n` +
-        `2. Nạp lại cấu hình WireGuard Peer vào nhân Linux trên VPS.\n` +
-        `3. Chuyển trạng thái Drone sang ACTIVE để sẵn sàng bay và nhận Telemetry.\n\n` +
-        `Bạn có muốn MỞ KHÓA Drone này ngay?`;
-
-      if (!confirm(confirmMsg)) return;
-
-      try {
-        const res = await fetch(`/api/v1/dashboard/devices/${deviceId}/reactivate`, { method: 'POST' });
-        const json = await res.json();
-        if (json.status === 'success') {
-          const newIp = json.device?.vpnIp || 'Mới';
-          alert(`✅ ĐÃ MỞ KHÓA THÀNH CÔNG:\n- Mã Drone: ${deviceId}\n- IP VPN mới được cấp: ${newIp}\n- Đã nạp lại vào WireGuard.`);
-          refreshAllData();
-        } else {
-          alert('Lỗi: ' + (json.message || 'Không thể mở khóa Drone'));
-        }
-      } catch (err) {
-        alert('Lỗi kết nối: ' + err.message);
-      }
+    function reactivateDrone(deviceId) {
+      apiAction(`/api/v1/dashboard/devices/${deviceId}/reactivate`, 'POST', null, `🔄 XÁC NHẬN MỞ KHÓA DRONE "${deviceId}":\n- Cấp IP VPN mới từ kho IP Pool.\n- Kích hoạt lại Peer WireGuard.\nBạn có muốn mở khóa ngay?`, `✅ ĐÃ MỞ KHÓA DRONE ${deviceId}`);
     }
 
-    // 3. XÓA VĨNH VIỄN DRONE (DELETE)
-    async function deleteDrone(deviceId) {
-      const confirmMsg = `🚨 CẢNH BÁO NGUY HIỂM - XÓA VĨNH VIỄN DRONE "${deviceId}":\n\n` +
-        `🔹 TÁC ĐỘNG HỆ THỐNG:\n` +
-        `1. XÓA VĨNH VIỄN bản ghi Drone khỏi cơ sở dữ liệu SQLite.\n` +
-        `2. Hủy bỏ mọi cấu hình VPN WireGuard của Drone trên VPS.\n` +
-        `3. Giải phóng địa chỉ IP trả về kho IP Pool.\n` +
-        `4. Hành động này KHÔNG THỂ HOÀN TÁC!\n\n` +
-        `Bạn có thực sự chắc chắn muốn XÓA VĨNH VIỄN?`;
-
-      if (!confirm(confirmMsg)) return;
-
-      try {
-        const res = await fetch(`/api/v1/dashboard/devices/${deviceId}`, { method: 'DELETE' });
-        const json = await res.json();
-        if (json.status === 'success') {
-          alert(`🗑️ ĐÃ XÓA VĨNH VIỄN THÀNH CÔNG:\n- Đã xóa Drone "${deviceId}" khỏi cơ sở dữ liệu.`);
-          if (droneMarkers[deviceId]) {
-            map.removeLayer(droneMarkers[deviceId]);
-            delete droneMarkers[deviceId];
-          }
-          if (droneFlightTrails[deviceId]) {
-            map.removeLayer(droneFlightTrails[deviceId]);
-            delete droneFlightTrails[deviceId];
-          }
-          refreshAllData();
-        } else {
-          alert('Lỗi: ' + (json.message || 'Không thể xóa Drone'));
-        }
-      } catch (err) {
-        alert('Lỗi kết nối: ' + err.message);
-      }
+    function deleteDrone(deviceId) {
+      apiAction(`/api/v1/dashboard/devices/${deviceId}`, 'DELETE', null, `🚨 CẢNH BÁO: XÓA VĨNH VIỄN DRONE "${deviceId}" khỏi cơ sở dữ liệu và thu hồi VPN?\nHành động này không thể hoàn tác!`, `🗑️ ĐÃ XÓA VĨNH VIỄN DRONE ${deviceId}`);
+      if (droneMarkers[deviceId]) { map.removeLayer(droneMarkers[deviceId]); delete droneMarkers[deviceId]; }
+      if (droneFlightTrails[deviceId]) { map.removeLayer(droneFlightTrails[deviceId]); delete droneFlightTrails[deviceId]; }
     }
 
     // --- WEB SSH TERMINAL ---
@@ -1344,12 +1268,7 @@
         cursorBlink: true,
         fontSize: 13,
         fontFamily: "'JetBrains Mono', monospace",
-        theme: {
-          background: '#090d16',
-          foreground: '#f8fafc',
-          cursor: '#38bdf8',
-          selection: 'rgba(56, 189, 248, 0.3)'
-        }
+        theme: { background: '#090d16', foreground: '#f8fafc', cursor: '#38bdf8', selection: 'rgba(56, 189, 248, 0.3)' }
       });
       fitAddon = new FitAddon.FitAddon();
       term.loadAddon(fitAddon);
@@ -1357,9 +1276,7 @@
       fitAddon.fit();
 
       term.onData((data) => {
-        if (socket) {
-          socket.emit('ssh:input', { data });
-        }
+        if (socket) socket.emit('ssh:input', { data });
       });
 
       window.addEventListener('resize', () => fitTerminal());
@@ -1368,26 +1285,22 @@
     function fitTerminal() {
       if (fitAddon && term) {
         fitAddon.fit();
-        if (socket) {
-          socket.emit('ssh:resize', { cols: term.cols, rows: term.rows });
-        }
+        if (socket) socket.emit('ssh:resize', { cols: term.cols, rows: term.rows });
       }
     }
 
     function openSshForDrone(deviceId) {
-      const select = document.getElementById('ssh-drone-select');
-      const input = document.getElementById('ssh-target-input');
-      if (select) select.value = deviceId;
-      if (input) {
+      if (DOM.sshSelect) DOM.sshSelect.value = deviceId;
+      if (DOM.sshTarget) {
         const drone = fleetDevices.find(d => d.deviceId === deviceId);
-        input.value = (drone && drone.vpnIp && !drone.vpnIp.includes('X')) ? drone.vpnIp : deviceId;
+        DOM.sshTarget.value = (drone && drone.vpnIp && !drone.vpnIp.includes('X')) ? drone.vpnIp : deviceId;
       }
       switchTab('tab-terminal');
       connectWebSsh();
     }
 
     function openWebSshForSelectedDrone() {
-      if (activeDroneId) {
+      if (activeDroneId && activeDroneId !== 'all') {
         openSshForDrone(activeDroneId);
       } else {
         switchTab('tab-terminal');
@@ -1395,50 +1308,36 @@
     }
 
     function connectWebSsh() {
-      const selectVal = document.getElementById('ssh-drone-select').value;
-      const inputVal = (document.getElementById('ssh-target-input').value || '').trim();
+      const selectVal = DOM.sshSelect ? DOM.sshSelect.value : '';
+      const inputVal = DOM.sshTarget ? DOM.sshTarget.value.trim() : '';
       const target = inputVal || selectVal;
-      const username = document.getElementById('ssh-username').value || 'root';
-      const password = document.getElementById('ssh-password').value || '';
+      const username = DOM.sshUser ? DOM.sshUser.value || 'root' : 'root';
+      const password = DOM.sshPass ? DOM.sshPass.value || '' : '';
 
-      if (!target) {
-        alert('Vui lòng chọn Drone từ danh sách hoặc nhập địa chỉ IP VPN của Drone!');
-        return;
-      }
+      if (!target) return alert('Vui lòng chọn Drone từ danh sách hoặc nhập IP VPN của Drone!');
 
       initTerminal();
       term.clear();
       term.writeln(`\x1b[36m>>> Đang khởi tạo kết nối SSH tới ${target}... (User: ${username})\x1b[0m\r\n`);
-      document.getElementById('ssh-status-info').innerText = `Trạng thái: Đang kết nối tới ${target}...`;
+      if (DOM.sshStatus) DOM.sshStatus.innerText = `Trạng thái: Đang kết nối tới ${target}...`;
 
       if (socket) {
-        socket.emit('ssh:connect', {
-          deviceId: target,
-          username,
-          password,
-          cols: term.cols,
-          rows: term.rows
-        });
+        socket.emit('ssh:connect', { deviceId: target, username, password, cols: term.cols, rows: term.rows });
       }
     }
 
-    // NGẮT KẾT NỐI SSH CHỦ ĐỘNG
     function disconnectWebSsh() {
-      if (socket) {
-        socket.emit('ssh:disconnect');
-      }
-      if (term) {
-        term.writeln('\r\n\x1b[31m>>> [SESSION CLOSED] Đã ngắt kết nối SSH với Drone.\x1b[0m\r\n');
-      }
-      const infoEl = document.getElementById('ssh-status-info');
-      if (infoEl) {
-        infoEl.innerText = 'Trạng thái: Đã ngắt kết nối';
-        infoEl.style.color = '#94a3b8';
+      if (socket) socket.emit('ssh:disconnect');
+      if (term) term.writeln('\r\n\x1b[31m>>> [SESSION CLOSED] Đã ngắt kết nối SSH với Drone.\x1b[0m\r\n');
+      if (DOM.sshStatus) {
+        DOM.sshStatus.innerText = 'Trạng thái: Đã ngắt kết nối';
+        DOM.sshStatus.style.color = '#94a3b8';
       }
     }
 
     // --- ENTRYPOINT ---
     window.addEventListener('DOMContentLoaded', () => {
+      initDOM();
       initTacticalMap();
       initWebSocket();
       refreshAllData();

@@ -98,6 +98,10 @@ export class WireguardService {
    * Hữu ích khi cần rollback (hoàn tác) hoặc khi thu hồi thiết bị (revoke).
    */
   async removePeer(publicKey: string): Promise<void> {
+    if (!publicKey || publicKey === 'MANUAL_TELEMETRY' || publicKey === 'MANUAL_VPN' || publicKey.length < 40) {
+      this.logger.debug(`Bỏ qua xóa WireGuard peer cho key giả lập: ${publicKey}`);
+      return;
+    }
     const command = `sudo wg set ${this.interfaceName} peer ${publicKey} remove`;
     try {
       await execAsync(command);

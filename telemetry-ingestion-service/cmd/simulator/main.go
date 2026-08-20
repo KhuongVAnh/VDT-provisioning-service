@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,22 +20,22 @@ import (
 
 // DroneAgent đại diện cho 1 Drone ảo được mô phỏng
 type DroneAgent struct {
-	DeviceID      string
-	SysID         uint8
-	VpnIP         string
-	Node          *gomavlib.Node
-	BaseLat       float64
-	BaseLon       float64
-	CurrentLat    float64
-	CurrentLon    float64
-	AltRelativeM  float64
-	HeadingDeg    float64
-	SpeedMs       float64
-	BatteryPct    int32
-	AngleRad      float64
-	RadiusM       float64
-	FlightMode    uint32
-	IsArmed       bool
+	DeviceID     string
+	SysID        uint8
+	VpnIP        string
+	Node         *gomavlib.Node
+	BaseLat      float64
+	BaseLon      float64
+	CurrentLat   float64
+	CurrentLon   float64
+	AltRelativeM float64
+	HeadingDeg   float64
+	SpeedMs      float64
+	BatteryPct   int32
+	AngleRad     float64
+	RadiusM      float64
+	FlightMode   uint32
+	IsArmed      bool
 }
 
 func main() {
@@ -46,19 +47,19 @@ func main() {
 	log.Println("=============================================================")
 	log.Println("     DRONE FLEET MAVLINK REAL-TIME FLIGHT SIMULATOR          ")
 	log.Printf("     - Số Drone mô phỏng : %d phi cơ\n", *numDrones)
-	log.Printf("     - Mục tiêu Ingest   : %s\n", *targetAddr)
+	log.Printf("     - Mục tiêu Ingest   : %s (UDP)\n", *targetAddr)
 	log.Printf("     - Redis Server      : %s\n", *redisAddr)
 	log.Println("=============================================================")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Kết nối Redis để nạp ánh xạ IP -> DeviceID cho các Drone ảo
+	// 1. Kết nối Redis để nạp ánh xạ IP -> DeviceID và SystemID -> DeviceID
 	rdb := redis.NewClient(&redis.Options{Addr: *redisAddr})
 	if err := rdb.Ping(ctx).Err(); err == nil {
-		log.Println("[SIMULATOR] Đã kết nối Redis (cổng 6380), tiến hành đồng bộ ánh xạ IP...")
+		log.Println("[SIMULATOR] ✅ Đã kết nối Redis, tiến hành đồng bộ ánh xạ IP & SystemID...")
 	} else {
-		log.Printf("[SIMULATOR] Cảnh báo không kết nối được Redis (%s): %v. Ingestion Service sẽ dùng fallback IP.", *redisAddr, err)
+		log.Printf("[SIMULATOR] ⚠️ Cảnh báo không kết nối được Redis (%s): %v. Ingestion Service sẽ dùng fallback IP/SysID.", *redisAddr, err)
 	}
 
 	// Tọa độ gốc trung tâm (Khu vực ĐHBK Hà Nội / HUST Campus)
@@ -72,9 +73,10 @@ func main() {
 		vpnIP := fmt.Sprintf("10.13.37.%d", i+1) // 10.13.37.2, 10.13.37.3...
 		sysID := uint8(i)
 
-		// Đăng ký ánh xạ IP vào Redis
+		// Đăng ký ánh xạ vào Redis (cả IP và SystemID)
 		if rdb != nil {
 			_ = rdb.HSet(ctx, "drone:ip_map", vpnIP, devID).Err()
+			_ = rdb.HSet(ctx, "drone:sys_map", strconv.Itoa(int(sysID)), devID).Err()
 		}
 
 		// Khởi tạo gomavlib UDP Client gửi tới target
@@ -108,21 +110,31 @@ func main() {
 			IsArmed:      true,
 		}
 
+		// Khởi chạy goroutine đọc sự kiện từ Node để nhận phản hồi từ QGroundControl
+		go func(a *DroneAgent) {
+			for evt := range a.Node.Events() {
+				if frm, ok := evt.(*gomavlib.EventFrame); ok {
+					// Nếu QGroundControl ping hoặc gửi lệnh, log nhẹ debug
+					_ = frm
+				}
+			}
+		}(agent)
+
 		agents = append(agents, agent)
-		log.Printf("[SIMULATOR] Đã kích hoạt phi cơ: %s (SysID: %d, VPN IP: %s, Cao độ: %.1fm)", devID, sysID, vpnIP, agent.AltRelativeM)
+		log.Printf("[SIMULATOR] 🚁 Đã kích hoạt phi cơ: %s (SysID: %d, VPN IP: %s, Cao độ: %.1fm)", devID, sysID, vpnIP, agent.AltRelativeM)
 	}
 
 	// Bắt tín hiệu ngắt để đóng node an toàn
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// Vòng lặp phát Telemetry tần số cao (10Hz)
+	// Vòng lặp phát Telemetry tần số cao (10Hz) và tần số thấp (1Hz)
 	ticker10Hz := time.NewTicker(100 * time.Millisecond)
 	ticker1Hz := time.NewTicker(1 * time.Second)
 	defer ticker10Hz.Stop()
 	defer ticker1Hz.Stop()
 
-	log.Println("[SIMULATOR] Đang phát luồng Telemetry thời gian thực tới Ingestion Server...")
+	log.Println("[SIMULATOR] 🚀 Đang phát luồng Telemetry thời gian thực tới Ingestion Server...")
 
 	for {
 		select {
@@ -137,7 +149,7 @@ func main() {
 		case <-ticker10Hz.C:
 			for _, a := range agents {
 				// Cập nhật quỹ đạo bay hình tròn quanh tâm
-				a.AngleRad += 0.035 // Tốc độ góc xoay
+				a.AngleRad += 0.035
 				if a.AngleRad > 2*math.Pi {
 					a.AngleRad -= 2 * math.Pi
 				}
@@ -159,8 +171,8 @@ func main() {
 				a.HeadingDeg = headingDeg
 
 				// Góc nghiêng Roll nghiêng nhẹ khi vào cua (-12 độ)
-				rollRad := -0.21  // ~ -12 độ
-				pitchRad := -0.05 // Nghiêng mũi nhẹ về trước
+				rollRad := -0.21
+				pitchRad := -0.05
 
 				// 1. Gửi bản tin GLOBAL_POSITION_INT (#33)
 				_ = a.Node.WriteMessageAll(&ardupilotmega.MessageGlobalPositionInt{
@@ -197,7 +209,6 @@ func main() {
 		// Gói tin tần số 1Hz: Heartbeat, Pin SysStatus, GPS Raw Fix
 		case <-ticker1Hz.C:
 			for _, a := range agents {
-				// Giảm pin từ từ mô phỏng tiêu hao năng lượng
 				if a.BatteryPct > 5 && rand.Float64() < 0.15 {
 					a.BatteryPct--
 				}

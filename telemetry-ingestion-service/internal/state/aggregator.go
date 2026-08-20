@@ -6,7 +6,6 @@ import (
 
 	"github.com/KhuongVAnh/telemetry-ingestion-service/internal/mavlink"
 	"github.com/KhuongVAnh/telemetry-ingestion-service/pkg/models"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/ardupilotmega"
 	"github.com/bluenviron/gomavlib/v3/pkg/message"
 )
 
@@ -46,16 +45,13 @@ func (s *StateAggregator) UpdateState(deviceID string, sysid uint8, vpnIP string
 		s.states[deviceID] = payload
 	}
 
-	// Cập nhật thông tin nhận dạng và dấu thời gian
+	// Cập nhật thông tin nhận dạng và dấu thời gian hoạt động tức thời
 	payload.SysID = sysid
 	payload.VpnIP = vpnIP
 	nowMs := time.Now().UnixMilli()
 	payload.Timestamp = nowMs
-
-	if _, isHeartbeat := msg.(*ardupilotmega.MessageHeartbeat); isHeartbeat {
-		payload.LastHeartbeat = nowMs
-		payload.Connected = true
-	}
+	payload.LastHeartbeat = nowMs
+	payload.Connected = true
 
 	// Giải mã nội dung gói tin
 	modified := mavlink.DecodeMessage(msg, payload)
@@ -106,7 +102,7 @@ func (s *StateAggregator) CheckHeartbeats(timeout time.Duration) []*models.Telem
 	var disconnectedList []*models.TelemetryPayload
 
 	for _, payload := range s.states {
-		if payload.Connected && (nowMs-payload.LastHeartbeat) > timeoutMs {
+		if payload.Connected && (nowMs-payload.Timestamp) > timeoutMs {
 			payload.Connected = false
 			snapshot := *payload
 			disconnectedList = append(disconnectedList, &snapshot)

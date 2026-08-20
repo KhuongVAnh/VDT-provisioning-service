@@ -21,15 +21,25 @@ import (
 )
 
 // extractIPFromChannel bóc tách địa chỉ IP nguồn từ mô tả Channel của gomavlib.
-// Channel string thường có dạng: "udp:10.13.37.5:14550" hoặc "tcp:203.1.2.3:5760"
+// Ví dụ: "udpserver(0.0.0.0:14551):10.13.37.2:54321" -> "10.13.37.2"
 func extractIPFromChannel(chStr string) string {
-	trimmed := strings.TrimPrefix(chStr, "udp:")
-	trimmed = strings.TrimPrefix(trimmed, "tcp:")
-	host, _, err := net.SplitHostPort(trimmed)
-	if err == nil {
+	if idx := strings.LastIndex(chStr, "):"); idx != -1 {
+		chStr = chStr[idx+2:]
+	}
+	chStr = strings.TrimPrefix(strings.TrimPrefix(chStr, "udp:"), "tcp:")
+	if host, _, err := net.SplitHostPort(chStr); err == nil {
 		return host
 	}
-	return trimmed
+	return chStr
+}
+
+func logChannelEvent(action, chStr string) {
+	ip := extractIPFromChannel(chStr)
+	if strings.HasPrefix(ip, "10.13.37.") {
+		log.Printf("[NETWORK] 🚁 Drone %s: %s", action, chStr)
+	} else {
+		log.Printf("[NETWORK] 🖥️  GCS %s: %s", action, chStr)
+	}
 }
 
 func main() {
@@ -67,36 +77,22 @@ func main() {
 	defer redisPublisher.Close()
 
 	// 4. Khởi tạo MAVLink Node đa Endpoint - thay thế hoàn toàn mavlink-routerd:
-	//
-	//  ┌─────────────────────────────────────────────────────────────────────┐
-	//  │ [Drone 10.13.37.2] ──UDP 14550──►                                  │
-	//  │ [Drone 10.13.37.3] ──UDP 14550──► [GOLANG NODE] ──TCP 10002──►     │
-	//  │ (IP nguồn được bảo toàn 100%)              [QGroundControl/MP]     │
-	//  └─────────────────────────────────────────────────────────────────────┘
-	//
-	//  gomavlib tự động định tuyến (route) bản tin 2 chiều giữa tất cả Endpoint:
-	//  - Gói tin từ Drone sẽ được bắn đến QGroundControl để hiển thị trên map
-	//  - Lệnh điều khiển từ QGroundControl sẽ được bắn ngược xuống Drone tương ứng
-	//
 	tcpGcsAddr := fmt.Sprintf("0.0.0.0:%s", cfg.TcpGcsPort)
 
 	node, err := gomavlib.NewNode(gomavlib.NodeConf{
 		Endpoints: []gomavlib.EndpointConf{
-			// Endpoint 1: UDP Server lắng nghe trực tiếp từ Drone qua VPN
-			// QUAN TRỌNG: Bind vào 10.13.37.1 (WireGuard VPN interface IP trên VPS)
-			// để đọc được đúng IP nguồn 10.13.37.X của từng Drone
+			// Endpoint 1: UDP Server lắng nghe trực tiếp từ Drone qua VPN (hoặc Local)
 			gomavlib.EndpointUDPServer{
 				Address: cfg.UdpListenAddr,
 			},
 			// Endpoint 2: TCP Server cho QGroundControl / Mission Planner kết nối vào
-			// Tương đương [General] TcpServerPort=10002 trong main.conf của mavlink-routerd
 			gomavlib.EndpointTCPServer{
 				Address: tcpGcsAddr,
 			},
 		},
 		Dialect:     ardupilotmega.Dialect,
 		OutVersion:  gomavlib.V2,
-		OutSystemID: 250, // GCS System ID chuẩn (1-255, thường dùng 254 hoặc 250)
+		OutSystemID: 250, // GCS System ID chuẩn
 	})
 	if err != nil {
 		log.Fatalf("[FATAL] Không thể khởi tạo MAVLink Node: %v", err)
@@ -117,9 +113,9 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				disconnectedDrones := stateAggregator.CheckHeartbeats(5 * time.Second)
+				disconnectedDrones := stateAggregator.CheckHeartbeats(10 * time.Second)
 				for _, drone := range disconnectedDrones {
-					log.Printf("[HEARTBEAT] Cảnh báo: Drone %s (%s) bị mất tín hiệu Heartbeat!", drone.DeviceID, drone.VpnIP)
+					log.Printf("[HEARTBEAT] Cảnh báo: Drone %s (%s) bị mất tín hiệu quá 10s (Offline)!", drone.DeviceID, drone.VpnIP)
 					_ = redisPublisher.PublishTelemetry(ctx, drone, time.Duration(cfg.StateTtlSeconds)*time.Second)
 				}
 			}
@@ -146,38 +142,39 @@ func main() {
 			//    - WriteFrameExcept tránh loop ngược lại kênh vừa nhận
 			_ = node.WriteFrameExcept(e.Channel, e.Frame)
 
-			// 2. Trích xuất địa chỉ IP nguồn từ Channel
+			// 2. Bỏ qua gói tin gửi từ chính GCS (QGroundControl / Mission Planner)
+			//    để không phân tích nhầm GCS thành một chiếc Drone
+			if e.SystemID() == 255 || e.SystemID() == 0 {
+				continue
+			}
+			if hb, ok := e.Message().(*ardupilotmega.MessageHeartbeat); ok {
+				if hb.Type == ardupilotmega.MAV_TYPE_GCS {
+					continue
+				}
+			}
+
+			// 3. Trích xuất địa chỉ IP nguồn từ Channel
 			remoteIP := extractIPFromChannel(e.Channel.String())
 
-			// 3. Tra cứu IP -> DeviceID (Bảo toàn IP nguồn 10.13.37.X qua WireGuard hoặc 127.0.0.1 khi test local)
-			deviceID := ipResolver.Resolve(ctx, remoteIP)
+			// 4. Tra cứu IP/SysID -> DeviceID (Bảo toàn IP nguồn 10.13.37.X qua WireGuard hoặc SystemID khi test qua Docker bridge/local)
+			deviceID := ipResolver.Resolve(ctx, remoteIP, e.SystemID())
 
-			// 4. Cập nhật và giải mã gói tin vào State Aggregator
+			// 5. Cập nhật và giải mã gói tin vào State Aggregator
 			snapshot, modified := stateAggregator.UpdateState(deviceID, e.SystemID(), remoteIP, e.Message())
 
-			// 5. Nếu gói tin làm thay đổi thông số quan trọng -> Đẩy ngay vào Redis Pub/Sub & Hash
+			// 6. Nếu gói tin làm thay đổi thông số quan trọng -> Đẩy ngay vào Redis Pub/Sub & Hash
 			if modified {
 				err := redisPublisher.PublishTelemetry(ctx, snapshot, time.Duration(cfg.StateTtlSeconds)*time.Second)
 				if err != nil {
-					log.Printf("[ERROR] Lỗi publish Telemetry vào Redis: %v", err)
+					log.Printf("[ERROR] Lỗi publish Telemetry vào Redis (%s): %v", deviceID, err)
 				}
 			}
 
 		case *gomavlib.EventChannelOpen:
-			remoteIP := extractIPFromChannel(e.Channel.String())
-			if strings.HasPrefix(remoteIP, "10.13.37.") {
-				log.Printf("[NETWORK] 🚁 Drone kết nối VPN: %s", e.Channel.String())
-			} else {
-				log.Printf("[NETWORK] 🖥️  GCS kết nối TCP: %s", e.Channel.String())
-			}
+			logChannelEvent("kết nối", e.Channel.String())
 
 		case *gomavlib.EventChannelClose:
-			remoteIP := extractIPFromChannel(e.Channel.String())
-			if strings.HasPrefix(remoteIP, "10.13.37.") {
-				log.Printf("[NETWORK] 🚁 Drone ngắt kết nối: %s", e.Channel.String())
-			} else {
-				log.Printf("[NETWORK] 🖥️  GCS ngắt kết nối: %s", e.Channel.String())
-			}
+			logChannelEvent("ngắt kết nối", e.Channel.String())
 		}
 	}
 

@@ -3,6 +3,15 @@ import { RedisService } from '../redis/redis.service';
 import { TelemetryGateway } from './telemetry.gateway';
 import { DeviceService } from '../device/device.service';
 
+const DEFAULT_TELEMETRY = {
+  connected: false,
+  armed: false,
+  flightMode: 'UNKNOWN',
+  battery: { percentage: 0, voltageMv: 0, currentCa: 0 },
+  gps: { lat: 0, lon: 0, altRelativeM: 0, headingDeg: 0, groundSpeedMs: 0 },
+  attitude: { rollDeg: 0, pitchDeg: 0, yawDeg: 0 },
+};
+
 /**
  * TelemetryService chịu trách nhiệm:
  * 1. Đăng ký nhận luồng sự kiện Telemetry từ Redis Pub/Sub (kênh `channel:drone:telemetry:all`).
@@ -13,6 +22,7 @@ import { DeviceService } from '../device/device.service';
 export class TelemetryService implements OnModuleInit {
   private readonly logger = new Logger(TelemetryService.name);
   private readonly inMemoryCache = new Map<string, any>();
+  private readonly autoDiscoveredDevices = new Set<string>();
 
   constructor(
     private readonly redisService: RedisService,
@@ -54,15 +64,18 @@ export class TelemetryService implements OnModuleInit {
             // Phát sự kiện ra toàn bộ client Web đang kết nối WebSocket
             this.telemetryGateway.broadcastTelemetry(telemetryData);
 
-            // Tự động ghi danh vào Database nếu Drone chưa có bản ghi (ví dụ drone cấu hình thủ công)
-            const detectedIp = telemetryData.vpnIp || (telemetryData.deviceId.startsWith('DRONE-IP-') ? telemetryData.deviceId.replace('DRONE-IP-', '').replace(/-/g, '.') : '');
-            if (detectedIp && /^10\.13\.37\.\d+$/.test(detectedIp)) {
-              this.deviceService.findOrCreateManualDevice(
-                telemetryData.deviceId,
-                detectedIp,
-                'MANUAL_TELEMETRY',
-                'Manual / Discovered Drone',
-              ).catch(() => {});
+            // Tự động ghi danh vào Database đúng 1 lần cho mỗi Drone mới (tránh spam DB ở tần số 10Hz)
+            if (!this.autoDiscoveredDevices.has(telemetryData.deviceId)) {
+              this.autoDiscoveredDevices.add(telemetryData.deviceId);
+              const detectedIp = telemetryData.vpnIp || (telemetryData.deviceId.startsWith('DRONE-IP-') ? telemetryData.deviceId.replace('DRONE-IP-', '').replace(/-/g, '.') : '');
+              if (detectedIp && /^10\.13\.37\.\d+$/.test(detectedIp)) {
+                this.deviceService.findOrCreateManualDevice(
+                  telemetryData.deviceId,
+                  detectedIp,
+                  'MANUAL_TELEMETRY',
+                  'Manual / Discovered Drone',
+                ).catch(() => {});
+              }
             }
           }
         } catch (error) {
@@ -80,9 +93,10 @@ export class TelemetryService implements OnModuleInit {
     // 1. Lấy danh sách thiết bị từ Database
     const devices = await this.deviceService.findAllDevices();
     const deviceMap = new Map<string, any>();
+    const ipToDeviceMap = new Map<string, any>();
 
     for (const dev of devices) {
-      deviceMap.set(dev.deviceId, {
+      const entry = {
         id: dev.id,
         deviceId: dev.deviceId,
         hardwareModel: dev.hardwareModel,
@@ -90,7 +104,9 @@ export class TelemetryService implements OnModuleInit {
         status: dev.status,
         lastSeen: dev.lastSeen,
         telemetry: null,
-      });
+      };
+      deviceMap.set(dev.deviceId, entry);
+      if (dev.vpnIp) ipToDeviceMap.set(dev.vpnIp, entry);
     }
 
     // 2. Lấy dữ liệu Telemetry từ Redis và RAM Cache
@@ -100,53 +116,54 @@ export class TelemetryService implements OnModuleInit {
       ...Array.from(this.inMemoryCache.keys()),
     ]);
 
-    // 3. Tra cứu bảng ánh xạ IP -> DeviceID từ Redis để điền IP cho các Drone đang bay
-    let ipMap: Record<string, string> = {};
+    // 3. Tra cứu bảng ánh xạ IP -> DeviceID và SysID -> DeviceID từ Redis
+    let redisIpMap: Record<string, string> = {};
+    let redisSysMap: Record<string, string> = {};
     try {
-      ipMap = (await this.redisService.getClient()?.hgetall('drone:ip_map')) || {};
+      const client = this.redisService.getClient();
+      if (client) {
+        [redisIpMap, redisSysMap] = await Promise.all([
+          client.hgetall('drone:ip_map').catch(() => ({})),
+          client.hgetall('drone:sys_map').catch(() => ({})),
+        ]);
+      }
     } catch {
       // Bỏ qua nếu lỗi Redis
     }
-    const deviceToIpMap: Record<string, string> = {};
-    for (const [ip, dId] of Object.entries(ipMap)) {
-      deviceToIpMap[dId] = ip;
+    const devToIp: Record<string, string> = {};
+    for (const [ip, dId] of Object.entries(redisIpMap)) {
+      devToIp[dId] = ip;
     }
 
-    // 4. Bổ sung các Drone đang phát sóng thực tế (kể cả Drone chưa đăng ký DB hoặc Drone ảo Simulator)
+    // 4. Bổ sung telemetry cho từng Drone
     for (const devId of allActiveDeviceIds) {
       const telemetry = redisStates[devId] || this.inMemoryCache.get(devId);
-      const detectedIp = deviceToIpMap[devId] || (devId.startsWith('DRONE-IP-') ? devId.replace('DRONE-IP-', '').replace(/-/g, '.') : '');
+      const mappedDevId = (telemetry?.sysid && redisSysMap[String(telemetry.sysid)]) || devId;
+      const detectedIp = telemetry?.vpnIp || devToIp[mappedDevId] || devToIp[devId] || (devId.startsWith('DRONE-IP-') ? devId.replace('DRONE-IP-', '').replace(/-/g, '.') : '');
 
-      if (!deviceMap.has(devId)) {
-        deviceMap.set(devId, {
-          id: devId,
-          deviceId: devId,
+      let target = deviceMap.get(mappedDevId) || deviceMap.get(devId) || (detectedIp ? ipToDeviceMap.get(detectedIp) : null);
+      if (target) {
+        target.telemetry = telemetry;
+        if (!target.vpnIp && detectedIp) target.vpnIp = detectedIp;
+      } else {
+        deviceMap.set(mappedDevId, {
+          id: mappedDevId,
+          deviceId: mappedDevId,
           hardwareModel: 'Real-time Telemetry Stream',
           vpnIp: detectedIp || '10.13.37.X',
           status: 'ACTIVE',
           lastSeen: new Date(),
           telemetry: telemetry || null,
         });
-      } else {
-        const item = deviceMap.get(devId);
-        item.telemetry = telemetry;
-        if (!item.vpnIp && detectedIp) {
-          item.vpnIp = detectedIp;
-        }
       }
     }
 
     // 5. Chuẩn hóa dữ liệu trả về
     return Array.from(deviceMap.values()).map((dev) => {
       if (!dev.telemetry) {
-        dev.telemetry = {
-          connected: false,
-          armed: false,
-          flightMode: 'UNKNOWN',
-          battery: { percentage: 0, voltageMv: 0, currentCa: 0 },
-          gps: { lat: 0, lon: 0, altRelativeM: 0, headingDeg: 0, groundSpeedMs: 0 },
-          attitude: { rollDeg: 0, pitchDeg: 0, yawDeg: 0 },
-        };
+        dev.telemetry = { ...DEFAULT_TELEMETRY };
+      } else if (dev.telemetry.timestamp && Date.now() - dev.telemetry.timestamp > 10000) {
+        dev.telemetry.connected = false;
       }
       return dev;
     });
@@ -160,14 +177,7 @@ export class TelemetryService implements OnModuleInit {
 
     const telemetry =
       (await this.redisService.getDeviceTelemetryState(deviceId)) ||
-      this.inMemoryCache.get(deviceId) || {
-        connected: false,
-        armed: false,
-        flightMode: 'UNKNOWN',
-        battery: { percentage: 0, voltageMv: 0, currentCa: 0 },
-        gps: { lat: 0, lon: 0, altRelativeM: 0, headingDeg: 0, groundSpeedMs: 0 },
-        attitude: { rollDeg: 0, pitchDeg: 0, yawDeg: 0 },
-      };
+      this.inMemoryCache.get(deviceId) || { ...DEFAULT_TELEMETRY };
 
     if (!device) {
       // Nếu không có trong DB nhưng đang có luồng Telemetry

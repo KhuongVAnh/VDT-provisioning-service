@@ -1,253 +1,159 @@
-﻿# Hướng Dẫn Đọc Mã Nguồn Go (Code Tour)
+# Hướng Dẫn Đọc Mã Nguồn Go (Code Tour)
+## Drone Telemetry Ingestion & MAVLink GCS Router Core
 
-Tài liệu này hướng dẫn bạn đọc và hiểu mã nguồn của **Go MAVLink Telemetry Ingestion Service** theo một trình tự logic nhất, từ khi gói tin MAVLink rời khỏi Drone cho đến khi dữ liệu Telemetry xuất hiện trên Web Dashboard thời gian thực. Hãy mở code trên VSCode và đi theo từng bước bên dưới.
-
----
-
-## Bức Tranh Tổng Thể Trước Khi Đọc Code
-
-```
-[Drone / Pi] ──UDP 14551──► [cmd/server/main.go]
-                                      │
-                   ┌──────────────────┼──────────────────┐
-                   ▼                  ▼                   ▼
-          [resolver/]        [mavlink/decoder.go]   [state/aggregator.go]
-         "IP này là ai?"    "Bản tin này nói gì?"   "Lưu vào bộ nhớ RAM"
-                                                          │
-                                                          ▼
-                                                  [publisher/redis.go]
-                                                  "Đẩy vào Redis"
-                                                          │
-                                         ┌────────────────┴────────────────┐
-                                         ▼                                 ▼
-                                  [drone:states]              [channel:drone:telemetry:all]
-                                  (Key-Value Cache)              (Pub/Sub Realtime Stream)
-                                         │                                 │
-                                         └────────────────┬────────────────┘
-                                                          ▼
-                                              [NestJS TelemetryService]
-                                              (Subscribe nhận sự kiện)
-                                                          │
-                                                          ▼
-                                               [Web Dashboard (xterm.js)]
-```
+Tài liệu này hướng dẫn bạn đọc và hiểu toàn bộ mã nguồn của **Go MAVLink Ingestion Service** theo một trình tự logic, từ lúc Drone gửi gói tin qua mạng VPN cho tới khi dữ liệu xuất hiện trên Web Dashboard và phần mềm mặt đất (QGroundControl / Mission Planner).
 
 ---
 
-## Trình Tự Đọc Khuyến Nghị
+## 🗺️ Bức Tranh Tổng Thể Kiến Trúc
 
-### Bước 1: Điểm khởi chạy — Nơi mọi thứ bắt đầu
+```
+                ┌──────────────────────────────────────────────────┐
+                │        [Drone Companion Computer / Pi 4]         │
+                │        IP WireGuard VPN: 10.13.37.X              │
+                └────────────────────────┬─────────────────────────┘
+                                         │ (UDP :14551)
+                                         ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│              GOLANG CORE SERVICE (telemetry-ingestion-service)                │
+│                                                                               │
+│  [1. MAVLink Multi-Endpoint Node] (gomavlib/v3)                               │
+│      ├─ EndpointUDPServer (0.0.0.0:14551) ──► Nhận luồng từ Drone qua VPN     │
+│      └─ EndpointTCPServer (0.0.0.0:10002) ──► Phục vụ QGroundControl / MP     │
+│                                                                               │
+│  [2. Hai luồng xử lý song song]:                                              │
+│      ├─ Luồng A: Định tuyến 2 chiều (MAVLink Router)                          │
+│      │     node.WriteFrameExcept() ──► Bắn ngay sang TCP 10002 (cho GCS)      │
+│      │                                                                        │
+│      └─ Luồng B: Giải mã & Đồng bộ Telemetry (Cloud Ingestion)                │
+│            │                                                                  │
+│            ▼                                                                  │
+│     [extractIPFromChannel]   "Trích xuất IP nguồn 10.13.37.X"                 │
+│            ▼                                                                  │
+│     [internal/resolver]      "Tra cứu IP ➔ DeviceID (RAM Cache + Redis Map)"  │
+│            ▼                                                                  │
+│     [internal/mavlink]       "Giải mã 6 bản tin cốt lõi (#0,#33,#1,#30,#74,#24)"│
+│            ▼                                                                  │
+│     [internal/state]         "Tổng hợp Snapshot trạng thái an toàn đa luồng"  │
+│            ▼                                                                  │
+│     [internal/publisher]     "Đẩy vào Redis Pipeline (Hashes + Pub/Sub)"      │
+└────────────────────────────────────────┬──────────────────────────────────────┘
+                                         │ (Redis Pub/Sub :6380)
+                                         ▼
+                ┌──────────────────────────────────────────────────┐
+                │          [NestJS Business Gateway :10004]        │
+                │       (TelemetryService & TelemetryGateway)      │
+                └────────────────────────┬─────────────────────────┘
+                                         │ (WebSocket Socket.io)
+                                         ▼
+                ┌──────────────────────────────────────────────────┐
+                │        [Web Mission Control Dashboard]           │
+                │     Bản đồ GPS Leaflet + Quick HUD + Web SSH     │
+                └──────────────────────────────────────────────────┘
+```
+
+---
+
+## 📖 Trình Tự Đọc Code Khuyến Nghị
+
+### Bước 1: Điểm khởi chạy chính — `cmd/server/main.go`
 
 👉 **Mở file:** `cmd/server/main.go`
 
-**Tác dụng:** Đây là **luồng chính (main goroutine)** của toàn bộ service. Đọc file này để hiểu toàn bộ kiến trúc:
-
-1. **Đọc cấu hình** (`config.LoadConfig()`) — cổng UDP, cổng TCP GCS, địa chỉ Redis.
-2. **Kết nối Redis** — dùng để lưu snapshot và publish sự kiện realtime.
-3. **Khởi tạo 4 module con** — `ipResolver`, `stateAggregator`, `redisPublisher`, và `gomavlib node`.
-4. **Mở 2 Endpoint đồng thời:**
-   - `EndpointUDPServer` tại `0.0.0.0:14551` → nhận gói tin từ Drone qua VPN.
-   - `EndpointTCPServer` tại `0.0.0.0:10002` → phục vụ QGroundControl / Mission Planner.
-5. **Event Loop** (`for evt := range node.Events()`) — vòng lặp vĩnh viễn xử lý từng gói tin đến.
-6. **Heartbeat Goroutine** — tiến trình nền kiểm tra Drone có mất tín hiệu không mỗi 2 giây.
-
-> **Khái niệm cần biết:** `gomavlib.Node` là một **MAVLink Router đa điểm (Multiplexer)**. Nó tự động route bản tin 2 chiều giữa tất cả Endpoint đã đăng ký — tức là gói tin từ Drone tự chạy sang QGroundControl mà không cần viết thêm code.
+**Chức năng chính:**
+1. **Đọc cấu hình** (`config.LoadConfig()`): Cổng UDP `14551`, cổng TCP GCS `10002`, địa chỉ Redis.
+2. **Khởi tạo kết nối Redis Client:** Kiểm tra kết nối liveness và quản lý lifecycle.
+3. **Khởi tạo 4 module nội bộ:** `IPResolver`, `StateAggregator`, `RedisPublisher`, và gomavlib `Node`.
+4. **MAVLink Multi-Endpoint Router:**
+   - Mở đồng thời `EndpointUDPServer` (nhận từ Drone) và `EndpointTCPServer` (cho QGroundControl).
+   - `node.WriteFrameExcept(e.Channel, e.Frame)`: Chuyển tiếp frame 2 chiều giữa Drone và QGroundControl với độ trễ nano-giây.
+5. **Bộ lọc GCS Filter:** Bỏ qua các frame mang `SystemID == 255` hoặc `MAV_TYPE_GCS` từ QGroundControl để không nhận nhầm máy khách thành Drone.
+6. **Heartbeat Watchdog Goroutine:** Quét mỗi 2s; nếu Drone mất tín hiệu > 5s ➔ Đánh dấu `Connected = false` và cập nhật Redis.
+7. **Graceful Shutdown:** Bắt tín hiệu `SIGINT` / `SIGTERM` dọn dẹp tài nguyên trước khi tắt.
 
 ---
 
-### Bước 2: Cấu hình hệ thống — Đọc từ biến môi trường
+### Bước 2: Đọc cấu hình hệ thống — `internal/config/config.go`
 
 👉 **Mở file:** `internal/config/config.go`
 
-**Tác dụng:** Định nghĩa `struct Config` và hàm `LoadConfig()`. Toàn bộ tham số nhạy cảm đều được đọc từ biến môi trường Docker.
+Định nghĩa `struct Config` và đọc các biến môi trường từ hệ điều hành / Docker với giá trị mặc định tối ưu:
 
-| Biến môi trường | Mặc định | Ý nghĩa |
+| Biến môi trường | Mặc định | Tác dụng |
 |---|---|---|
-| `UDP_LISTEN_ADDR` | `0.0.0.0:14551` | Địa chỉ nhận gói tin UDP từ Drone |
-| `TCP_GCS_PORT` | `10002` | Cổng TCP cho QGroundControl kết nối |
-| `REDIS_ADDR` | `127.0.0.1:6380` | Địa chỉ Redis Server |
-| `STATE_TTL_SECONDS` | `30` | Dữ liệu Drone hết hạn trong Redis sau bao nhiêu giây |
+| `UDP_LISTEN_ADDR` | `0.0.0.0:14551` | Cổng UDP lắng nghe gói tin từ Drone qua WireGuard VPN |
+| `TCP_GCS_PORT` | `10002` | Cổng TCP cho trạm mặt đất QGroundControl / Mission Planner |
+| `REDIS_ADDR` | `127.0.0.1:6380` | Địa chỉ Redis Broker (chạy cổng 6380 để tránh xung đột) |
+| `STATE_TTL_SECONDS` | `30` | Thời gian sống (TTL) của trạng thái tức thời từng Drone |
 
 ---
 
-### Bước 3: Tra cứu "Drone nào đang gửi?" — IPResolver
+### Bước 3: Phân giải IP sang Device ID — `internal/resolver/resolver.go`
 
 👉 **Mở file:** `internal/resolver/resolver.go`
 
-**Tác dụng:** Khi nhận được một gói tin UDP, `main.go` chỉ biết địa chỉ IP nguồn (ví dụ: `10.13.37.5`). Nhưng Dashboard cần `deviceId`. Module này giải quyết bài toán đó.
+Gói tin UDP chỉ mang IP nguồn (`10.13.37.X`), module này xác định `deviceId` duy nhất của Drone theo cơ chế 3 tầng:
 
-Luồng tra cứu theo thứ tự ưu tiên:
-
-```
-IP: 10.13.37.5
-      │
-      ▼ (1) Kiểm tra local RAM cache (tốc độ nano-giây, không tốn mạng)
-      │     Hit? → Trả về ngay
-      │
-      ▼ (2) Truy vấn Redis `drone:ip_map` Hash
-      │     (DeviceService của NestJS đã ghi vào đây khi Drone đăng ký)
-      │     Hit? → Lưu vào RAM cache → Trả về
-      │
-      ▼ (3) Fallback: Tự sinh tạm "DRONE-IP-10-13-37-5"
-            Lưu cache 30 giây để không spam Redis
-```
-
-> **Điểm thú vị:** `sync.Map` được dùng thay vì `map[string]string` bình thường để đảm bảo **an toàn khi nhiều goroutine đọc/ghi đồng thời (thread-safe)** mà không cần khóa (lock-free reads).
+1. **Tầng 1 (In-Memory Cache - `sync.Map`):** Tra cứu trong RAM cục bộ (tốc độ nano-giây, lock-free).
+2. **Tầng 2 (Redis Hash `drone:ip_map`):** Truy vấn bảng ánh xạ được NestJS đồng bộ khi Drone đăng ký.
+3. **Tầng 3 (Fallback An Toàn):** Tự động sinh ID tạm `DRONE-IP-10-13-37-X` (cache 30s) giúp hệ thống không bao giờ bị drop gói tin.
 
 ---
 
-### Bước 4: "Bản tin MAVLink này nói gì?" — Decoder
+### Bước 4: Giải mã gói tin MAVLink — `internal/mavlink/decoder.go`
 
 👉 **Mở file:** `internal/mavlink/decoder.go`
 
-**Tác dụng:** Đây là bộ giải mã (parser) các bản tin MAVLink sang dữ liệu thực tế.
+Bộ giải mã sử dụng Go *Type Switch* để bóc tách 6 bản tin MAVLink cốt lõi:
 
 | Message ID | Tên bản tin | Dữ liệu trích xuất |
 |---|---|---|
-| `#0` | `HEARTBEAT` | Armed/Disarmed, Flight Mode (STABILIZE, LOITER, RTL...) |
-| `#33` | `GLOBAL_POSITION_INT` | Lat/Lon GPS (÷10⁷), Độ cao (mm→m), Vận tốc, Hướng bay (cdeg→deg) |
-| `#1` | `SYS_STATUS` | % Pin còn lại, Điện áp (mV), Dòng điện (cA) |
-| `#30` | `ATTITUDE` | Roll, Pitch, Yaw (rad→deg) |
-| `#74` | `VFR_HUD` | Tốc độ gió (Airspeed), Tốc độ leo (Climb Rate), Ga (Throttle %) |
-| `#24` | `GPS_RAW_INT` | Fix Type (3D/No Fix), Số vệ tinh khóa được |
-
-> **Kiểu lập trình:** Hàm `DecodeMessage` dùng **Type Switch** (`switch m := msg.(type)`) — cách đặc trưng của Go để kiểm tra kiểu dữ liệu tại runtime và xử lý từng loại bản tin một cách an toàn.
+| `#0` | `HEARTBEAT` | Trạng thái động cơ (Armed), Flight Mode ArduPilot (GUIDED, RTL, AUTO, LOITER...), Đánh dấu `Connected = true`. |
+| `#33` | `GLOBAL_POSITION_INT` | GPS Lat/Lon (÷10⁷), Độ cao tương đối / MSL (mm ➔ m), Vận tốc Ground Speed, Góc hướng Heading. |
+| `#24` | `GPS_RAW_INT` | Trạng thái Fix vệ tinh, Số lượng vệ tinh, Tọa độ GPS thô, Độ cao MSL, Vận tốc thô (dự phòng khi chưa có #33). |
+| `#1` | `SYS_STATUS` | Dung lượng pin %, Điện áp Voltage (mV), Dòng tiêu thụ Current (cA). |
+| `#30` | `ATTITUDE` | Góc nghiêng 3 chiều: Roll (lắc ngang), Pitch (chúc ngóc), Yaw (hướng xoay) đổi từ rad ➔ độ. |
+| `#74` | `VFR_HUD` | Tốc độ gió Airspeed (m/s), Tốc độ nâng Climb Rate (m/s), Mức ga Throttle %. |
 
 ---
 
-### Bước 5: Lưu trữ và tổng hợp trạng thái — StateAggregator
+### Bước 5: Tổng hợp trạng thái phi đội — `internal/state/aggregator.go`
 
 👉 **Mở file:** `internal/state/aggregator.go`
 
-**Tác dụng:** Module này duy trì một bảng trạng thái trong RAM (`map[deviceID]*TelemetryPayload`). Mỗi khi có gói tin mới, nó cập nhật (merge/patch) dữ liệu vào bảng và trả về bản snapshot mới nhất.
-
-```go
-// Ví dụ: HEARTBEAT đến → cập nhật Armed + FlightMode
-// Sau đó GLOBAL_POSITION_INT đến → cập nhật GPS
-// Payload của Drone luôn là bản "tổng hợp" đầy đủ nhất
-snapshot, modified := stateAggregator.UpdateState(deviceID, e.SystemID(), remoteIP, e.Message())
-```
-
-Các hàm quan trọng:
-- `UpdateState()` — Nhận gói tin mới, patch vào state, trả về snapshot an toàn.
-- `CheckHeartbeats()` — Gọi mỗi 2 giây từ goroutine nền. Nếu Drone không gửi `HEARTBEAT` quá 5 giây → đánh dấu `Connected = false`.
-
-> **Tại sao phải clone (`snapshot := *payload`):** Để tránh **race condition** — nếu trả về pointer trực tiếp, goroutine khác có thể đọc dữ liệu đang bị goroutine hiện tại ghi đè (data race).
+Duy trì bảng trạng thái trong RAM (`map[deviceID]*TelemetryPayload`):
+* Dùng `sync.RWMutex` bảo vệ tài nguyên an toàn đa luồng.
+* Cơ chế **Safe Clone** (`snapshot := *payload`): Trả về bản sao giá trị để luồng phát Redis không gây Data Race với luồng Ingest.
+* Hàm `CheckHeartbeats(5s)`: Quét và phát hiện các Drone bị mất tín hiệu kết nối.
 
 ---
 
-### Bước 6: Đẩy dữ liệu vào Redis — RedisPublisher
+### Bước 6: Xuất bản dữ liệu Redis Pipeline — `internal/publisher/redis.go`
 
 👉 **Mở file:** `internal/publisher/redis.go`
 
-**Tác dụng:** Sau khi có snapshot Telemetry mới, module này đẩy đồng thời vào **3 cấu trúc Redis** trong một lần gọi mạng duy nhất (Redis Pipeline):
-
-```
-PublishTelemetry(payload)
-    │
-    ├─ HSET drone:states <deviceId> <json>       → Bảng tổng trạng thái phi đội (Hash)
-    ├─ SET  drone:state:<deviceId> <json> TTL30  → Cache riêng từng Drone (có thời gian sống)
-    ├─ PUBLISH channel:drone:telemetry:<id> <json>   → Kênh riêng drone đó
-    └─ PUBLISH channel:drone:telemetry:all <json>    → Kênh tổng hợp toàn phi đội
-```
-
-> **Tại sao dùng Pipeline:** Thay vì gửi 4 lệnh Redis = 4 lần kết nối mạng, Pipeline gom tất cả vào **1 lần roundtrip TCP duy nhất**, giảm latency đáng kể.
-
-> **NestJS nhận dữ liệu từ đâu:** `TelemetryService` trong NestJS subscribe kênh `channel:drone:telemetry:all` và tự động nhận real-time mỗi khi Go publish vào đây.
+Gom tất cả 4 thao tác Redis vào **1 Redis Pipeline duy nhất** (1 TCP Network Roundtrip):
+1. `HSET drone:states <deviceId> <json>`: Lưu snapshot phi đội vào Hash.
+2. `SET drone:state:<deviceId> <json> EX 30`: Cache trạng thái kèm TTL 30s.
+3. `PUBLISH channel:drone:telemetry:<deviceId> <json>`: Bắn sự kiện vào kênh riêng của Drone.
+4. `PUBLISH channel:drone:telemetry:all <json>`: Bắn sự kiện vào kênh tổng hợp (cho NestJS WebSocket Gateway).
 
 ---
 
-### Bước 7: Mô hình dữ liệu — TelemetryPayload
-
-👉 **Mở file:** `pkg/models/` (xem file trong thư mục này)
-
-**Tác dụng:** Định nghĩa `struct TelemetryPayload` — cấu trúc JSON thống nhất được cả Go (ghi vào Redis) và NestJS (đọc từ Redis rồi đẩy xuống WebSocket) sử dụng chung.
-
----
-
-### Bước 8: Công cụ kiểm thử — Drone Simulator
+### Bước 7: Công cụ giả lập bay — `cmd/simulator/main.go`
 
 👉 **Mở file:** `cmd/simulator/main.go`
 
-**Tác dụng:** Đây là **phần mềm giả lập phi đội Drone** dùng để test mà không cần phần cứng thật. Nó tạo ra N Drone ảo bay theo quỹ đạo tròn quanh khu vực ĐH Bách Khoa Hà Nội.
+Giả lập N Drone ảo bay vòng tròn quanh khu vực Hà Nội (HUST Campus):
+* **Luồng 10Hz (100ms):** Bắn bản tin GPS `#33`, Attitude `#30` (nghiêng khi vào cua), VFR HUD `#74`.
+* **Luồng 1Hz (1s):** Bắn bản tin Heartbeat `#0`, Pin SysStatus `#1` (tụt pin dần), GPS Raw `#24`.
+* Tự động đăng ký ánh xạ IP vào Redis `drone:ip_map`.
+
+---
+
+## 🧪 Chạy Kiểm Thử Tự Động (Unit Tests)
 
 ```bash
-go run ./cmd/simulator/ \
-  -drones 5                  # Số Drone ảo (mặc định 3)
-  -target 127.0.0.1:14551   # Địa chỉ gửi đến
-  -redis  127.0.0.1:6380    # Redis để đồng bộ IP Map
+# Chạy toàn bộ Unit Tests với kết quả chi tiết
+go test -v ./...
 ```
-
-Mỗi Drone ảo gửi 2 loại gói tin:
-- **10Hz** (100ms): GPS, Attitude, VFR HUD — dữ liệu thay đổi nhanh.
-- **1Hz** (1s): Heartbeat, SysStatus, GPS Raw — dữ liệu thay đổi chậm.
-
----
-
-## Sơ Đồ Cây Thư Mục
-
-```
-telemetry-ingestion-service/
-│
-├── cmd/
-│   ├── server/main.go        ← Điểm khởi chạy Production Server
-│   └── simulator/main.go     ← Công cụ giả lập Drone để test
-│
-├── internal/                  ← Package nội bộ, không expose ra ngoài
-│   ├── config/
-│   │   └── config.go         ← Đọc cấu hình từ biến môi trường
-│   ├── mavlink/
-│   │   ├── decoder.go        ← Giải mã các bản tin MAVLink → dữ liệu thực tế
-│   │   └── decoder_test.go   ← Unit test bộ giải mã
-│   ├── publisher/
-│   │   └── redis.go          ← Ghi snapshot và Pub/Sub sự kiện vào Redis
-│   ├── resolver/
-│   │   ├── resolver.go       ← Tra cứu IP VPN → DeviceID (RAM + Redis cache)
-│   │   └── resolver_test.go  ← Unit test bộ phân giải IP
-│   └── state/
-│       ├── aggregator.go     ← Bộ nhớ RAM tổng hợp trạng thái phi đội
-│       └── aggregator_test.go← Unit test StateAggregator
-│
-├── pkg/                       ← Package có thể dùng chung với code khác
-│   └── models/               ← Định nghĩa struct TelemetryPayload (schema JSON)
-│
-├── Dockerfile                 ← Build image Docker 2 giai đoạn (multi-stage)
-├── go.mod                     ← Khai báo module và dependencies
-└── .env.example               ← Mẫu cấu hình biến môi trường
-```
-
----
-
-## Chạy Unit Test
-
-```bash
-# Chạy toàn bộ test
-go test ./...
-
-# Chạy test với kiểm tra race condition
-go test -race ./...
-
-# Chạy test với output chi tiết từng module
-go test -v ./internal/mavlink/...
-go test -v ./internal/resolver/...
-go test -v ./internal/state/...
-```
-
----
-
-## Các Khái Niệm Go Xuất Hiện Trong Code Này
-
-| Khái niệm | Nơi dùng | Giải thích ngắn |
-|---|---|---|
-| `goroutine` | `main.go` (Heartbeat, Shutdown) | Luồng nhẹ chạy song song, dùng `go func(){}()` |
-| `channel` | `sigChan` | Đường ống giao tiếp giữa các goroutine |
-| `sync.RWMutex` | `aggregator.go` | Khóa đọc/ghi an toàn: nhiều goroutine đọc đồng thời, chỉ 1 goroutine ghi |
-| `sync.Map` | `resolver.go` | Map thread-safe, không cần khóa thủ công |
-| `Type Switch` | `decoder.go` | Kiểm tra kiểu interface tại runtime |
-| `defer` | Mọi nơi | Đảm bảo luôn được gọi khi hàm kết thúc (dọn dẹp tài nguyên) |
-| `Pipeline` | `redis.go` | Gom nhiều lệnh Redis thành 1 lần gửi mạng |
-| `struct copy` | `aggregator.go` | Clone an toàn để tránh race condition |
-
----
-
-*Ghi chú: Tất cả các file có đuôi `_test.go` là file test tự động, chạy bằng lệnh `go test ./...`.*

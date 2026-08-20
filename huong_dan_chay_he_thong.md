@@ -3,99 +3,96 @@
 
 ---
 
-## I. TỔNG QUAN KIẾN TRÚC DỰ ÁN
+## I. SO SÁNH CHẠY DỰ ÁN TRÊN WINDOWS (DOCKER) VÀ VPS (UBUNTU)
 
-Dự án bao gồm 2 module dịch vụ độc lập giao tiếp qua **Redis**:
-
-1. **`telemetry-ingestion-service/` (Golang Core):**
-   - Lắng nghe gói tin UDP binary MAVLink v1/v2 từ Drone (Port `14550`).
-   - Tự động bóc tách IP VPN (`10.13.37.X`) -> Tra cứu `deviceId` trong Redis `drone:ip_map`.
-   - Giải mã toàn diện: Heartbeat (ArduPilot Flight Modes), GPS Global Position, Dung lượng pin, Góc nghiêng Attitude Roll/Pitch/Yaw, VFR HUD.
-   - Xuất dữ liệu vào Redis Hashes (`drone:states`) và bắn sự kiện thời gian thực qua Redis Pub/Sub (`channel:drone:telemetry:all`).
-   - Kèm bộ **Drone Simulator** (`cmd/simulator/main.go`) mô phỏng nhiều drone bay theo quỹ đạo thực tế.
-
-2. **`provisioning-api/` (NestJS Business Gateway):**
-   - Cung cấp API Cấp phát Zero-Touch Provisioning (Phase 1).
-   - Module **Redis**: Quản lý kết nối CRUD và kênh Subscribe Pub/Sub.
-   - Module **Telemetry**: WebSocket Gateway (`/`) đẩy tọa độ, trạng thái bay tới trình duyệt Web (10Hz).
-   - Module **Web SSH**: Kết nối SSH2 trực tiếp vào IP VPN `10.13.37.X:22` của Drone và bắt cầu WebSocket với `xterm.js`.
-   - Giao diện **Mission Control SPA Dashboard** (`public/index.html`): Bản đồ GPS vệ tinh Leaflet, Artificial Horizon HUD, Bảng quản lý đội Drone, Ma trận 254 IP, Web SSH Terminal trực quan.
+| Đặc tính | Trên Ubuntu VPS (Production) | Trên Windows (Local Docker Test) |
+|---|---|---|
+| **File Compose** | `docker-compose.yml` (`network_mode: host`) | `docker-compose.local.yml` (Bridge Mode) |
+| **Nhận MAVLink từ Drone** | UDP `0.0.0.0:14551` qua WireGuard (`10.13.37.X`) | UDP `127.0.0.1:14551` (từ Simulator/Drone thật) |
+| **QGroundControl kết nối** | TCP `IP_VPS:10002` | TCP `127.0.0.1:10002` |
+| **Web Dashboard** | `http://IP_VPS:10004/` | `http://localhost:10004/` |
+| **Phân giải định danh Drone** | Tra cứu Redis theo IP VPN `10.13.37.X` | Tra cứu Redis theo cả `drone:ip_map` & `drone:sys_map` |
 
 ---
 
-## II. HƯỚNG DẪN CHẠY & KIỂM THỬ TRÊN MÁY TÍNH (LOCAL DEV)
+## II. HƯỚNG DẪN CHẠY TRÊN WINDOWS BẰNG DOCKER
 
-### Bước 1: Khởi chạy Redis Server bằng Docker (Port 6380)
-Mở Terminal gõ lệnh:
-```bash
-docker run -d --name drone-redis -p 6380:6379 redis:7.4-alpine
+### Bước 1: Khởi chạy toàn bộ hệ thống bằng Docker Compose
+Mở PowerShell tại thư mục gốc dự án:
+```powershell
+docker compose -f docker-compose.local.yml up -d --build
 ```
 
----
-
-### Bước 2: Chạy Go MAVLink Ingestion Service
-Mở **Terminal 1**:
-```bash
-cd telemetry-ingestion-service
-go run ./cmd/server/main.go
-```
-*Dịch vụ sẽ khởi động và lắng nghe UDP tại port `14551` (Drone) và TCP port `10002` (QGroundControl).*
+Lệnh trên sẽ tự động dựng và chạy 3 container:
+1. **`drone-redis`** (Cổng 6380): Broker Cache & Pub/Sub.
+2. **`drone-telemetry-ingestion`** (Cổng UDP 14551 & TCP 10002): Bộ giải mã MAVLink & GCS Router.
+3. **`drone-provisioning-api`** (Cổng 10004): Web Dashboard & WebSocket Gateway.
 
 ---
 
-### Bước 3: Khởi chạy NestJS API Gateway & Mission Control UI
-Mở **Terminal 2**:
-```bash
-cd provisioning-api
-npm run start:dev
-```
-*Server sẽ mở tại `http://localhost:10004/`.*
-
----
-
-### Bước 4: Chạy Drone Simulator (Mô phỏng 3-5 Drone bay thật)
-Mở **Terminal 3**:
-```bash
+### Bước 2: Chạy bộ giả lập phi đội Drone (Simulator)
+Mở cửa sổ PowerShell mới:
+```powershell
 cd telemetry-ingestion-service
 go run ./cmd/simulator/main.go -drones 3 -target 127.0.0.1:14551 -redis 127.0.0.1:6380
 ```
-*Công cụ sẽ sinh ra 3 drone ảo `DRONE-SIM-0001`, `DRONE-SIM-0002`, `DRONE-SIM-0003` với GPS bay vòng tròn quanh khu vực Hà Nội, pin tụt dần, góc nghiêng Roll/Pitch thay đổi và gửi luồng Telemetry 10Hz.*
+
+> **Cơ chế hoạt động:**
+> - Simulator sẽ tự sinh ra 3 drone ảo (`DRONE-SIM-0001`, `DRONE-SIM-0002`, `DRONE-SIM-0003`) với SystemID (1, 2, 3) và IP ảo (`10.13.37.2`, `10.13.37.3`, `10.13.37.4`).
+> - Drone ảo bay vòng tròn quanh khu vực Hà Nội (HUST Campus), pin tụt dần theo thời gian, góc nghiêng Roll/Pitch thay đổi khi vào cua và phát luồng Telemetry 10Hz vào hệ thống Ingestion.
 
 ---
 
-### Bước 5: Mở Trình Duyệt Web Trải Nghiệm
-Truy cập: **`http://localhost:10004/`**
+### Bước 3: Mở Web Dashboard giám sát tác chiến
+Truy cập trình duyệt: **`http://localhost:10004/`**
 
-1. **Tab Bản Đồ Tác Chiến:** Xem Drone di chuyển mượt mà trên bản đồ vệ tinh tối màu, icon xoay theo hướng bay Heading, hiển thị vết bay (Flight Trail) và bảng Quick HUD bên phải. Dropdown chỉ hiển thị các Drone đang Online thực sự.
-2. **Tab Đội Drone:** Xem danh sách quản trị chi tiết, nút Khóa (Revoke), Mở khóa (Reactivate) và Xóa vĩnh viễn (Delete) với thông báo tác động rõ ràng.
-3. **Tab Web SSH:** Chọn Drone hoặc gõ IP để kết nối terminal Linux dòng lệnh đen bóng và bấm nút Ngắt kết nối.
-4. **Tab IP Matrix:** Xem 254 ô địa chỉ IP đổi màu theo trạng thái Online/Offline thời gian thực.
+1. **Tab Bản Đồ Tác Chiến:**
+   - 3 Drone ảo sẽ xuất hiện trên bản đồ vệ tinh tối màu Leaflet với icon xoay theo góc hướng bay thực tế.
+   - Vết bay (Flight Trail) hiển thị quỹ đạo bay tròn.
+   - Quick HUD bên phải hiển thị chi tiết: % Pin, Độ cao (m), Tốc độ (m/s), Heading (°), Artificial Horizon 3D.
+2. **Tab Đội Drone:**
+   - Xem bảng danh sách Drone đang phát sóng thời gian thực.
+   - Có thể thực hiện các thao tác: Khóa (Revoke), Mở khóa (Reactivate), Xóa vĩnh viễn (Delete).
 
 ---
 
-## III. HƯỚNG DẪN CHẠY TOÀN BỘ BẰNG DOCKER COMPOSE
+### Bước 4: Kết nối QGroundControl trên máy Windows (Tuỳ chọn)
+Nếu bạn có cài phần mềm **QGroundControl** hoặc **Mission Planner** trên Windows:
+1. Mở QGroundControl ➔ **Application Settings** ➔ **Comm Links** ➔ **Add**.
+2. Thiết lập:
+   - **Type:** `TCP`
+   - **Host Address:** `127.0.0.1`
+   - **Port:** `10002`
+3. Bấm **Connect**.
+➔ QGroundControl sẽ nhận trực tiếp luồng bay từ 3 Drone ảo thông qua Ingestion Router và hiển thị máy bay trên bản đồ QGroundControl!
 
-Trên VPS hoặc máy chủ Production:
+---
+
+## III. HƯỚNG DẪN TRIỂN KHAI LÊN VPS (UBUNTU LINUX)
+
+Trên VPS Ubuntu thật:
 ```bash
-# Khởi chạy toàn bộ hệ sinh thái (Redis + Go Ingest + NestJS API)
+# 1. Clone source code về VPS
+git clone <repo_url>
+cd provisioning_service
+
+# 2. Khởi chạy toàn bộ hệ thống bằng docker-compose.yml
 docker compose up -d --build
 
-# Xem log hoạt động
+# 3. Xem log thời gian thực
 docker compose logs -f
 ```
 
 ---
 
-## IV. CHẠY TỰ ĐỘNG KIỂM THỬ (AUTOMATED TESTS)
+## IV. CHẠY KIỂM THỬ TỰ ĐỘNG (AUTOMATED TESTS)
 
-1. **Kiểm tra Unit Tests Golang (100% Pass):**
-   ```bash
-   cd telemetry-ingestion-service
-   go test -v ./...
-   ```
+```bash
+# Kiểm tra Go Ingestion Service
+cd telemetry-ingestion-service
+go test -v ./...
 
-2. **Kiểm tra Unit Tests NestJS (48/48 Tests Pass):**
-   ```bash
-   cd provisioning-api
-   npm test
-   ```
+# Kiểm tra NestJS API Gateway
+cd ../provisioning-api
+npm test
+```

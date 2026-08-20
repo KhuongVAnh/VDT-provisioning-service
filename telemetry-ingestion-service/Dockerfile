@@ -26,21 +26,23 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Cài đặt chứng chỉ SSL CA
+# Cài đặt chứng chỉ SSL CA và múi giờ
 RUN apk add --no-cache ca-certificates tzdata
 
 # Copy binary từ builder
 COPY --from=builder /app/ingest-server /app/ingest-server
 COPY --from=builder /app/drone-sim /app/drone-sim
 
-# Cấu hình biến môi trường mặc định
-ENV UDP_LISTEN_ADDR=":14550" \
-    REDIS_ADDR="redis:6379" \
+# Cấu hình biến môi trường mặc định khớp với hệ thống
+ENV UDP_LISTEN_ADDR="0.0.0.0:14551" \
+    TCP_GCS_PORT=10002 \
+    REDIS_ADDR="redis:6380" \
     REDIS_DB=0 \
     STATE_TTL_SECONDS=30
 
-# Mở cổng UDP MAVLink
-EXPOSE 14550/udp
+# Mở cổng UDP cho Drone MAVLink và TCP cho QGroundControl
+EXPOSE 14551/udp
+EXPOSE 10002
 
 # Chạy Ingestion Server
 CMD ["/app/ingest-server"]

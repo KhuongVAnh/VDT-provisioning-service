@@ -97,3 +97,81 @@ func TestDecodeSysStatus(t *testing.T) {
 		t.Errorf("Kỳ vọng VoltageMv = 15800, thực tế = %d", payload.Battery.VoltageMv)
 	}
 }
+
+func TestDecodeGpsRawInt(t *testing.T) {
+	payload := &models.TelemetryPayload{}
+	msg := &ardupilotmega.MessageGpsRawInt{
+		FixType:           ardupilotmega.GPS_FIX_TYPE_3D_FIX,
+		SatellitesVisible: 14,
+		Lat:               210055120, // 21.005512
+		Lon:               1058431200, // 105.843120
+		Alt:               55400,     // 55.4m MSL
+		Cog:               13500,     // 135.0 deg
+		Vel:               850,       // 8.5 m/s
+	}
+
+	modified := DecodeMessage(msg, payload)
+	if !modified {
+		t.Errorf("Kỳ vọng DecodeMessage trả về true cho MessageGpsRawInt")
+	}
+	if payload.GPS.FixType != 3 {
+		t.Errorf("Kỳ vọng FixType = 3, thực tế = %d", payload.GPS.FixType)
+	}
+	if payload.GPS.Satellites != 14 {
+		t.Errorf("Kỳ vọng Satellites = 14, thực tế = %d", payload.GPS.Satellites)
+	}
+	if payload.GPS.Lat != 21.005512 {
+		t.Errorf("Kỳ vọng Lat = 21.005512, thực tế = %f", payload.GPS.Lat)
+	}
+	if payload.GPS.Lon != 105.843120 {
+		t.Errorf("Kỳ vọng Lon = 105.843120, thực tế = %f", payload.GPS.Lon)
+	}
+	if payload.GPS.AltMslM != 55.4 {
+		t.Errorf("Kỳ vọng AltMslM = 55.4, thực tế = %f", payload.GPS.AltMslM)
+	}
+	if payload.GPS.HeadingDeg != 135.0 {
+		t.Errorf("Kỳ vọng HeadingDeg = 135.0, thực tế = %f", payload.GPS.HeadingDeg)
+	}
+	if payload.GPS.GroundSpeedMs != 8.5 {
+		t.Errorf("Kỳ vọng GroundSpeedMs = 8.5, thực tế = %f", payload.GPS.GroundSpeedMs)
+	}
+}
+
+func TestDecodeMessageRaw(t *testing.T) {
+	// Encode GlobalPositionInt sang MessageRaw
+	gpsMsg := &ardupilotmega.MessageGlobalPositionInt{
+		Lat:         210055120, // 21.005512
+		Lon:         1058431200, // 105.843120
+		RelativeAlt: 45000,     // 45m
+		Alt:         60000,     // 60m MSL
+		Hdg:         9000,      // 90 deg
+		Vx:          300,       // 3 m/s
+		Vy:          400,       // 4 m/s
+	}
+
+	mrw := dialectRW.GetMessage(gpsMsg.GetID())
+	if mrw == nil {
+		t.Fatalf("Không tìm thấy readwriter cho message 33")
+	}
+
+	raw := mrw.Write(gpsMsg, true)
+	if raw == nil {
+		t.Fatalf("Không thể encode sang MessageRaw")
+	}
+
+	payload := &models.TelemetryPayload{}
+	modified := DecodeMessage(raw, payload)
+
+	if !modified {
+		t.Fatalf("Kỳ vọng DecodeMessage trả về true cho MessageRaw id 33")
+	}
+	if payload.GPS.Lat != 21.005512 {
+		t.Errorf("Kỳ vọng Lat = 21.005512, thực tế = %f", payload.GPS.Lat)
+	}
+	if payload.GPS.AltRelativeM != 45.0 {
+		t.Errorf("Kỳ vọng AltRelativeM = 45.0, thực tế = %f", payload.GPS.AltRelativeM)
+	}
+	if payload.GPS.GroundSpeedMs != 5.0 {
+		t.Errorf("Kỳ vọng GroundSpeedMs = 5.0, thực tế = %f", payload.GPS.GroundSpeedMs)
+	}
+}
