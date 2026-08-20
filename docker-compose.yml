@@ -9,7 +9,10 @@ services:
       - ./data/redis:/data
     command: ["redis-server", "--appendonly", "yes", "--port", "6380"]
 
-  # 2. Go MAVLink Ingestion Service (Core Ingest Worker)
+  # 2. Go MAVLink Ingestion Service - GCS Router Mode
+  # Thay thế hoàn toàn mavlink-routerd:
+  #   - Lắng nghe trực tiếp từ Drone tại 10.13.37.1:14550 (bảo toàn IP nguồn 10.13.37.X)
+  #   - Phục vụ QGroundControl / Mission Planner qua TCP 10002
   telemetry-ingestion:
     build:
       context: ./telemetry-ingestion-service
@@ -20,8 +23,11 @@ services:
     depends_on:
       - redis
     environment:
-      # Lắng nghe tại cổng 14551 (nhận luồng chuyển tiếp từ mavlink-routerd trên VPS)
+      # Drone gửi MAVLink thẳng lên VPS_PUBLIC_IP:14551
+      # Vì qua WireGuard VPN, gói UDP mang đúng IP nguồn 10.13.37.X của Drone
       - UDP_LISTEN_ADDR=0.0.0.0:14551
+      # Cổng TCP cho QGroundControl / Mission Planner kết nối vào
+      - TCP_GCS_PORT=10002
       - REDIS_ADDR=127.0.0.1:6380
       - REDIS_DB=0
       - STATE_TTL_SECONDS=30
