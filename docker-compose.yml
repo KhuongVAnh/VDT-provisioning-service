@@ -1,5 +1,5 @@
 services:
-  # 1. Redis Cache & Pub/Sub Message Broker (Chạy tại cổng 6380 để tránh trùng cổng 6379)
+  # 1. Redis Cache & Pub/Sub Message Broker
   redis:
     image: redis:7.4-alpine
     container_name: drone-redis
@@ -43,17 +43,6 @@ services:
     volumes:
       - ./data/db:/data
       - /lib/modules:/lib/modules:ro
-    environment:
-      - PORT=10004
-      - DATABASE_URL=file:/data/provisioning.db
-      - REDIS_HOST=127.0.0.1
-      - REDIS_PORT=6380
-      - PROVISION_SECRET_TOKEN=FACTORY_SECRET_KEY_2026
-      - WG_SERVER_ENDPOINT=103.253.20.32:10006
-      - WG_SERVER_ALLOWED_IPS=10.13.37.0/24
-      - WG_SERVER_PUBLIC_KEY=YOUR_SERVER_PUBLIC_KEY
-      - MAVLINK_TARGET_HOST=10.13.37.1
-      - MAVLINK_TARGET_PORT=14550
-      - VPN_SUBNET_PREFIX=10.13.37.
+    # Đọc bảo mật toàn bộ Secret Token, Key từ file .env
     env_file:
       - ./provisioning-api/.env
