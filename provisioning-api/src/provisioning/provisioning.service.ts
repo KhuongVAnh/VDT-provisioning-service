@@ -177,11 +177,13 @@ export class ProvisioningService implements OnModuleInit {
     return this.formatResponse(dto.deviceId, vpnIp, keypair.privateKey, keypair.publicKey);
   }
 
-  private formatResponse(deviceId: string, assignedIp: string, privateKey: string, clientPublicKey: string) {
+  private async formatResponse(deviceId: string, assignedIp: string, privateKey: string, clientPublicKey: string) {
     const serverEndpoint = this.configService.get<string>('WG_SERVER_ENDPOINT', '103.253.20.32:10006');
     const allowedIps = this.configService.get<string>('WG_SERVER_ALLOWED_IPS', '10.13.37.0/24');
     const persistentKeepalive = parseInt(this.configService.get<string>('WG_SERVER_PERSISTENT_KEEPALIVE', '25'), 10);
-    const serverPublicKey = this.configService.get<string>('WG_SERVER_PUBLIC_KEY', 'YOUR_SERVER_PUBLIC_KEY');
+    
+    // Tự động lấy Public Key trực tiếp từ Kernel của VPS qua WireguardService
+    const serverPublicKey = await this.wireguardService.getServerPublicKey();
     
     const mavlinkHost = this.configService.get<string>('MAVLINK_TARGET_HOST', '10.13.37.1');
     const mavlinkPort = parseInt(this.configService.get<string>('MAVLINK_TARGET_PORT', '14550'), 10);

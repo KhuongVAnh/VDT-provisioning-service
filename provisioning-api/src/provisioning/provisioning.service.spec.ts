@@ -36,6 +36,7 @@ describe('ProvisioningService', () => {
     generateKeypair: jest.fn(),
     addPeer: jest.fn(),
     removePeer: jest.fn(),
+    getServerPublicKey: jest.fn().mockResolvedValue('SRV_PUB_KEY'),
   };
 
   beforeEach(async () => {

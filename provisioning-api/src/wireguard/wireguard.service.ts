@@ -38,6 +38,29 @@ export class WireguardService {
   }
 
   /**
+   * Tự động lấy Public Key của WireGuard Server trực tiếp từ Linux Kernel trên VPS.
+   * Nếu lệnh thất bại (môi trường dev), tự động fallback về biến môi trường WG_SERVER_PUBLIC_KEY trong .env.
+   */
+  async getServerPublicKey(): Promise<string> {
+    try {
+      const { stdout } = await execAsync(`sudo wg show ${this.interfaceName} public-key 2>/dev/null || wg show ${this.interfaceName} public-key 2>/dev/null`);
+      const kernelKey = stdout.trim();
+      if (kernelKey.length === 44 && kernelKey.endsWith('=')) {
+        return kernelKey;
+      }
+    } catch {
+      // Bỏ qua lỗi nếu chạy trên máy tính dev (Windows/Mac)
+    }
+
+    const envKey = this.configService.get<string>('WG_SERVER_PUBLIC_KEY', '');
+    if (envKey && envKey !== 'YOUR_SERVER_PUBLIC_KEY') {
+      return envKey;
+    }
+
+    return 'YOUR_SERVER_PUBLIC_KEY';
+  }
+
+  /**
    * Tạo cặp khóa WireGuard mới bằng lệnh `wg genkey` và `wg pubkey`.
    */
   async generateKeypair(): Promise<WireguardKeypair> {
@@ -89,7 +112,7 @@ export class WireguardService {
    * Lấy thông tin trạng thái máy chủ WireGuard
    */
   async getServerInfo(): Promise<WireguardServerInfo> {
-    const serverPubKey = this.configService.get<string>('WG_SERVER_PUBLIC_KEY', '');
+    const serverPubKey = await this.getServerPublicKey();
     const serverEndpoint = this.configService.get<string>('WG_SERVER_ENDPOINT', '');
     const port = parseInt(serverEndpoint.split(':')[1] || '10006', 10);
 
