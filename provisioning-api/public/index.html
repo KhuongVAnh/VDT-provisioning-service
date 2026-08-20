@@ -560,7 +560,6 @@
 
     <div class="nav-tabs">
       <button class="nav-tab active" onclick="switchTab('tab-tactical')"><i class="fa-solid fa-map-location-dot"></i> Bản Đồ Tác Chiến</button>
-      <button class="nav-tab" onclick="switchTab('tab-hud')"><i class="fa-solid fa-compass"></i> Bảng HUD Bay</button>
       <button class="nav-tab" onclick="switchTab('tab-fleet')"><i class="fa-solid fa-drone"></i> Đội Drone</button>
       <button class="nav-tab" onclick="switchTab('tab-terminal')"><i class="fa-solid fa-terminal"></i> Web SSH</button>
       <button class="nav-tab" onclick="switchTab('tab-ip-pool')"><i class="fa-solid fa-network-wired"></i> IP Matrix</button>
@@ -692,70 +691,7 @@
       </div>
     </div>
 
-    <!-- TAB 2: DETAILED AVIATION HUD -->
-    <div id="tab-hud" class="tab-content">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
-        
-        <!-- LARGE ARTIFICIAL HORIZON -->
-        <div class="sidebar-card" style="text-align: center;">
-          <div class="sidebar-title"><i class="fa-solid fa-arrows-to-eye"></i> CHỈ BÁO TƯ THẾ BAY (ARTIFICIAL HORIZON)</div>
-          <div class="horizon-container" style="width: 240px; height: 240px; margin: 1.5rem auto;">
-            <div class="horizon-sphere" id="large-horizon-sphere" style="width: 480px; height: 480px; left: -120px; top: -120px;"></div>
-            <div class="horizon-crosshair" style="width: 100px; height: 100px;">
-              <div class="crosshair-center"></div>
-              <div class="crosshair-line crosshair-h-left" style="width: 32px;"></div>
-              <div class="crosshair-line crosshair-h-right" style="width: 32px;"></div>
-            </div>
-          </div>
-          <div style="display: flex; justify-content: space-around; margin-top: 1rem;">
-            <div>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">GÓC ROLL</div>
-              <div style="font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono';" id="hud-large-roll">0.0°</div>
-            </div>
-            <div>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">GÓC PITCH</div>
-              <div style="font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono';" id="hud-large-pitch">0.0°</div>
-            </div>
-            <div>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">HƯỚNG YAW</div>
-              <div style="font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono';" id="hud-large-yaw">000°</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- FLIGHT HUD METRICS -->
-        <div class="sidebar-card">
-          <div class="sidebar-title"><i class="fa-solid fa-gauge-high"></i> BUỒNG LÁI ẢO (VFR HUD METRICS)</div>
-          <div class="telemetry-row" style="padding: 0.6rem 0;">
-            <span class="telemetry-label">Tốc Độ Gió (Airspeed)</span>
-            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-airspeed">0.0 m/s</span>
-          </div>
-          <div class="telemetry-row" style="padding: 0.6rem 0;">
-            <span class="telemetry-label">Tốc Độ Leo Cao (Climb Rate)</span>
-            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-climb">0.0 m/s</span>
-          </div>
-          <div class="telemetry-row" style="padding: 0.6rem 0;">
-            <span class="telemetry-label">Mức Ga Động Cơ (Throttle)</span>
-            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-throttle">0%</span>
-          </div>
-          <div class="telemetry-row" style="padding: 0.6rem 0;">
-            <span class="telemetry-label">Độ Cao So Mực Nước Biển (MSL)</span>
-            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-alt-msl">0.0 m</span>
-          </div>
-          <div class="telemetry-row" style="padding: 0.6rem 0;">
-            <span class="telemetry-label">Điện Áp Pin (Voltage)</span>
-            <span class="telemetry-val" style="font-size: 1.1rem; color: #38bdf8;" id="hud-vfr-voltage">0.0 V</span>
-          </div>
-          <div class="telemetry-row" style="padding: 0.6rem 0;">
-            <span class="telemetry-label">Dòng Điện Tiêu Thụ (Current)</span>
-            <span class="telemetry-val" style="font-size: 1.1rem; color: #fbbf24;" id="hud-vfr-current">0.0 A</span>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- TAB 3: FLEET MANAGEMENT TABLE -->
+    <!-- TAB 2: FLEET MANAGEMENT TABLE -->
     <div id="tab-fleet" class="tab-content">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <div style="font-weight: 600; font-size: 1rem; color: var(--text-main);"><i class="fa-solid fa-list-check text-accent"></i> QUẢN TRỊ DANH SÁCH PHI ĐỘI DRONE</div>
@@ -883,17 +819,14 @@
     // --- MAP INITIALIZATION ---
     function initTacticalMap() {
       if (map) return;
-      // Khởi tạo bản đồ tại khu vực Hà Nội (21.0055, 105.8431)
       map = L.map('tactical-map', { zoomControl: true }).setView([21.005512, 105.843120], 15);
-
-      // Sử dụng CartoDB Dark Matter Tiles để hiển thị nền tối phong cách Aerospace
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; CartoDB &copy; OpenStreetMap contributors',
         maxZoom: 19
       }).addTo(map);
     }
 
-    // Tạo SVG Custom Icon cho Drone xoay theo Heading
+    // SVG Marker xoay theo Heading
     function createDroneIcon(headingDeg, isArmed) {
       const color = isArmed ? '#10b981' : '#38bdf8';
       const svg = `
@@ -913,9 +846,6 @@
 
     // --- WEBSOCKET CONNECTION ---
     function initWebSocket() {
-      const host = window.location.host;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      
       socket = io({
         transports: ['websocket', 'polling']
       });
@@ -941,7 +871,17 @@
       });
 
       socket.on('ssh:status', (statusData) => {
-        document.getElementById('ssh-status-info').innerText = `Trạng thái: ${statusData.message || statusData.status}`;
+        const infoEl = document.getElementById('ssh-status-info');
+        if (infoEl) {
+          infoEl.innerText = `Trạng thái: ${statusData.message || statusData.status}`;
+          if (statusData.status === 'connected') {
+            infoEl.style.color = '#10b981';
+          } else if (statusData.status === 'closed') {
+            infoEl.style.color = '#94a3b8';
+          } else if (statusData.status === 'error') {
+            infoEl.style.color = '#ef4444';
+          }
+        }
       });
     }
 
@@ -974,8 +914,8 @@
         }
       }
 
-      // 1. Cập nhật Marker trên bản đồ
-      if (lat !== 0 && lon !== 0 && map) {
+      // 1. Cập nhật Marker trên bản đồ (Nếu đang Online và có tọa độ)
+      if (t.connected !== false && lat !== 0 && lon !== 0 && map) {
         if (!droneMarkers[t.deviceId]) {
           const marker = L.marker([lat, lon], {
             icon: createDroneIcon(heading, t.armed)
@@ -992,11 +932,11 @@
 
           droneMarkers[t.deviceId] = marker;
           droneFlightTrails[t.deviceId] = L.polyline([[lat, lon]], { color: '#38bdf8', weight: 2, opacity: 0.6 }).addTo(map);
+          populateDroneDropdowns(fleetDevices);
         } else {
           droneMarkers[t.deviceId].setLatLng([lat, lon]);
           droneMarkers[t.deviceId].setIcon(createDroneIcon(heading, t.armed));
 
-          // Thêm điểm vào vết bay (giữ tối đa 150 điểm)
           const trail = droneFlightTrails[t.deviceId];
           if (trail) {
             const points = trail.getLatLngs();
@@ -1005,9 +945,20 @@
             trail.setLatLngs(points);
           }
         }
+      } else if (t.connected === false && map) {
+        // Khi Drone mất tín hiệu Heartbeat -> Gỡ Marker khỏi bản đồ và làm mới danh sách chọn
+        if (droneMarkers[t.deviceId]) {
+          map.removeLayer(droneMarkers[t.deviceId]);
+          delete droneMarkers[t.deviceId];
+        }
+        if (droneFlightTrails[t.deviceId]) {
+          map.removeLayer(droneFlightTrails[t.deviceId]);
+          delete droneFlightTrails[t.deviceId];
+        }
+        populateDroneDropdowns(fleetDevices);
       }
 
-      // 2. Cập nhật HUD nếu là drone đang chọn
+      // 2. Cập nhật Quick HUD nếu là drone đang chọn
       if (!activeDroneId || activeDroneId === t.deviceId) {
         if (!activeDroneId) activeDroneId = t.deviceId;
         updateHudDisplay(t);
@@ -1029,31 +980,12 @@
 
       const roll = t.attitude?.rollDeg || 0;
       const pitch = t.attitude?.pitchDeg || 0;
-      const yaw = t.attitude?.yawDeg || 0;
       document.getElementById('hud-angles').innerText = `${roll.toFixed(1)}° / ${pitch.toFixed(1)}°`;
 
-      // Cập nhật Artificial Horizon (Xoay theo Roll và Dịch chuyển theo Pitch)
       const miniHorizon = document.getElementById('mini-horizon-sphere');
-      const largeHorizon = document.getElementById('large-horizon-sphere');
-
-      const pitchOffsetMini = pitch * 1.5;
-      const pitchOffsetLarge = pitch * 2.2;
-
-      if (miniHorizon) miniHorizon.style.transform = `rotate(${-roll}deg) translateY(${pitchOffsetMini}px)`;
-      if (largeHorizon) largeHorizon.style.transform = `rotate(${-roll}deg) translateY(${pitchOffsetLarge}px)`;
-
-      // Large HUD tab metrics
-      if (document.getElementById('hud-large-roll')) {
-        document.getElementById('hud-large-roll').innerText = `${roll.toFixed(1)}°`;
-        document.getElementById('hud-large-pitch').innerText = `${pitch.toFixed(1)}°`;
-        document.getElementById('hud-large-yaw').innerText = `${Math.round(yaw).toString().padStart(3, '0')}°`;
-
-        document.getElementById('hud-vfr-airspeed').innerText = `${(t.vfrHud?.airspeedMs || 0).toFixed(1)} m/s`;
-        document.getElementById('hud-vfr-climb').innerText = `${(t.vfrHud?.climbRateMs || 0).toFixed(1)} m/s`;
-        document.getElementById('hud-vfr-throttle').innerText = `${t.vfrHud?.throttlePct || 0}%`;
-        document.getElementById('hud-vfr-alt-msl').innerText = `${(t.gps?.altMslM || 0).toFixed(1)} m`;
-        document.getElementById('hud-vfr-voltage').innerText = `${((t.battery?.voltageMv || 0) / 1000).toFixed(2)} V`;
-        document.getElementById('hud-vfr-current').innerText = `${((t.battery?.currentCa || 0) / 100).toFixed(1)} A`;
+      if (miniHorizon) {
+        const pitchOffsetMini = pitch * 1.5;
+        miniHorizon.style.transform = `rotate(${-roll}deg) translateY(${pitchOffsetMini}px)`;
       }
     }
 
@@ -1124,8 +1056,9 @@
                 <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="selectDroneForHud('${d.deviceId}')" title="Xem trên HUD/Bản đồ"><i class="fa-solid fa-crosshairs"></i></button>
                 <button class="btn btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="openSshForDrone('${d.deviceId}')" title="Mở Web SSH"><i class="fa-solid fa-terminal"></i></button>
                 ${d.status === 'ACTIVE' 
-                  ? `<button class="btn btn-danger" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="revokeDrone('${d.deviceId}')" title="Khóa Drone"><i class="fa-solid fa-ban"></i></button>`
-                  : `<button class="btn btn-success" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="reactivateDrone('${d.deviceId}')" title="Mở khóa"><i class="fa-solid fa-unlock"></i></button>`}
+                  ? `<button class="btn btn-warning" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: #92400e; border-color: #b45309;" onclick="revokeDrone('${d.deviceId}')" title="Khóa Drone (Tạm ngắt VPN)"><i class="fa-solid fa-ban"></i></button>`
+                  : `<button class="btn btn-success" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="reactivateDrone('${d.deviceId}')" title="Mở khóa (Cấp lại VPN)"><i class="fa-solid fa-unlock"></i></button>`}
+                <button class="btn btn-danger" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: #7f1d1d; border-color: #991b1b;" onclick="deleteDrone('${d.deviceId}')" title="Xóa vĩnh viễn khỏi Database"><i class="fa-solid fa-trash-can"></i></button>
               </div>
             </td>
           </tr>
@@ -1155,15 +1088,38 @@
       const currentMapVal = mapSelect ? mapSelect.value : 'all';
       const currentSshVal = sshSelect ? sshSelect.value : '';
 
-      const optionsHtml = '<option value="all">-- Theo dõi toàn bộ Drone --</option>' + 
-        devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || 'Auto-IP'})</option>`).join('');
+      // 1. Chỉ lọc và lấy các Drone đang ONLINE thực sự cho Bản Đồ Tác Chiến
+      const onlineDrones = devices.filter(d => {
+        const t = d.telemetry;
+        if (!t) return false;
+        const isConnected = t.connected === true;
+        const hasGps = t.gps && (t.gps.lat !== 0 || t.gps.lon !== 0);
+        return isConnected && hasGps;
+      });
 
-      const sshOptionsHtml = '<option value="">-- Chọn Drone đang bay --</option>' + 
-        devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`).join('');
+      let mapOptionsHtml = '';
+      if (onlineDrones.length === 0) {
+        mapOptionsHtml = '<option value="none">-- Không có Drone nào đang bay / Online --</option>';
+      } else {
+        mapOptionsHtml = `<option value="all">-- Theo dõi toàn bộ (${onlineDrones.length} Drone Online) --</option>` + 
+          onlineDrones.map(d => `<option value="${d.deviceId}">🟢 ${d.deviceId} (${d.vpnIp || 'Live'})</option>`).join('');
+      }
+
+      // 2. Dropdown cho Web SSH: Hiển thị toàn bộ và gắn icon trạng thái Online/Offline
+      const sshOptionsHtml = '<option value="">-- Chọn Drone để SSH --</option>' + 
+        devices.map(d => {
+          const isOnline = d.telemetry && d.telemetry.connected;
+          const statusIcon = isOnline ? '🟢' : '⚪';
+          return `<option value="${d.deviceId}">${statusIcon} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
+        }).join('');
 
       if (mapSelect) {
-        mapSelect.innerHTML = optionsHtml;
-        if (currentMapVal) mapSelect.value = currentMapVal;
+        mapSelect.innerHTML = mapOptionsHtml;
+        if (currentMapVal && (currentMapVal === 'all' || onlineDrones.some(d => d.deviceId === currentMapVal))) {
+          mapSelect.value = currentMapVal;
+        } else {
+          mapSelect.value = onlineDrones.length > 0 ? 'all' : 'none';
+        }
       }
       if (sshSelect) {
         sshSelect.innerHTML = sshOptionsHtml;
@@ -1189,7 +1145,7 @@
     }
 
     function focusDroneOnMap(deviceId) {
-      if (deviceId === 'all') {
+      if (deviceId === 'all' || deviceId === 'none' || !deviceId) {
         fitAllDronesOnMap();
         return;
       }
@@ -1197,6 +1153,10 @@
       const marker = droneMarkers[deviceId];
       if (marker && map) {
         map.setView(marker.getLatLng(), 17);
+      }
+      const drone = fleetDevices.find(d => d.deviceId === deviceId);
+      if (drone && drone.telemetry) {
+        updateHudDisplay(drone.telemetry);
       }
     }
 
@@ -1208,7 +1168,7 @@
       }
     }
 
-    // --- ACTIONS: REVOKE / REACTIVATE / MANUAL REGISTER ---
+    // --- ACTIONS: KHÓA / MỞ KHÓA / XÓA VĨNH VIỄN DRONE ---
     function toggleManualRegisterModal() {
       const box = document.getElementById('manual-register-box');
       if (box) {
@@ -1238,7 +1198,7 @@
         });
         const json = await res.json();
         if (json.status === 'success') {
-          alert(`Đã ghi danh thành công Drone: ${devId} (IP: ${vpnIp})`);
+          alert(`✅ ĐÃ GHI DANH THÀNH CÔNG:\n- Drone: ${devId}\n- IP VPN: ${vpnIp}`);
           toggleManualRegisterModal();
           document.getElementById('manual-dev-id').value = '';
           document.getElementById('manual-vpn-ip').value = '';
@@ -1251,22 +1211,89 @@
       }
     }
 
+    // 1. KHÓA DRONE (REVOKE)
     async function revokeDrone(deviceId) {
-      if (!confirm(`Bạn có chắc muốn KHÓA quyền truy cập của Drone ${deviceId}?`)) return;
+      const confirmMsg = `⚠️ XÁC NHẬN KHÓA DRONE "${deviceId}":\n\n` +
+        `🔹 TÁC ĐỘNG HỆ THỐNG:\n` +
+        `1. Ngắt kết nối mạng VPN WireGuard của Drone ngay lập tức (Gỡ Peer khỏi Kernel).\n` +
+        `2. Thu hồi địa chỉ IP VPN hiện tại trả về kho IP Pool cho Drone khác sử dụng.\n` +
+        `3. Chuyển trạng thái sang REVOKED (Bản ghi vẫn được lưu để theo dõi lịch sử).\n` +
+        `4. Bạn có thể bấm "Mở khóa" bất kỳ lúc nào để cấp lại IP mới cho Drone.\n\n` +
+        `Bạn có chắc chắn muốn KHÓA Drone này?`;
+
+      if (!confirm(confirmMsg)) return;
+
       try {
-        await fetch(`/api/v1/dashboard/devices/${deviceId}/revoke`, { method: 'POST' });
-        refreshAllData();
+        const res = await fetch(`/api/v1/dashboard/devices/${deviceId}/revoke`, { method: 'POST' });
+        const json = await res.json();
+        if (json.status === 'success') {
+          alert(`🔒 ĐÃ KHÓA DRONE THÀNH CÔNG:\n- Mã Drone: ${deviceId}\n- Trạng thái: Đã ngắt VPN và giải phóng IP.`);
+          refreshAllData();
+        } else {
+          alert('Lỗi: ' + (json.message || 'Không thể khóa Drone'));
+        }
       } catch (err) {
-        alert('Lỗi: ' + err.message);
+        alert('Lỗi kết nối: ' + err.message);
       }
     }
 
+    // 2. MỞ KHÓA DRONE (REACTIVATE)
     async function reactivateDrone(deviceId) {
+      const confirmMsg = `🔄 XÁC NHẬN MỞ KHÓA DRONE "${deviceId}":\n\n` +
+        `🔹 TÁC ĐỘNG HỆ THỐNG:\n` +
+        `1. Tự động cấp 1 địa chỉ IP VPN mới từ kho IP Pool khả dụng.\n` +
+        `2. Nạp lại cấu hình WireGuard Peer vào nhân Linux trên VPS.\n` +
+        `3. Chuyển trạng thái Drone sang ACTIVE để sẵn sàng bay và nhận Telemetry.\n\n` +
+        `Bạn có muốn MỞ KHÓA Drone này ngay?`;
+
+      if (!confirm(confirmMsg)) return;
+
       try {
-        await fetch(`/api/v1/dashboard/devices/${deviceId}/reactivate`, { method: 'POST' });
-        refreshAllData();
+        const res = await fetch(`/api/v1/dashboard/devices/${deviceId}/reactivate`, { method: 'POST' });
+        const json = await res.json();
+        if (json.status === 'success') {
+          const newIp = json.device?.vpnIp || 'Mới';
+          alert(`✅ ĐÃ MỞ KHÓA THÀNH CÔNG:\n- Mã Drone: ${deviceId}\n- IP VPN mới được cấp: ${newIp}\n- Đã nạp lại vào WireGuard.`);
+          refreshAllData();
+        } else {
+          alert('Lỗi: ' + (json.message || 'Không thể mở khóa Drone'));
+        }
       } catch (err) {
-        alert('Lỗi: ' + err.message);
+        alert('Lỗi kết nối: ' + err.message);
+      }
+    }
+
+    // 3. XÓA VĨNH VIỄN DRONE (DELETE)
+    async function deleteDrone(deviceId) {
+      const confirmMsg = `🚨 CẢNH BÁO NGUY HIỂM - XÓA VĨNH VIỄN DRONE "${deviceId}":\n\n` +
+        `🔹 TÁC ĐỘNG HỆ THỐNG:\n` +
+        `1. XÓA VĨNH VIỄN bản ghi Drone khỏi cơ sở dữ liệu SQLite.\n` +
+        `2. Hủy bỏ mọi cấu hình VPN WireGuard của Drone trên VPS.\n` +
+        `3. Giải phóng địa chỉ IP trả về kho IP Pool.\n` +
+        `4. Hành động này KHÔNG THỂ HOÀN TÁC!\n\n` +
+        `Bạn có thực sự chắc chắn muốn XÓA VĨNH VIỄN?`;
+
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch(`/api/v1/dashboard/devices/${deviceId}`, { method: 'DELETE' });
+        const json = await res.json();
+        if (json.status === 'success') {
+          alert(`🗑️ ĐÃ XÓA VĨNH VIỄN THÀNH CÔNG:\n- Đã xóa Drone "${deviceId}" khỏi cơ sở dữ liệu.`);
+          if (droneMarkers[deviceId]) {
+            map.removeLayer(droneMarkers[deviceId]);
+            delete droneMarkers[deviceId];
+          }
+          if (droneFlightTrails[deviceId]) {
+            map.removeLayer(droneFlightTrails[deviceId]);
+            delete droneFlightTrails[deviceId];
+          }
+          refreshAllData();
+        } else {
+          alert('Lỗi: ' + (json.message || 'Không thể xóa Drone'));
+        }
+      } catch (err) {
+        alert('Lỗi kết nối: ' + err.message);
       }
     }
 
@@ -1356,12 +1383,18 @@
       }
     }
 
+    // NGẮT KẾT NỐI SSH CHỦ ĐỘNG
     function disconnectWebSsh() {
-      if (term) {
-        term.writeln('\r\n\x1b[31m>>> Đã ngắt kết nối SSH.\x1b[0m\r\n');
-      }
       if (socket) {
-        socket.emit('ssh:input', { data: '\x03' }); // Ctrl+C
+        socket.emit('ssh:disconnect');
+      }
+      if (term) {
+        term.writeln('\r\n\x1b[31m>>> [SESSION CLOSED] Đã ngắt kết nối SSH với Drone.\x1b[0m\r\n');
+      }
+      const infoEl = document.getElementById('ssh-status-info');
+      if (infoEl) {
+        infoEl.innerText = 'Trạng thái: Đã ngắt kết nối';
+        infoEl.style.color = '#94a3b8';
       }
     }
 
@@ -1370,7 +1403,6 @@
       initTacticalMap();
       initWebSocket();
       refreshAllData();
-      // Polling refresh KPI mỗi 5 giây
       setInterval(refreshAllData, 5000);
     });
   </script>

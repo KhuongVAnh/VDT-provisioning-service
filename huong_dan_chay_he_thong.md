@@ -25,26 +25,26 @@ Dự án bao gồm 2 module dịch vụ độc lập giao tiếp qua **Redis**:
 
 ## II. HƯỚNG DẪN CHẠY & KIỂM THỬ TRÊN MÁY TÍNH (LOCAL DEV)
 
-### Bước 1: Khởi chạy Redis Server bằng Docker
+### Bước 1: Khởi chạy Redis Server bằng Docker (Port 6380)
 Mở Terminal gõ lệnh:
 ```bash
-docker run -d --name drone-redis -p 6379:6379 redis:7.4-alpine
+docker run -d --name drone-redis -p 6380:6379 redis:7.4-alpine
 ```
 
 ---
 
 ### Bước 2: Chạy Go MAVLink Ingestion Service
-Mở Terminal 1:
+Mở **Terminal 1**:
 ```bash
 cd telemetry-ingestion-service
-go run cmd/server/main.go
+go run ./cmd/server/main.go
 ```
-*Dịch vụ sẽ khởi động và lắng nghe UDP tại port `14550`.*
+*Dịch vụ sẽ khởi động và lắng nghe UDP tại port `14551` (Drone) và TCP port `10002` (QGroundControl).*
 
 ---
 
 ### Bước 3: Khởi chạy NestJS API Gateway & Mission Control UI
-Mở Terminal 2:
+Mở **Terminal 2**:
 ```bash
 cd provisioning-api
 npm run start:dev
@@ -53,24 +53,23 @@ npm run start:dev
 
 ---
 
-### Bước 4: Chạy Drone Simulator (Mô phỏng 3 Drone bay thật)
-Mở Terminal 3:
+### Bước 4: Chạy Drone Simulator (Mô phỏng 3-5 Drone bay thật)
+Mở **Terminal 3**:
 ```bash
 cd telemetry-ingestion-service
-go run cmd/simulator/main.go --drones 3 --target 127.0.0.1:14550
+go run ./cmd/simulator/main.go -drones 3 -target 127.0.0.1:14551 -redis 127.0.0.1:6380
 ```
-*Công cụ sẽ sinh ra 3 drone ảo `DRONE-SIM-0001`, `DRONE-SIM-0002`, `DRONE-SIM-0003` với GPS bay vòng tròn quanh khu vực Hà Nội, pin tụt dần và góc nghiêng Roll/Pitch thay đổi liên tục.*
+*Công cụ sẽ sinh ra 3 drone ảo `DRONE-SIM-0001`, `DRONE-SIM-0002`, `DRONE-SIM-0003` với GPS bay vòng tròn quanh khu vực Hà Nội, pin tụt dần, góc nghiêng Roll/Pitch thay đổi và gửi luồng Telemetry 10Hz.*
 
 ---
 
 ### Bước 5: Mở Trình Duyệt Web Trải Nghiệm
 Truy cập: **`http://localhost:10004/`**
 
-1. **Tab Bản Đồ Tác Chiến:** Xem 3 Drone di chuyển mượt mà trên bản đồ vệ tinh tối màu, icon xoay theo hướng bay Heading, hiển thị vết bay (Flight Trail).
-2. **Tab Bảng HUD Bay:** Xem đồng hồ đường chân trời nhân tạo (Artificial Horizon) nghiêng lắc theo góc Roll/Pitch thực tế, thanh đo tốc độ gió, tốc độ leo cao, điện áp pin.
-3. **Tab Đội Drone:** Xem danh sách trạng thái chi tiết, mức pin, cao độ.
-4. **Tab Web SSH:** Chọn Drone và nhập thông tin để mở màn hình Terminal Linux dòng lệnh đen bóng ngay trên Web.
-5. **Tab IP Matrix:** Xem 254 ô địa chỉ IP đổi màu theo trạng thái Online/Offline thời gian thực.
+1. **Tab Bản Đồ Tác Chiến:** Xem Drone di chuyển mượt mà trên bản đồ vệ tinh tối màu, icon xoay theo hướng bay Heading, hiển thị vết bay (Flight Trail) và bảng Quick HUD bên phải. Dropdown chỉ hiển thị các Drone đang Online thực sự.
+2. **Tab Đội Drone:** Xem danh sách quản trị chi tiết, nút Khóa (Revoke), Mở khóa (Reactivate) và Xóa vĩnh viễn (Delete) với thông báo tác động rõ ràng.
+3. **Tab Web SSH:** Chọn Drone hoặc gõ IP để kết nối terminal Linux dòng lệnh đen bóng và bấm nút Ngắt kết nối.
+4. **Tab IP Matrix:** Xem 254 ô địa chỉ IP đổi màu theo trạng thái Online/Offline thời gian thực.
 
 ---
 

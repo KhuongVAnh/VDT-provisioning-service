@@ -19,8 +19,8 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') || 10004;
   
-  // 5. Mở cổng cho các request đi vào
-  await app.listen(port);
+  // 5. Mở cổng cho các request đi vào (0.0.0.0 để chấp nhận mọi kết nối)
+  await app.listen(port, '0.0.0.0');
   console.log(`=============================================================`);
   console.log(`  DRONE PROVISIONING & FLEET DASHBOARD IS RUNNING!           `);
   console.log(`  - Dashboard UI : http://localhost:${port}/                 `);

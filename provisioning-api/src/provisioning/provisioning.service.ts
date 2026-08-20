@@ -35,8 +35,21 @@ export class ProvisioningService implements OnModuleInit {
       const activeDevices = await this.deviceService.findActiveDevices();
       
       let restoredCount = 0;
+      let skippedCount = 0;
       for (const device of activeDevices) {
         if (device.vpnPublicKey && device.vpnIp) {
+          // Bỏ qua các thiết bị ghi danh thủ công hoặc tự động phát hiện
+          // chưa có WireGuard public key thật (Base64 44 ký tự chuẩn)
+          // Ví dụ: 'MANUAL_TELEMETRY', 'MANUAL_VPN', 'MANUAL_PUBLIC_KEY'
+          const isRealWgKey = /^[A-Za-z0-9+/]{43}=$/.test(device.vpnPublicKey);
+          if (!isRealWgKey) {
+            this.logger.debug(
+              `[RESTORE] Bỏ qua thiết bị "${device.deviceId}" — không có WireGuard key thật (key: ${device.vpnPublicKey.substring(0, 12)}...).`
+            );
+            skippedCount++;
+            continue;
+          }
+
           try {
             await this.wireguardService.addPeer(device.vpnPublicKey, device.vpnIp);
             restoredCount++;
@@ -45,7 +58,10 @@ export class ProvisioningService implements OnModuleInit {
           }
         }
       }
-      this.logger.log(`Hoàn tất đồng bộ VPN! Đã khôi phục thành công ${restoredCount}/${activeDevices.length} thiết bị.`);
+      this.logger.log(
+        `Hoàn tất đồng bộ VPN! Đã khôi phục thành công ${restoredCount}/${activeDevices.length} thiết bị` +
+        (skippedCount > 0 ? ` (bỏ qua ${skippedCount} thiết bị chưa có WireGuard key thật).` : '.')
+      );
     } catch (error) {
       this.logger.error('Lỗi khi đồng bộ VPN lúc khởi động', error);
     }

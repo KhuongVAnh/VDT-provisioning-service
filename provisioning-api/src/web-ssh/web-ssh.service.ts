@@ -224,14 +224,24 @@ export class WebSshService {
   closeSshSession(socketId: string): void {
     const session = this.sessions.get(socketId);
     if (session) {
-      if (session.stream) {
-        session.stream.end();
+      try {
+        if (session.stream) {
+          session.stream.end();
+          session.stream.destroy();
+        }
+      } catch (e) {
+        this.logger.debug(`Lỗi đóng stream SSH: ${e.message}`);
       }
-      if (session.client) {
-        session.client.end();
+      try {
+        if (session.client) {
+          session.client.end();
+          session.client.destroy();
+        }
+      } catch (e) {
+        this.logger.debug(`Lỗi đóng client SSH: ${e.message}`);
       }
       this.sessions.delete(socketId);
-      this.logger.debug(`Đã giải phóng phiên SSH cho socket ${socketId}`);
+      this.logger.log(`Đã giải phóng và ngắt kết nối SSH cho socket ${socketId}`);
     }
   }
 }

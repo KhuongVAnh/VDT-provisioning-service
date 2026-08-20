@@ -53,6 +53,19 @@ export class WebSshGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
+   * Client yêu cầu ngắt kết nối SSH chủ động
+   */
+  @SubscribeMessage('ssh:disconnect')
+  handleDisconnectSession(@ConnectedSocket() client: Socket) {
+    this.logger.log(`Client ${client.id} yêu cầu ngắt kết nối SSH.`);
+    this.webSshService.closeSshSession(client.id);
+    client.emit('ssh:status', {
+      status: 'closed',
+      message: 'Đã ngắt kết nối SSH thành công.',
+    });
+  }
+
+  /**
    * Client gửi ký tự phím bấm (stdin) từ Web Terminal
    */
   @SubscribeMessage('ssh:input')

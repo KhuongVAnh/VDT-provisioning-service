@@ -1,0 +1,40 @@
+# Runtime Data & Database (Không bao giờ push lên git)
+/data/
+*.db
+*.db-journal
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+
+# Node.js dependencies & builds
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go binaries & build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Operating System & IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI Assistant configs
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
