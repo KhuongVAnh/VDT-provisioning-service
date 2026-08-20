@@ -140,24 +140,22 @@ func main() {
 	for evt := range node.Events() {
 		switch e := evt.(type) {
 		case *gomavlib.EventFrame:
-			// 1. Trích xuất địa chỉ IP nguồn từ Channel String
-			//    Nếu gói tin từ Drone (qua UDP 10.13.37.X): remoteIP = "10.13.37.X" ✅
-			//    Nếu gói tin từ QGroundControl (qua TCP): không xử lý Telemetry, chỉ route
+			// 1. ĐỊNH TUYẾN 2 CHIỀU (MAVLINK ROUTER MODE):
+			//    - Gói tin từ Drone (UDP) -> Chuyển tiếp ngay lập tức sang TCP 10002 cho QGroundControl
+			//    - Gói tin/Lệnh từ QGroundControl (TCP) -> Chuyển tiếp ngược lại xuống Drone (UDP)
+			//    - WriteFrameExcept tránh loop ngược lại kênh vừa nhận
+			_ = node.WriteFrameExcept(e.Channel, e.Frame)
+
+			// 2. Trích xuất địa chỉ IP nguồn từ Channel
 			remoteIP := extractIPFromChannel(e.Channel.String())
 
-			// 2. Chỉ xử lý Telemetry cho các gói tin đến từ Drone qua VPN (10.13.37.X)
-			//    Bỏ qua gói tin từ QGroundControl (IP ngoài dải 10.13.37.X) để không lẫn dữ liệu
-			if !strings.HasPrefix(remoteIP, "10.13.37.") {
-				continue
-			}
-
-			// 3. Tra cứu IP -> DeviceID
+			// 3. Tra cứu IP -> DeviceID (Bảo toàn IP nguồn 10.13.37.X qua WireGuard hoặc 127.0.0.1 khi test local)
 			deviceID := ipResolver.Resolve(ctx, remoteIP)
 
 			// 4. Cập nhật và giải mã gói tin vào State Aggregator
 			snapshot, modified := stateAggregator.UpdateState(deviceID, e.SystemID(), remoteIP, e.Message())
 
-			// 5. Nếu gói tin làm thay đổi thông số quan trọng -> Đẩy ngay vào Redis
+			// 5. Nếu gói tin làm thay đổi thông số quan trọng -> Đẩy ngay vào Redis Pub/Sub & Hash
 			if modified {
 				err := redisPublisher.PublishTelemetry(ctx, snapshot, time.Duration(cfg.StateTtlSeconds)*time.Second)
 				if err != nil {

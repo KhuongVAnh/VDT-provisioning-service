@@ -965,15 +965,26 @@
       }
     }
 
+    // --- HELPER FORMAT PIN & TRẠNG THÁI ---
+    function formatBattery(pct) {
+      if (pct === undefined || pct === null || pct < 0) return '--%';
+      return `${Math.min(100, Math.max(0, Math.round(pct)))}%`;
+    }
+
     // --- CẬP NHẬT GIAO DIỆN HUD BAY ---
     function updateHudDisplay(t) {
-      document.getElementById('hud-device-id').innerText = t.deviceId;
-      document.getElementById('hud-flight-mode').innerText = t.flightMode || 'UNKNOWN';
+      if (!t || t.connected === false) {
+        resetHudDisplay();
+        return;
+      }
+
+      document.getElementById('hud-device-id').innerText = t.deviceId || 'CHƯA CHỌN';
+      const flightModeText = (t.flightMode && t.flightMode !== 'UNKNOWN') ? t.flightMode : (t.connected ? 'ONLINE' : '--');
+      document.getElementById('hud-flight-mode').innerText = flightModeText;
       document.getElementById('hud-armed-status').innerText = t.armed ? 'ARMED' : 'DISARMED';
       document.getElementById('hud-armed-status').style.color = t.armed ? '#10b981' : '#94a3b8';
 
-      const batt = t.battery?.percentage ?? '--';
-      document.getElementById('hud-battery').innerText = `${batt}%`;
+      document.getElementById('hud-battery').innerText = formatBattery(t.battery?.percentage);
       document.getElementById('hud-altitude').innerText = `${(t.gps?.altRelativeM || 0).toFixed(1)} m`;
       document.getElementById('hud-speed').innerText = `${(t.gps?.groundSpeedMs || 0).toFixed(1)} m/s`;
       document.getElementById('hud-heading').innerText = `${Math.round(t.gps?.headingDeg || 0).toString().padStart(3, '0')}°`;
@@ -986,6 +997,22 @@
       if (miniHorizon) {
         const pitchOffsetMini = pitch * 1.5;
         miniHorizon.style.transform = `rotate(${-roll}deg) translateY(${pitchOffsetMini}px)`;
+      }
+    }
+
+    function resetHudDisplay() {
+      document.getElementById('hud-device-id').innerText = 'CHƯA CHỌN';
+      document.getElementById('hud-flight-mode').innerText = '--';
+      document.getElementById('hud-armed-status').innerText = 'DISARMED';
+      document.getElementById('hud-armed-status').style.color = '#94a3b8';
+      document.getElementById('hud-battery').innerText = '--%';
+      document.getElementById('hud-altitude').innerText = '0.0 m';
+      document.getElementById('hud-speed').innerText = '0.0 m/s';
+      document.getElementById('hud-heading').innerText = '000°';
+      document.getElementById('hud-angles').innerText = '0.0° / 0.0°';
+      const miniHorizon = document.getElementById('mini-horizon-sphere');
+      if (miniHorizon) {
+        miniHorizon.style.transform = 'rotate(0deg) translateY(0px)';
       }
     }
 
@@ -1033,13 +1060,18 @@
 
       tbody.innerHTML = devices.map(d => {
         const t = d.telemetry || {};
-        const isOnline = t.connected || false;
+        const isOnline = t.connected === true;
         const statusBadge = d.status === 'ACTIVE' 
           ? '<span class="badge badge-active">ACTIVE</span>'
           : (d.status === 'REVOKED' ? '<span class="badge badge-revoked">REVOKED</span>' : '<span class="badge badge-pending">PENDING</span>');
 
+        let modeText = 'ONLINE';
+        if (t.flightMode && t.flightMode !== 'UNKNOWN') {
+          modeText = t.flightMode;
+        }
+
         const liveBadge = isOnline
-          ? '<span style="color: #34d399; font-weight: 600;"><i class="fa-solid fa-circle-dot"></i> ' + (t.flightMode || 'ONLINE') + '</span>'
+          ? `<span style="color: #34d399; font-weight: 600;"><i class="fa-solid fa-circle-dot"></i> ${modeText}</span>`
           : '<span style="color: #64748b;"><i class="fa-regular fa-circle"></i> OFFLINE</span>';
 
         return `
@@ -1049,7 +1081,7 @@
             <td style="font-family: 'JetBrains Mono';">${d.vpnIp || '<i style="color:#64748b">None</i>'}</td>
             <td>${statusBadge}</td>
             <td>${liveBadge}</td>
-            <td style="font-family: 'JetBrains Mono'; color: #34d399;">${t.battery?.percentage ?? '--'}%</td>
+            <td style="font-family: 'JetBrains Mono'; color: #34d399;">${formatBattery(t.battery?.percentage)}</td>
             <td style="font-family: 'JetBrains Mono';">${(t.gps?.altRelativeM || 0).toFixed(1)}m</td>
             <td>
               <div style="display: flex; gap: 0.35rem;">
@@ -1088,27 +1120,34 @@
       const currentMapVal = mapSelect ? mapSelect.value : 'all';
       const currentSshVal = sshSelect ? sshSelect.value : '';
 
-      // 1. Chỉ lọc và lấy các Drone đang ONLINE thực sự cho Bản Đồ Tác Chiến
+      // 1. Lọc toàn bộ Drone đang ONLINE (kết nối)
       const onlineDrones = devices.filter(d => {
         const t = d.telemetry;
-        if (!t) return false;
-        const isConnected = t.connected === true;
-        const hasGps = t.gps && (t.gps.lat !== 0 || t.gps.lon !== 0);
-        return isConnected && hasGps;
+        return t && t.connected === true;
       });
 
       let mapOptionsHtml = '';
       if (onlineDrones.length === 0) {
         mapOptionsHtml = '<option value="none">-- Không có Drone nào đang bay / Online --</option>';
+        if (activeDroneId) {
+          activeDroneId = null;
+          resetHudDisplay();
+        }
       } else {
         mapOptionsHtml = `<option value="all">-- Theo dõi toàn bộ (${onlineDrones.length} Drone Online) --</option>` + 
-          onlineDrones.map(d => `<option value="${d.deviceId}">🟢 ${d.deviceId} (${d.vpnIp || 'Live'})</option>`).join('');
+          onlineDrones.map(d => {
+            const t = d.telemetry || {};
+            const hasGps = t.gps && (t.gps.lat !== 0 || t.gps.lon !== 0);
+            const statusLabel = hasGps ? (d.vpnIp || 'Live GPS') : 'Chờ GPS';
+            const icon = hasGps ? '🟢' : '🟡';
+            return `<option value="${d.deviceId}">${icon} ${d.deviceId} (${statusLabel})</option>`;
+          }).join('');
       }
 
       // 2. Dropdown cho Web SSH: Hiển thị toàn bộ và gắn icon trạng thái Online/Offline
       const sshOptionsHtml = '<option value="">-- Chọn Drone để SSH --</option>' + 
         devices.map(d => {
-          const isOnline = d.telemetry && d.telemetry.connected;
+          const isOnline = d.telemetry && d.telemetry.connected === true;
           const statusIcon = isOnline ? '🟢' : '⚪';
           return `<option value="${d.deviceId}">${statusIcon} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
         }).join('');
