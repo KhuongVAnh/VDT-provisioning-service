@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WebSshService } from './web-ssh.service';
 import { DeviceService } from '../device/device.service';
+import { RedisService } from '../redis/redis.service';
 
 describe('WebSshService', () => {
   let service: WebSshService;
@@ -9,11 +10,18 @@ describe('WebSshService', () => {
     findByDeviceId: jest.fn(),
   };
 
+  const mockRedisService = {
+    getClient: jest.fn().mockReturnValue({
+      hgetall: jest.fn().mockResolvedValue({}),
+    }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WebSshService,
         { provide: DeviceService, useValue: mockDeviceService },
+        { provide: RedisService, useValue: mockRedisService },
       ],
     }).compile();
 
@@ -35,7 +43,7 @@ describe('WebSshService', () => {
 
     expect(mockSocket.emit).toHaveBeenCalledWith('ssh:status', {
       status: 'error',
-      message: 'Không tìm thấy Drone: NON_EXIST',
+      message: 'Không tìm thấy địa chỉ IP VPN của Drone: "NON_EXIST". Vui lòng kiểm tra lại.',
     });
   });
 
@@ -53,7 +61,7 @@ describe('WebSshService', () => {
 
     expect(mockSocket.emit).toHaveBeenCalledWith('ssh:status', {
       status: 'error',
-      message: 'Drone DRONE-REVOKED chưa có IP VPN hoặc đang bị thu hồi (REVOKED).',
+      message: 'Không tìm thấy địa chỉ IP VPN của Drone: "DRONE-REVOKED". Vui lòng kiểm tra lại.',
     });
   });
 });

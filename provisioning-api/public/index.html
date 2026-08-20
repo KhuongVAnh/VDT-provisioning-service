@@ -785,17 +785,18 @@
       <div class="terminal-container">
         <div class="terminal-header">
           <div class="terminal-select-bar">
-            <span style="font-weight: 600; font-size: 0.85rem;"><i class="fa-solid fa-terminal text-accent"></i> CHỌN DRONE:</span>
-            <select id="ssh-drone-select">
-              <option value="">-- Chọn Drone để SSH --</option>
+            <span style="font-weight: 600; font-size: 0.85rem;"><i class="fa-solid fa-terminal text-accent"></i> MỤC TIÊU SSH:</span>
+            <select id="ssh-drone-select" onchange="onSshSelectChange(this.value)" style="min-width: 180px;">
+              <option value="">-- Chọn Drone đang bay --</option>
             </select>
-            <input type="text" id="ssh-username" placeholder="User (vd: root)" value="root" style="width: 110px;" />
-            <input type="password" id="ssh-password" placeholder="Password" style="width: 130px;" />
+            <input type="text" id="ssh-target-input" placeholder="Hoặc nhập IP (vd: 10.13.37.2)" style="width: 180px;" />
+            <input type="text" id="ssh-username" placeholder="User" value="root" style="width: 80px;" />
+            <input type="password" id="ssh-password" placeholder="Password" style="width: 110px;" />
             <button class="btn btn-primary" onclick="connectWebSsh()"><i class="fa-solid fa-plug"></i> Kết Nối</button>
             <button class="btn btn-danger" onclick="disconnectWebSsh()"><i class="fa-solid fa-power-off"></i> Ngắt</button>
           </div>
           <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--text-dim);" id="ssh-status-info">
-            Trạng thái: Chưa kết nối
+            Trạng thái: Sẵn sàng
           </div>
         </div>
         <div class="terminal-box" id="terminal-wrapper"></div>
@@ -923,6 +924,27 @@
       const lat = t.gps?.lat || 0;
       const lon = t.gps?.lon || 0;
       const heading = t.gps?.headingDeg || 0;
+
+      // Cập nhật danh sách fleetDevices thời gian thực nếu có Drone mới phát sóng
+      let existing = fleetDevices.find(d => d.deviceId === t.deviceId);
+      if (!existing) {
+        existing = {
+          id: t.deviceId,
+          deviceId: t.deviceId,
+          hardwareModel: 'Online Stream',
+          vpnIp: t.vpnIp || '',
+          status: 'ACTIVE',
+          telemetry: t,
+        };
+        fleetDevices.push(existing);
+        populateDroneDropdowns(fleetDevices);
+      } else {
+        existing.telemetry = t;
+        if (t.vpnIp && !existing.vpnIp) {
+          existing.vpnIp = t.vpnIp;
+          populateDroneDropdowns(fleetDevices);
+        }
+      }
 
       // 1. Cập nhật Marker trên bản đồ
       if (lat !== 0 && lon !== 0 && map) {
@@ -1102,15 +1124,31 @@
     function populateDroneDropdowns(devices) {
       const mapSelect = document.getElementById('map-drone-select');
       const sshSelect = document.getElementById('ssh-drone-select');
+      const currentMapVal = mapSelect ? mapSelect.value : 'all';
+      const currentSshVal = sshSelect ? sshSelect.value : '';
 
       const optionsHtml = '<option value="all">-- Theo dõi toàn bộ Drone --</option>' + 
-        devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || 'No IP'})</option>`).join('');
+        devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || 'Auto-IP'})</option>`).join('');
 
-      const sshOptionsHtml = '<option value="">-- Chọn Drone để SSH --</option>' + 
-        devices.filter(d => d.vpnIp).map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp})</option>`).join('');
+      const sshOptionsHtml = '<option value="">-- Chọn Drone đang bay --</option>' + 
+        devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`).join('');
 
-      if (mapSelect) mapSelect.innerHTML = optionsHtml;
-      if (sshSelect) sshSelect.innerHTML = sshOptionsHtml;
+      if (mapSelect) {
+        mapSelect.innerHTML = optionsHtml;
+        if (currentMapVal) mapSelect.value = currentMapVal;
+      }
+      if (sshSelect) {
+        sshSelect.innerHTML = sshOptionsHtml;
+        if (currentSshVal) sshSelect.value = currentSshVal;
+      }
+    }
+
+    function onSshSelectChange(val) {
+      const input = document.getElementById('ssh-target-input');
+      if (input && val) {
+        const drone = fleetDevices.find(d => d.deviceId === val);
+        input.value = (drone && drone.vpnIp && !drone.vpnIp.includes('X')) ? drone.vpnIp : val;
+      }
     }
 
     function selectDroneForHud(deviceId) {
@@ -1202,7 +1240,12 @@
 
     function openSshForDrone(deviceId) {
       const select = document.getElementById('ssh-drone-select');
+      const input = document.getElementById('ssh-target-input');
       if (select) select.value = deviceId;
+      if (input) {
+        const drone = fleetDevices.find(d => d.deviceId === deviceId);
+        input.value = (drone && drone.vpnIp && !drone.vpnIp.includes('X')) ? drone.vpnIp : deviceId;
+      }
       switchTab('tab-terminal');
       connectWebSsh();
     }
@@ -1216,22 +1259,25 @@
     }
 
     function connectWebSsh() {
-      const deviceId = document.getElementById('ssh-drone-select').value;
+      const selectVal = document.getElementById('ssh-drone-select').value;
+      const inputVal = (document.getElementById('ssh-target-input').value || '').trim();
+      const target = inputVal || selectVal;
       const username = document.getElementById('ssh-username').value || 'root';
       const password = document.getElementById('ssh-password').value || '';
 
-      if (!deviceId) {
-        alert('Vui lòng chọn Drone cần SSH!');
+      if (!target) {
+        alert('Vui lòng chọn Drone từ danh sách hoặc nhập địa chỉ IP VPN của Drone!');
         return;
       }
 
       initTerminal();
       term.clear();
-      term.writeln(`\x1b[36m>>> Đang khởi tạo kết nối SSH tới ${deviceId}... (User: ${username})\x1b[0m\r\n`);
+      term.writeln(`\x1b[36m>>> Đang khởi tạo kết nối SSH tới ${target}... (User: ${username})\x1b[0m\r\n`);
+      document.getElementById('ssh-status-info').innerText = `Trạng thái: Đang kết nối tới ${target}...`;
 
       if (socket) {
         socket.emit('ssh:connect', {
-          deviceId,
+          deviceId: target,
           username,
           password,
           cols: term.cols,

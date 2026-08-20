@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Client, ClientChannel } from 'ssh2';
 import { DeviceService } from '../device/device.service';
+import { RedisService } from '../redis/redis.service';
 import { Socket } from 'socket.io';
 
 export interface SshConnectOptions {
@@ -31,7 +32,10 @@ export class WebSshService {
   private readonly logger = new Logger(WebSshService.name);
   private readonly sessions = new Map<string, SshSession>();
 
-  constructor(private readonly deviceService: DeviceService) {}
+  constructor(
+    private readonly deviceService: DeviceService,
+    private readonly redisService: RedisService,
+  ) {}
 
   /**
    * Khởi tạo phiên kết nối SSH tới Drone qua IP VPN nội bộ
@@ -42,30 +46,56 @@ export class WebSshService {
     // 1. Dọn dẹp session cũ nếu có
     this.closeSshSession(socketId);
 
-    // 2. Tra cứu IP VPN của Drone từ Database
-    const device = await this.deviceService.findByDeviceId(options.deviceId);
-    if (!device) {
+    // 2. Tra cứu IP VPN của Drone (từ DB, Redis, hoặc trực tiếp từ định dạng IP)
+    let vpnIp = '';
+    const target = (options.deviceId || '').trim();
+
+    // 2.1. Nếu người dùng nhập trực tiếp IP dạng 10.13.37.X
+    if (/^10\.13\.37\.\d+$/.test(target)) {
+      vpnIp = target;
+    }
+
+    // 2.2. Nếu là Drone định danh tạm thời từ Ingestion: DRONE-IP-10-13-37-X
+    if (!vpnIp && target.startsWith('DRONE-IP-')) {
+      vpnIp = target.replace('DRONE-IP-', '').replace(/-/g, '.');
+    }
+
+    // 2.3. Tra cứu từ Database SQLite
+    if (!vpnIp) {
+      const device = await this.deviceService.findByDeviceId(target);
+      if (device && device.vpnIp) {
+        vpnIp = device.vpnIp;
+      }
+    }
+
+    // 2.4. Tra cứu từ Redis `drone:ip_map`
+    if (!vpnIp) {
+      try {
+        const ipMap = (await this.redisService.getClient()?.hgetall('drone:ip_map')) || {};
+        for (const [ip, devId] of Object.entries(ipMap)) {
+          if (devId === target) {
+            vpnIp = ip;
+            break;
+          }
+        }
+      } catch {
+        // Bỏ qua nếu lỗi Redis
+      }
+    }
+
+    if (!vpnIp) {
       socket.emit('ssh:status', {
         status: 'error',
-        message: `Không tìm thấy Drone: ${options.deviceId}`,
+        message: `Không tìm thấy địa chỉ IP VPN của Drone: "${target}". Vui lòng kiểm tra lại.`,
       });
       return;
     }
 
-    if (!device.vpnIp) {
-      socket.emit('ssh:status', {
-        status: 'error',
-        message: `Drone ${options.deviceId} chưa có IP VPN hoặc đang bị thu hồi (REVOKED).`,
-      });
-      return;
-    }
-
-    const vpnIp = device.vpnIp;
     const username = options.username || 'root';
     const cols = options.cols || 80;
     const rows = options.rows || 24;
 
-    this.logger.log(`Bắt đầu kết nối SSH tới ${options.deviceId} tại ${vpnIp}:22 (User: ${username})...`);
+    this.logger.log(`Bắt đầu kết nối SSH tới ${target} tại ${vpnIp}:22 (User: ${username})...`);
     socket.emit('ssh:status', {
       status: 'connecting',
       message: `Đang kết nối SSH tới ${vpnIp}:22...`,
@@ -75,17 +105,17 @@ export class WebSshService {
     const session: SshSession = {
       client: sshClient,
       stream: null,
-      deviceId: options.deviceId,
+      deviceId: target,
       vpnIp,
     };
     this.sessions.set(socketId, session);
 
     sshClient
       .on('ready', () => {
-        this.logger.log(`SSH xác thực thành công với Drone ${options.deviceId} (${vpnIp})`);
+        this.logger.log(`SSH xác thực thành công với Drone ${target} (${vpnIp})`);
         socket.emit('ssh:status', {
           status: 'connected',
-          message: `Kết nối thành công tới ${options.deviceId} (${vpnIp})`,
+          message: `Kết nối thành công tới ${target} (${vpnIp})`,
         });
 
         // Mở Pseudo-Terminal (PTY) dạng xterm-256color
@@ -118,7 +148,7 @@ export class WebSshService {
             });
 
             stream.on('close', () => {
-              this.logger.log(`SSH Shell của ${options.deviceId} đã đóng.`);
+              this.logger.log(`SSH Shell của ${target} đã đóng.`);
               socket.emit('ssh:status', {
                 status: 'closed',
                 message: 'Phiên SSH đã kết thúc.',
@@ -132,7 +162,7 @@ export class WebSshService {
         this.logger.error(`Lỗi kết nối SSH tới ${vpnIp}: ${err.message}`);
         socket.emit('ssh:status', {
           status: 'error',
-          message: `Lỗi kết nối: ${err.message}`,
+          message: `Lỗi kết nối SSH tới ${vpnIp}: ${err.message}`,
         });
         this.closeSshSession(socketId);
       })
@@ -153,7 +183,6 @@ export class WebSshService {
     } else if (options.password) {
       connectConfig.password = options.password;
     } else {
-      // Mặc định thử mật khẩu phổ biến trên Raspberry Pi (nếu dev chưa nhập)
       connectConfig.password = 'raspberry';
     }
 
