@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drone Provisioning & Fleet Mission Control</title>
+  <meta name="description" content="Trung tâm quản trị cấp phát thiết bị Drone, giám sát kết nối WireGuard VPN và luồng Telemetry thời gian thực.">
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- TailwindCSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#ecfeff',
+              100: '#cffafe',
+              400: '#22d3ee',
+              500: '#06b6d4',
+              600: '#0891b2',
+              900: '#164e63',
+            },
+            dark: {
+              bg: '#0B0F19',
+              card: '#111827',
+              border: '#1E293B',
+              hover: '#1F293D',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons & Chart.js -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      background-color: #0B0F19;
+      color: #F3F4F6;
+      font-family: 'Inter', sans-serif;
+    }
+    .glass-card {
+      background: rgba(17, 24, 39, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(30, 41, 59, 0.8);
+    }
+    .glow-cyan {
+      box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.3);
+    }
+    .glow-green {
+      box-shadow: 0 0 15px -3px rgba(34, 197, 94, 0.4);
+    }
+    .pulse-dot {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .4; transform: scale(1.15); }
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0B0F19; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+  <!-- ==================== TOP NAVIGATION BAR ==================== -->
+  <header class="sticky top-0 z-40 glass-card border-b border-slate-800/80 px-4 sm:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+    <!-- Brand & Logo -->
+    <div class="flex items-center gap-3.5">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+        <i data-lucide="plane-takeoff" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-lg font-bold tracking-tight text-white">DRONE PROVISIONING</h1>
+          <span class="px-2 py-0.5 text-[10px] font-semibold tracking-wider bg-cyan-950 text-cyan-400 border border-cyan-800/60 rounded-md">V2.4 CORE</span>
+        </div>
+        <p class="text-xs text-slate-400">Mission Control & WireGuard Fleet Management</p>
+      </div>
+    </div>
+
+    <!-- Server Status & Polling Controls -->
+    <div class="flex items-center flex-wrap gap-3">
+      <!-- Live Server Indicator -->
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+        <span class="text-slate-300 font-medium" id="server-status-label">Server 10.13.37.1 Active</span>
+      </div>
+
+      <!-- Auto Refresh Selector -->
+      <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
+        <i data-lucide="timer" class="w-3.5 h-3.5 text-cyan-400"></i>
+        <span>Tự làm mới:</span>
+        <select id="polling-interval-select" onchange="changePollingInterval(this.value)" class="bg-slate-800 text-white rounded px-2 py-0.5 border border-slate-700 outline-none focus:border-cyan-500">
+          <option value="3000">3 giây</option>
+          <option value="5000" selected>5 giây</option>
+          <option value="10000">10 giây</option>
+          <option value="0">Tắt</option>
+        </select>
+      </div>
+
+      <!-- Manual Refresh Button -->
+      <button id="btn-refresh" onclick="fetchDashboardData(true)" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-md shadow-cyan-600/20 transition active:scale-95">
+        <i data-lucide="refresh-cw" id="refresh-icon" class="w-3.5 h-3.5"></i>
+        <span>Làm mới</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN CONTENT ==================== -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- KPI STATS CARDS -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Card 1: Total Fleet -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-cyan-500/50 transition">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Tổng Đội Drone</p>
+            <h3 class="text-3xl font-extrabold text-white mt-1" id="kpi-total-devices">--</h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition">
+            <i data-lucide="boxes" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-2 text-xs">
+          <span class="text-emerald-400 font-medium" id="kpi-active-sub">-- Active</span>
+          <span class="text-slate-600">•</span>
+          <span class="text-rose-400 font-medium" id="kpi-revoked-sub">-- Revoked</span>
+        </div>
+        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none"></div>
+      </div>
+
+      <!-- Card 2: Flying Online Now -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-emerald-500/50 transition">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Đang Bay / Online</p>
+            <h3 class="text-3xl font-extrabold text-emerald-400 mt-1 flex items-center gap-2">
+              <span id="kpi-online-now">--</span>
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-dot inline-block"></span>
+            </h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-emerald-950/40 border border-emerald-800/50 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition">
+            <i data-lucide="radio" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-400">
+          WireGuard Handshake &lt; 3 phút
+        </div>
+        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none"></div>
+      </div>
+
+      <!-- Card 3: IP Pool Utilization -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-indigo-500/50 transition">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Dải IP 10.13.37.0/24</p>
+            <h3 class="text-3xl font-extrabold text-indigo-400 mt-1" id="kpi-ip-usage">--%</h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-indigo-950/40 border border-indigo-800/50 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition">
+            <i data-lucide="network" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <!-- Progress Bar -->
+        <div class="mt-3">
+          <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+            <div id="kpi-ip-progress" class="bg-indigo-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+          <div class="flex justify-between items-center text-[11px] text-slate-400 mt-1.5">
+            <span id="kpi-ip-used-count">Đã cấp: --</span>
+            <span id="kpi-ip-avail-count">Còn trống: -- / 253</span>
+          </div>
+        </div>
+        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl pointer-events-none"></div>
+      </div>
+
+      <!-- Card 4: Throughput Telemetry -->
+      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-amber-500/50 transition">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Lưu Lượng VPN</p>
+            <h3 class="text-2xl font-extrabold text-amber-400 mt-1" id="kpi-total-traffic">--</h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-amber-950/40 border border-amber-800/50 flex items-center justify-center text-amber-400 group-hover:scale-110 transition">
+            <i data-lucide="activity" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <span id="kpi-rx-traffic">Rx: --</span>
+          <span id="kpi-tx-traffic">Tx: --</span>
+        </div>
+        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl pointer-events-none"></div>
+      </div>
+    </div>
+
+    <!-- ==================== TABS NAVIGATION ==================== -->
+    <div class="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+      <button onclick="switchTab('fleet')" id="tab-btn-fleet" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition bg-cyan-600 text-white shadow-lg shadow-cyan-600/20">
+        <i data-lucide="plane" class="w-4 h-4"></i>
+        <span>Quản Lý Đội Drone</span>
+        <span id="badge-fleet-count" class="px-2 py-0.5 text-xs bg-slate-900/60 rounded-md">0</span>
+      </button>
+
+      <button onclick="switchTab('matrix')" id="tab-btn-matrix" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800">
+        <i data-lucide="layout-grid" class="w-4 h-4"></i>
+        <span>Bản Đồ IP Pool (254 Ô)</span>
+      </button>
+
+      <button onclick="switchTab('diagnostics')" id="tab-btn-diagnostics" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800">
+        <i data-lucide="gauge" class="w-4 h-4"></i>
+        <span>Giám Sát & Telemetry</span>
+      </button>
+
+      <button onclick="switchTab('setup')" id="tab-btn-setup" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800">
+        <i data-lucide="terminal" class="w-4 h-4"></i>
+        <span>Cài Đặt & Factory Token</span>
+      </button>
+    </div>
+
+    <!-- ==================== TAB 1: FLEET MANAGEMENT ==================== -->
+    <section id="tab-content-fleet" class="space-y-4">
+      <!-- Search & Filters -->
+      <div class="glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3 flex-1 min-w-[280px]">
+          <div class="relative flex-1">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+            <input type="text" id="fleet-search-input" oninput="applyFleetFilter()" placeholder="Tìm theo Device ID, IP, Model..." class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition">
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2.5">
+          <select id="fleet-status-filter" onchange="applyFleetFilter()" class="bg-slate-900/90 border border-slate-700/80 text-sm text-slate-300 rounded-xl px-3 py-2 outline-none focus:border-cyan-500">
+            <option value="ALL">Tất cả trạng thái</option>
+            <option value="ONLINE">Đang bay (Online)</option>
+            <option value="ACTIVE">Hoạt động (Active)</option>
+            <option value="REVOKED">Bị khóa (Revoked)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Fleet Table -->
+      <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-900/80 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800 font-semibold">
+              <tr>
+                <th class="py-3.5 px-4">Thiết Bị / Device ID</th>
+                <th class="py-3.5 px-4">Trạng Thái</th>
+                <th class="py-3.5 px-4">Địa Chỉ VPN IP</th>
+                <th class="py-3.5 px-4">Public Key</th>
+                <th class="py-3.5 px-4">Handshake / Telemetry</th>
+                <th class="py-3.5 px-4">Dung Lượng (Rx / Tx)</th>
+                <th class="py-3.5 px-4 text-right">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody id="fleet-table-body" class="divide-y divide-slate-800/60 font-mono text-xs">
+              <!-- Render dynamically -->
+              <tr>
+                <td colspan="7" class="text-center py-8 text-slate-500 font-sans">Đang tải dữ liệu đội Drone...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: IP POOL MATRIX ==================== -->
+    <section id="tab-content-matrix" class="hidden space-y-4">
+      <div class="glass-card rounded-2xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="network" class="w-5 h-5 text-cyan-400"></i>
+              Bản Đồ Không Gian Dải Mạng IP Pool (10.13.37.0/24)
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Ma trận 254 địa chỉ IP. Hover chuột vào ô để xem chi tiết thiết bị gắn liền.</p>
+          </div>
+          <!-- Legends -->
+          <div class="flex items-center flex-wrap gap-4 text-xs">
+            <div class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-md bg-amber-500 shadow-sm shadow-amber-500/50"></span>
+              <span class="text-slate-300">Gateway (.1)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-md bg-emerald-500 shadow-sm shadow-emerald-500/50"></span>
+              <span class="text-slate-300">Online Bay</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-md bg-cyan-600"></span>
+              <span class="text-slate-300">Đã Cấp (Active)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-md bg-slate-800 border border-slate-700"></span>
+              <span class="text-slate-400">Còn Trống</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 254 Grid Cells -->
+        <div id="ip-grid-container" class="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 lg:grid-cols-20 gap-1.5 font-mono text-[11px]">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: DIAGNOSTICS & TELEMETRY ==================== -->
+    <section id="tab-content-diagnostics" class="hidden space-y-6">
+      <!-- Infrastructure Info Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- WireGuard Server Card -->
+        <div class="glass-card rounded-2xl p-5 space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i>
+              WireGuard Server Gateway
+            </h3>
+            <span class="px-2 py-0.5 text-[10px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 rounded">KERNEL NATIVE</span>
+          </div>
+          <div class="space-y-2 text-xs font-mono">
+            <div class="flex justify-between py-1 border-b border-slate-800/40">
+              <span class="text-slate-400">Server Endpoint:</span>
+              <span class="text-cyan-300 font-semibold" id="diag-server-endpoint">--</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/40">
+              <span class="text-slate-400">Interface:</span>
+              <span class="text-white" id="diag-interface-name">wg0</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/40">
+              <span class="text-slate-400">Server Public Key:</span>
+              <span class="text-slate-300 truncate max-w-[200px]" id="diag-server-pubkey">--</span>
+            </div>
+            <div class="flex justify-between py-1">
+              <span class="text-slate-400">Subnet Cấp Phát:</span>
+              <span class="text-emerald-400 font-semibold">10.13.37.0/24</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- MAVLink Router Card -->
+        <div class="glass-card rounded-2xl p-5 space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="radio-tower" class="w-4 h-4 text-indigo-400"></i>
+              MAVLink Telemetry Router
+            </h3>
+            <span class="px-2 py-0.5 text-[10px] font-semibold bg-indigo-950 text-indigo-400 border border-indigo-800 rounded">UDP ENDPOINT</span>
+          </div>
+          <div class="space-y-2 text-xs font-mono">
+            <div class="flex justify-between py-1 border-b border-slate-800/40">
+              <span class="text-slate-400">Target Host (VPN):</span>
+              <span class="text-indigo-300 font-semibold">10.13.37.1</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/40">
+              <span class="text-slate-400">Target Port:</span>
+              <span class="text-white font-semibold">14550</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-800/40">
+              <span class="text-slate-400">MAVLink Dialect:</span>
+              <span class="text-slate-300">ardupilotmega</span>
+            </div>
+            <div class="flex justify-between py-1">
+              <span class="text-slate-400">Default FC Baud:</span>
+              <span class="text-amber-400 font-semibold">57600</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Realtime Chart -->
+      <div class="glass-card rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="line-chart" class="w-4 h-4 text-cyan-400"></i>
+              Biểu Đồ Lưu Lượng Băng Thông Thời Gian Thực (Rx / Tx)
+            </h3>
+            <p class="text-xs text-slate-400">Dữ liệu tổng hợp từ toàn bộ các Drone đang hoạt động trong hệ thống.</p>
+          </div>
+          <span class="text-xs text-slate-400 font-mono" id="chart-timestamp">--</span>
+        </div>
+        <div class="h-64 w-full">
+          <canvas id="traffic-chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: QUICK SETUP & FACTORY TOKEN ==================== -->
+    <section id="tab-content-setup" class="hidden space-y-6">
+      <div class="glass-card rounded-2xl p-6 space-y-5">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="zap" class="w-5 h-5 text-amber-400"></i>
+            Cài Đặt Siêu Nhanh 1 Lệnh Duy Nhất Trên Drone (One-Liner Setup)
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Copy lệnh dưới đây và dán trực tiếp vào Terminal trên Raspberry Pi 4 để kích hoạt Zero-Touch Provisioning:</p>
+        </div>
+
+        <!-- 1-Liner Command Box -->
+        <div class="bg-slate-950 rounded-xl p-4 border border-slate-800 relative group">
+          <pre class="text-xs font-mono text-cyan-300 whitespace-pre-wrap break-all select-all leading-relaxed" id="one-liner-code">sudo apt update && sudo apt install -y wireguard-tools jq curl && sudo mkdir -p /opt/drone && sudo curl -fsSL https://raw.githubusercontent.com/KhuongVAnh/VDT-provisioning-service/main/provisioning-api/config/drone-onboard.service -o /etc/systemd/system/drone-onboard.service && sudo systemctl daemon-reload && sudo systemctl enable --now drone-onboard.service</pre>
+          <button onclick="copyToClipboard(document.getElementById('one-liner-code').innerText, 'Đã copy lệnh 1-Liner vào Clipboard!')" class="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white flex items-center gap-1.5 transition">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span>Copy</span>
+          </button>
+        </div>
+
+        <!-- Factory Secret Token Box -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-400">Factory Provision Secret Token:</span>
+              <button onclick="toggleTokenVisibility()" class="text-xs text-cyan-400 hover:underline flex items-center gap-1">
+                <i data-lucide="eye" id="token-eye-icon" class="w-3.5 h-3.5"></i>
+                <span id="token-toggle-text">Hiện</span>
+              </button>
+            </div>
+            <div class="flex items-center justify-between gap-2 font-mono text-sm">
+              <span id="factory-token-display" class="text-amber-400 font-bold tracking-wider">••••••••••••••••••••</span>
+              <button onclick="copyFactoryToken()" class="text-slate-400 hover:text-white p-1">
+                <i data-lucide="copy" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+            <span class="text-xs font-semibold text-slate-400">Cloud Register API Endpoint:</span>
+            <div class="flex items-center justify-between gap-2 font-mono text-xs">
+              <span class="text-slate-300" id="api-register-url">POST /api/v1/provisioning/register</span>
+              <button onclick="copyToClipboard('http://' + window.location.host + '/api/v1/provisioning/register', 'Đã copy API URL!')" class="text-slate-400 hover:text-white p-1">
+                <i data-lucide="copy" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================== CONFIRMATION MODAL ==================== -->
+  <div id="confirm-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="glass-card rounded-2xl max-w-md w-full p-6 space-y-4 border border-slate-700 shadow-2xl">
+      <div class="flex items-center gap-3">
+        <div id="modal-icon-container" class="w-10 h-10 rounded-xl bg-rose-950/60 border border-rose-800/60 flex items-center justify-center text-rose-400">
+          <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 id="modal-title" class="text-base font-bold text-white">Xác nhận thao tác</h3>
+          <p id="modal-desc" class="text-xs text-slate-400">Bạn có chắc chắn muốn thực hiện?</p>
+        </div>
+      </div>
+      <p id="modal-body-text" class="text-xs text-slate-300 leading-relaxed font-mono bg-slate-950/80 p-3 rounded-lg border border-slate-800"></p>
+      <div class="flex justify-end gap-2.5 pt-2">
+        <button onclick="closeModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition">Hủy bỏ</button>
+        <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white transition">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TOAST NOTIFICATION CONTAINER ==================== -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- ==================== JAVASCRIPT APPLICATION LOGIC ==================== -->
+  <script>
+    // App State
+    let currentTab = 'fleet';
+    let pollingInterval = 5000;
+    let pollingTimer = null;
+    let cachedFleet = [];
+    let rawFactoryToken = '';
+    let isTokenVisible = false;
+    let trafficHistory = { labels: [], rx: [], tx: [] };
+    let trafficChart = null;
+
+    // Initialize App
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      initChart();
+      fetchDashboardData(true);
+      startPolling();
+    });
+
+    // Switch Tabs
+    function switchTab(tabId) {
+      currentTab = tabId;
+      ['fleet', 'matrix', 'diagnostics', 'setup'].forEach(t => {
+        const content = document.getElementById(`tab-content-${t}`);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        if (t === tabId) {
+          content.classList.remove('hidden');
+          btn.className = "tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition bg-cyan-600 text-white shadow-lg shadow-cyan-600/20";
+        } else {
+          content.classList.add('hidden');
+          btn.className = "tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800";
+        }
+      });
+      lucide.createIcons();
+      if (tabId === 'matrix') fetchIpMatrix();
+    }
+
+    // Polling Mechanism
+    function startPolling() {
+      if (pollingTimer) clearInterval(pollingTimer);
+      if (pollingInterval > 0) {
+        pollingTimer = setInterval(() => fetchDashboardData(false), pollingInterval);
+      }
+    }
+
+    function changePollingInterval(val) {
+      pollingInterval = parseInt(val, 10);
+      startPolling();
+      showToast('success', `Đã đổi chu kỳ cập nhật: ${pollingInterval > 0 ? pollingInterval/1000 + ' giây' : 'Tắt'}`);
+    }
+
+    // Fetch Dashboard Data
+    async function fetchDashboardData(showSpin = false) {
+      const refreshIcon = document.getElementById('refresh-icon');
+      if (showSpin && refreshIcon) refreshIcon.classList.add('animate-spin');
+
+      try {
+        const [statsRes, fleetRes, configRes] = await Promise.all([
+          fetch('/api/v1/dashboard/stats').then(r => r.json()),
+          fetch('/api/v1/dashboard/devices').then(r => r.json()),
+          fetch('/api/v1/dashboard/config').then(r => r.json()),
+        ]);
+
+        if (statsRes.status === 'success') renderKPIs(statsRes.data);
+        if (fleetRes.status === 'success') {
+          cachedFleet = fleetRes.data;
+          renderFleetTable(cachedFleet);
+        }
+        if (configRes.status === 'success') renderConfig(configRes.data);
+
+        if (currentTab === 'matrix') fetchIpMatrix();
+      } catch (err) {
+        console.error('Lỗi tải dữ liệu Dashboard:', err);
+      } finally {
+        if (showSpin && refreshIcon) {
+          setTimeout(() => refreshIcon.classList.remove('animate-spin'), 400);
+        }
+      }
+    }
+
+    // Render KPI Cards
+    function renderKPIs(stats) {
+      document.getElementById('kpi-total-devices').innerText = stats.devices.total;
+      document.getElementById('kpi-active-sub').innerText = `${stats.devices.active} Active`;
+      document.getElementById('kpi-revoked-sub').innerText = `${stats.devices.revoked} Revoked`;
+      document.getElementById('kpi-online-now').innerText = stats.devices.onlineNow;
+
+      document.getElementById('badge-fleet-count').innerText = stats.devices.total;
+
+      const utilPct = stats.ipPool.utilizationPercentage || 0;
+      document.getElementById('kpi-ip-usage').innerText = `${utilPct}%`;
+      document.getElementById('kpi-ip-progress').style.width = `${Math.min(utilPct, 100)}%`;
+      document.getElementById('kpi-ip-used-count').innerText = `Đã cấp: ${stats.ipPool.usedCount}`;
+      document.getElementById('kpi-ip-avail-count').innerText = `Trống: ${stats.ipPool.availableCount} / 253`;
+
+      const totalBytes = stats.wireguard.totalRxBytes + stats.wireguard.totalTxBytes;
+      document.getElementById('kpi-total-traffic').innerText = formatBytes(totalBytes);
+      document.getElementById('kpi-rx-traffic').innerText = `Rx: ${formatBytes(stats.wireguard.totalRxBytes)}`;
+      document.getElementById('kpi-tx-traffic').innerText = `Tx: ${formatBytes(stats.wireguard.totalTxBytes)}`;
+
+      // Update Diagnostics
+      document.getElementById('diag-server-endpoint').innerText = stats.wireguard.endpoint || '--';
+      document.getElementById('diag-server-pubkey').innerText = stats.wireguard.publicKey || '--';
+      document.getElementById('diag-server-pubkey').title = stats.wireguard.publicKey || '';
+
+      // Update Chart
+      updateTrafficChart(stats.wireguard.totalRxBytes, stats.wireguard.totalTxBytes);
+    }
+
+    // Render Fleet Table
+    function renderFleetTable(devices) {
+      const tbody = document.getElementById('fleet-table-body');
+      const search = (document.getElementById('fleet-search-input').value || '').toLowerCase();
+      const statusFilter = document.getElementById('fleet-status-filter').value;
+
+      const filtered = devices.filter(d => {
+        const matchSearch = d.deviceId.toLowerCase().includes(search) ||
+                            (d.vpnIp && d.vpnIp.includes(search)) ||
+                            (d.hardwareModel && d.hardwareModel.toLowerCase().includes(search));
+        if (!matchSearch) return false;
+
+        if (statusFilter === 'ONLINE') return d.isOnline;
+        if (statusFilter === 'ACTIVE') return d.status === 'ACTIVE';
+        if (statusFilter === 'REVOKED') return d.status === 'REVOKED';
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="text-center py-10 text-slate-500 font-sans">
+              <i data-lucide="radar" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+              Không tìm thấy Drone nào khớp với điều kiện lọc.
+            </td>
+          </tr>`;
+        lucide.createIcons();
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(d => {
+        let statusBadge = '';
+        if (d.status === 'REVOKED') {
+          statusBadge = `<span class="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-rose-950/80 text-rose-400 border border-rose-800">REVOKED</span>`;
+        } else if (d.isOnline) {
+          statusBadge = `<span class="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800 flex items-center gap-1.5 w-fit"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>ONLINE</span>`;
+        } else {
+          statusBadge = `<span class="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">STANDBY</span>`;
+        }
+
+        const formattedHandshake = d.latestHandshake > 0 ? formatTimeAgo(d.latestHandshake) : 'Chưa kết nối';
+        const formattedVpnIp = d.vpnIp ? `<span class="text-cyan-400 font-semibold">${d.vpnIp}</span>` : '<span class="text-slate-600">None</span>';
+        const shortKey = d.vpnPublicKey ? `${d.vpnPublicKey.substring(0, 8)}...${d.vpnPublicKey.substring(d.vpnPublicKey.length - 4)}` : '--';
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-3 px-4">
+              <div class="font-bold text-white flex items-center gap-1.5">
+                <span>${d.deviceId}</span>
+                <button onclick="copyToClipboard('${d.deviceId}', 'Đã copy Device ID!')" class="text-slate-500 hover:text-cyan-400 p-0.5"><i data-lucide="copy" class="w-3 h-3"></i></button>
+              </div>
+              <div class="text-[10px] text-slate-400 font-sans mt-0.5">${d.hardwareModel || 'Raspberry Pi 4'}</div>
+            </td>
+            <td class="py-3 px-4">${statusBadge}</td>
+            <td class="py-3 px-4">${formattedVpnIp}</td>
+            <td class="py-3 px-4">
+              <span title="${d.vpnPublicKey}" class="text-slate-400 cursor-help">${shortKey}</span>
+            </td>
+            <td class="py-3 px-4">
+              <div class="text-slate-300">${formattedHandshake}</div>
+              <div class="text-[10px] text-slate-500">${d.endpoint || '(Chưa có IP ngoài)'}</div>
+            </td>
+            <td class="py-3 px-4">
+              <div class="text-cyan-300">↓ ${formatBytes(d.transferRx)}</div>
+              <div class="text-indigo-300">↑ ${formatBytes(d.transferTx)}</div>
+            </td>
+            <td class="py-3 px-4 text-right space-x-1.5 font-sans">
+              ${d.status === 'ACTIVE' 
+                ? `<button onclick="confirmAction('revoke', '${d.deviceId}')" class="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-[11px] font-medium transition">Khóa</button>`
+                : `<button onclick="confirmAction('reactivate', '${d.deviceId}')" class="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 text-[11px] font-medium transition">Mở Khóa</button>`
+              }
+              <button onclick="confirmAction('delete', '${d.deviceId}')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 text-[11px] transition" title="Xóa"><i data-lucide="trash-2" class="w-3 h-3 inline"></i></button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    function applyFleetFilter() {
+      renderFleetTable(cachedFleet);
+    }
+
+    // Fetch and Render IP Matrix (254 cells)
+    async function fetchIpMatrix() {
+      try {
+        const res = await fetch('/api/v1/dashboard/ip-pool').then(r => r.json());
+        if (res.status !== 'success') return;
+
+        const container = document.getElementById('ip-grid-container');
+        container.innerHTML = res.data.map(cell => {
+          let bgClass = 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600';
+          let title = `IP: ${cell.ip} (Trống)`;
+
+          if (cell.status === 'gateway') {
+            bgClass = 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-sm shadow-amber-500/30';
+            title = `Gateway Server: ${cell.ip}`;
+          } else if (cell.status === 'active') {
+            if (cell.isOnline) {
+              bgClass = 'bg-emerald-950/90 border-emerald-500 text-emerald-300 shadow-sm shadow-emerald-500/40';
+              title = `Online: ${cell.ip} - ${cell.deviceId} (${cell.hardwareModel})`;
+            } else {
+              bgClass = 'bg-cyan-950/80 border-cyan-600 text-cyan-300';
+              title = `Active: ${cell.ip} - ${cell.deviceId}`;
+            }
+          }
+
+          return `
+            <div title="${title}" class="h-9 rounded-lg border flex flex-col items-center justify-center font-bold cursor-pointer transition transform hover:scale-110 ${bgClass}">
+              <span class="text-[10px]">.${cell.hostNumber}</span>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Lỗi tải IP Matrix:', err);
+      }
+    }
+
+    // Render Config
+    function renderConfig(cfg) {
+      rawFactoryToken = cfg.provisionSecretToken || '';
+      document.getElementById('api-register-url').innerText = `POST http://${window.location.host}/api/v1/provisioning/register`;
+    }
+
+    function toggleTokenVisibility() {
+      isTokenVisible = !isTokenVisible;
+      const display = document.getElementById('factory-token-display');
+      const text = document.getElementById('token-toggle-text');
+      const icon = document.getElementById('token-eye-icon');
+
+      if (isTokenVisible) {
+        display.innerText = rawFactoryToken;
+        text.innerText = 'Ẩn';
+        icon.setAttribute('data-lucide', 'eye-off');
+      } else {
+        display.innerText = '••••••••••••••••••••';
+        text.innerText = 'Hiện';
+        icon.setAttribute('data-lucide', 'eye');
+      }
+      lucide.createIcons();
+    }
+
+    function copyFactoryToken() {
+      if (!rawFactoryToken) return;
+      copyToClipboard(rawFactoryToken, 'Đã copy Factory Secret Token!');
+    }
+
+    // Modal Confirmation Actions
+    let pendingAction = null;
+
+    function confirmAction(action, deviceId) {
+      pendingAction = { action, deviceId };
+      const modal = document.getElementById('confirm-modal');
+      const title = document.getElementById('modal-title');
+      const desc = document.getElementById('modal-desc');
+      const body = document.getElementById('modal-body-text');
+      const confirmBtn = document.getElementById('modal-confirm-btn');
+
+      if (action === 'revoke') {
+        title.innerText = 'Xác nhận Thu Hồi (Khóa Drone)';
+        desc.innerText = 'Cắt đứt kết nối VPN và thu hồi IP về Pool.';
+        body.innerText = `Thiết bị: ${deviceId}\nThao tác: Gỡ peer khỏi WireGuard kernel và chuyển trạng thái sang REVOKED.`;
+        confirmBtn.className = 'px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white transition';
+        confirmBtn.innerText = 'Khóa Drone Ngay';
+      } else if (action === 'reactivate') {
+        title.innerText = 'Xác nhận Mở Khóa (Kích hoạt lại)';
+        desc.innerText = 'Cấp địa chỉ IP mới và nạp lại vào WireGuard.';
+        body.innerText = `Thiết bị: ${deviceId}\nThao tác: Cấp IP mới từ IP Pool và nạp lại peer vào kernel.`;
+        confirmBtn.className = 'px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition';
+        confirmBtn.innerText = 'Mở Khóa Thiết Bị';
+      } else if (action === 'delete') {
+        title.innerText = 'Xác nhận Xóa Vĩnh Viễn';
+        desc.innerText = 'Xóa toàn bộ bản ghi khỏi Database.';
+        body.innerText = `Thiết bị: ${deviceId}\nHành động này không thể hoàn tác!`;
+        confirmBtn.className = 'px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-xs font-semibold text-white transition';
+        confirmBtn.innerText = 'Xóa Vĩnh Viễn';
+      }
+
+      confirmBtn.onclick = executePendingAction;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('confirm-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      pendingAction = null;
+    }
+
+    async function executePendingAction() {
+      if (!pendingAction) return;
+      const { action, deviceId } = pendingAction;
+      closeModal();
+
+      try {
+        let res;
+        if (action === 'revoke') {
+          res = await fetch(`/api/v1/dashboard/devices/${deviceId}/revoke`, { method: 'POST' }).then(r => r.json());
+        } else if (action === 'reactivate') {
+          res = await fetch(`/api/v1/dashboard/devices/${deviceId}/reactivate`, { method: 'POST' }).then(r => r.json());
+        } else if (action === 'delete') {
+          res = await fetch(`/api/v1/dashboard/devices/${deviceId}`, { method: 'DELETE' }).then(r => r.json());
+        }
+
+        if (res && res.status === 'success') {
+          showToast('success', res.message || 'Thao tác thành công!');
+          fetchDashboardData(true);
+        } else {
+          showToast('error', res.message || 'Có lỗi xảy ra!');
+        }
+      } catch (err) {
+        showToast('error', 'Lỗi mạng khi thực hiện thao tác!');
+      }
+    }
+
+    // Chart.js Live Throughput Telemetry
+    function initChart() {
+      const ctx = document.getElementById('traffic-chart').getContext('2d');
+      trafficChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Download (Rx Bytes)',
+              borderColor: '#06b6d4',
+              backgroundColor: 'rgba(6, 182, 212, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3,
+              data: [],
+            },
+            {
+              label: 'Upload (Tx Bytes)',
+              borderColor: '#6366f1',
+              backgroundColor: 'rgba(99, 102, 241, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3,
+              data: [],
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          scales: {
+            x: { grid: { color: 'rgba(30, 41, 59, 0.5)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+            y: { grid: { color: 'rgba(30, 41, 59, 0.5)' }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+          },
+          plugins: {
+            legend: { labels: { color: '#e2e8f0', font: { size: 11 } } }
+          }
+        }
+      });
+    }
+
+    function updateTrafficChart(rx, tx) {
+      if (!trafficChart) return;
+      const now = new Date().toLocaleTimeString();
+
+      trafficChart.data.labels.push(now);
+      trafficChart.data.datasets[0].data.push(rx);
+      trafficChart.data.datasets[1].data.push(tx);
+
+      if (trafficChart.data.labels.length > 12) {
+        trafficChart.data.labels.shift();
+        trafficChart.data.datasets[0].data.shift();
+        trafficChart.data.datasets[1].data.shift();
+      }
+
+      trafficChart.update();
+      document.getElementById('chart-timestamp').innerText = `Cập nhật lúc: ${now}`;
+    }
+
+    // Toast Notification System
+    function showToast(type, message) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const bg = type === 'success' ? 'bg-emerald-950/90 border-emerald-700 text-emerald-300' : 'bg-rose-950/90 border-rose-700 text-rose-300';
+      const icon = type === 'success' ? 'check-circle' : 'alert-circle';
+
+      toast.className = `flex items-center gap-2.5 px-4 py-3 rounded-xl border backdrop-blur-md text-xs font-semibold shadow-2xl transition duration-300 transform translate-y-2 pointer-events-auto ${bg}`;
+      toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i><span>${message}</span>`;
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-x-4');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // Helper Utilities
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatTimeAgo(epochSec) {
+      const now = Math.floor(Date.now() / 1000);
+      const diff = Math.max(0, now - epochSec);
+      if (diff < 60) return `${diff}s trước`;
+      if (diff < 3600) return `${Math.floor(diff / 60)}m trước`;
+      return `${Math.floor(diff / 3600)}h trước`;
+    }
+
+    function copyToClipboard(text, msg) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('success', msg || 'Đã sao chép vào Clipboard!');
+      });
+    }
+  </script>
+</body>
+</html>

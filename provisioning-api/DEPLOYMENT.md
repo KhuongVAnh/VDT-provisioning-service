@@ -112,7 +112,27 @@ sudo systemctl enable --now drone-onboard.service
 
 ---
 
-## 5. Lệnh Dọn Dẹp VPS (Khi không dùng nữa)
+---
+
+## 5. Truy Cập Dashboard Quản Trị Đội Drone (Mission Control UI)
+
+Sau khi Docker khởi chạy thành công trên VPS, bạn có thể mở trình duyệt web trên máy tính hoặc điện thoại và truy cập vào đường dẫn:
+
+```text
+http://103.253.20.32:10004/
+```
+*(Thay bằng IP Public VPS của bạn nếu khác)*
+
+### Các Tính Năng Trên Giao Diện Dashboard:
+1. **Tổng quan & KPI:** Xem tổng số Drone, số Drone đang bay online thực tế, % sử dụng dải IP `10.13.37.0/24`, tổng lưu lượng mạng.
+2. **Quản lý Đội Drone:** Tìm kiếm, xem chi tiết từng Drone, khóa thiết bị (**Revoke**), mở khóa (**Re-activate**) hoặc xóa vĩnh viễn.
+3. **Bản đồ trực quan IP Pool:** Ma trận 254 ô địa chỉ IP đổi màu sinh động theo thời gian thực.
+4. **Giám sát & Telemetry:** Xem trạng thái WireGuard kernel và biểu đồ lưu lượng băng thông thời gian thực (Chart.js).
+5. **Cài đặt & Token:** Trình tạo lệnh 1-Liner cho Drone và quản lý Factory Secret Token.
+
+---
+
+## 6. Lệnh Dọn Dẹp VPS (Khi không dùng nữa)
 Khi bạn muốn trả VPS, vào lại thư mục chứa code và gõ:
 ```bash
 docker compose down --rmi all -v

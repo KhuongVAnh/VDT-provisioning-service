@@ -20,7 +20,7 @@ export interface UpdateDeviceInput {
 
 /**
  * DeviceService chịu trách nhiệm quản lý toàn bộ vòng đời thực thể Thiết bị (Device),
- * bao gồm truy vấn, tạo mới, cập nhật cấu hình VPN, xoay key và thu hồi thiết bị.
+ * bao gồm truy vấn, tạo mới, cập nhật cấu hình VPN, xoay key, quản trị Dashboard và thu hồi thiết bị.
  */
 @Injectable()
 export class DeviceService {
@@ -34,6 +34,15 @@ export class DeviceService {
   async findByDeviceId(deviceId: string): Promise<Device | null> {
     return this.prisma.device.findUnique({
       where: { deviceId },
+    });
+  }
+
+  /**
+   * Lấy toàn bộ danh sách thiết bị phục vụ hiển thị trên Dashboard
+   */
+  async findAllDevices(): Promise<Device[]> {
+    return this.prisma.device.findMany({
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -71,6 +80,20 @@ export class DeviceService {
         vpnIp: { not: null },
       },
     });
+  }
+
+  /**
+   * Đếm tổng số thiết bị theo trạng thái phục vụ KPI Dashboard
+   */
+  async countStats(): Promise<{ total: number; active: number; revoked: number; pending: number }> {
+    const [total, active, revoked, pending] = await Promise.all([
+      this.prisma.device.count(),
+      this.prisma.device.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.device.count({ where: { status: 'REVOKED' } }),
+      this.prisma.device.count({ where: { status: 'PENDING' } }),
+    ]);
+
+    return { total, active, revoked, pending };
   }
 
   /**
@@ -117,6 +140,31 @@ export class DeviceService {
         status: 'REVOKED',
         vpnIp: null, // Giải phóng IP để trả về IP Pool mà không gây xung đột Unique Key
       },
+    });
+  }
+
+  /**
+   * Kích hoạt lại thiết bị bị thu hồi (Reactivate) với IP mới
+   */
+  async reActivateDevice(deviceId: string, newVpnIp: string): Promise<Device> {
+    this.logger.log(`Kích hoạt lại thiết bị: ${deviceId} với IP mới: ${newVpnIp}`);
+    return this.prisma.device.update({
+      where: { deviceId },
+      data: {
+        status: 'ACTIVE',
+        vpnIp: newVpnIp,
+        lastSeen: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Xóa vĩnh viễn thiết bị khỏi hệ thống
+   */
+  async deleteDevice(deviceId: string): Promise<Device> {
+    this.logger.warn(`Xóa vĩnh viễn thiết bị: ${deviceId}`);
+    return this.prisma.device.delete({
+      where: { deviceId },
     });
   }
 }

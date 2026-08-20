@@ -2,6 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeviceService } from '../device/device.service';
 
+export interface IpPoolStats {
+  subnetPrefix: string;
+  gatewayIp: string;
+  startIp: number;
+  endIp: number;
+  totalCapacity: number;
+  usedCount: number;
+  availableCount: number;
+  utilizationPercentage: number;
+}
+
 @Injectable()
 export class IpPoolService {
   private readonly logger = new Logger(IpPoolService.name);
@@ -20,7 +31,6 @@ export class IpPoolService {
    * Cấp phát IP nhỏ nhất còn trống trong dải mạng VPN (ví dụ: 10.13.37.2 - 10.13.37.254).
    */
   async allocateIp(): Promise<string> {
-    // Lấy danh sách toàn bộ các IP đang được sử dụng bởi các thiết bị PENDING hoặc ACTIVE
     const activeIps = await this.deviceService.findActiveOrPendingIps();
     const usedIps = new Set(activeIps);
 
@@ -34,5 +44,31 @@ export class IpPoolService {
 
     this.logger.error('Không còn địa chỉ IP khả dụng trong dải mạng (IP Pool đã đầy)');
     throw new Error('Không còn địa chỉ IP khả dụng trong dải mạng (Pool đã đầy)');
+  }
+
+  /**
+   * Lấy thông tin thống kê chi tiết của toàn bộ IP Pool phục vụ Dashboard
+   */
+  async getPoolStats(): Promise<IpPoolStats> {
+    const activeIps = await this.deviceService.findActiveOrPendingIps();
+    const totalCapacity = this.endIp - this.startIp + 1; // 253 IP
+    const usedCount = activeIps.length;
+    const availableCount = Math.max(0, totalCapacity - usedCount);
+    const utilizationPercentage = Math.round((usedCount / totalCapacity) * 100 * 10) / 10;
+
+    return {
+      subnetPrefix: this.subnet,
+      gatewayIp: `${this.subnet}1`,
+      startIp: this.startIp,
+      endIp: this.endIp,
+      totalCapacity,
+      usedCount,
+      availableCount,
+      utilizationPercentage,
+    };
+  }
+
+  getSubnetPrefix(): string {
+    return this.subnet;
   }
 }

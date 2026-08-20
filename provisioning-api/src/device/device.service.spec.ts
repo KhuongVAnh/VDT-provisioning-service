@@ -11,6 +11,8 @@ describe('DeviceService', () => {
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
+      count: jest.fn(),
     },
   };
 
@@ -46,6 +48,19 @@ describe('DeviceService', () => {
     });
   });
 
+  describe('findAllDevices', () => {
+    it('should return all devices sorted by createdAt desc', async () => {
+      const mockDevices = [{ id: 'uuid-1', deviceId: 'DRONE-123' }];
+      mockPrismaService.device.findMany.mockResolvedValue(mockDevices);
+
+      const result = await service.findAllDevices();
+      expect(result).toEqual(mockDevices);
+      expect(mockPrismaService.device.findMany).toHaveBeenCalledWith({
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  });
+
   describe('findActiveOrPendingIps', () => {
     it('should return list of used IPs excluding nulls', async () => {
       mockPrismaService.device.findMany.mockResolvedValue([
@@ -56,6 +71,19 @@ describe('DeviceService', () => {
 
       const result = await service.findActiveOrPendingIps();
       expect(result).toEqual(['10.13.37.2', '10.13.37.3']);
+    });
+  });
+
+  describe('countStats', () => {
+    it('should count devices by status', async () => {
+      mockPrismaService.device.count
+        .mockResolvedValueOnce(10) // total
+        .mockResolvedValueOnce(8)  // active
+        .mockResolvedValueOnce(2)  // revoked
+        .mockResolvedValueOnce(0); // pending
+
+      const result = await service.countStats();
+      expect(result).toEqual({ total: 10, active: 8, revoked: 2, pending: 0 });
     });
   });
 
@@ -85,6 +113,30 @@ describe('DeviceService', () => {
       expect(mockPrismaService.device.update).toHaveBeenCalledWith({
         where: { deviceId: 'DRONE-123' },
         data: { status: 'REVOKED', vpnIp: null },
+      });
+    });
+  });
+
+  describe('reActivateDevice', () => {
+    it('should reactivate device with new IP', async () => {
+      const reactivated = { id: 'uuid-1', deviceId: 'DRONE-123', status: 'ACTIVE', vpnIp: '10.13.37.10' };
+      mockPrismaService.device.update.mockResolvedValue(reactivated);
+
+      const result = await service.reActivateDevice('DRONE-123', '10.13.37.10');
+      expect(result.status).toBe('ACTIVE');
+      expect(result.vpnIp).toBe('10.13.37.10');
+    });
+  });
+
+  describe('deleteDevice', () => {
+    it('should delete device record', async () => {
+      const deleted = { id: 'uuid-1', deviceId: 'DRONE-123' };
+      mockPrismaService.device.delete.mockResolvedValue(deleted);
+
+      const result = await service.deleteDevice('DRONE-123');
+      expect(result).toEqual(deleted);
+      expect(mockPrismaService.device.delete).toHaveBeenCalledWith({
+        where: { deviceId: 'DRONE-123' },
       });
     });
   });

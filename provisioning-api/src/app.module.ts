@@ -7,10 +7,11 @@ import { DeviceModule } from './device/device.module';
 import { IpPoolModule } from './ip-pool/ip-pool.module';
 import { WireguardModule } from './wireguard/wireguard.module';
 import { ProvisioningModule } from './provisioning/provisioning.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 /**
  * AppModule là "bảng mạch chính" của toàn bộ hệ thống.
- * Mọi module tính năng độc lập (như Device, IpPool, Wireguard) đều được đăng ký tại đây.
+ * Mọi module tính năng độc lập (như Device, IpPool, Wireguard, Dashboard) đều được đăng ký tại đây.
  */
 @Module({
   imports: [
@@ -26,6 +27,8 @@ import { ProvisioningModule } from './provisioning/provisioning.module';
     WireguardModule,
     // Module nghiệp vụ chính xử lý request từ Drone
     ProvisioningModule,
+    // Module Dashboard quản trị thời gian thực
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

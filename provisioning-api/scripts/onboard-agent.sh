@@ -247,8 +247,8 @@ if [ -f "$WG_CONF" ]; then
     if wg show wg0 >/dev/null 2>&1; then
         echo "[INFO] WireGuard wg0 da hoat dong on dinh."
         # Đảm bảo mavlink-router cũng đang chạy
-        if systemctl list-unit-files | grep -q mavlink-router; then
-            systemctl enable --now mavlink-router || systemctl restart mavlink-router || true
+        if systemctl list-unit-files "mavlink-router*" >/dev/null 2>&1; then
+            systemctl enable --now mavlink-router >/dev/null 2>&1 || systemctl restart mavlink-router >/dev/null 2>&1 || true
         fi
 
         # Kiểm tra cập nhật OTA ngầm (nếu có Internet) mà không làm gián đoạn bay
@@ -448,8 +448,8 @@ fi
 
 # --- 13. START MAVLINK ROUTER ---
 echo "[INFO] Dang khoi dong mavlink-router..."
-if systemctl list-unit-files | grep -q mavlink-router; then
-    systemctl enable --now mavlink-router || systemctl restart mavlink-router || true
+if systemctl list-unit-files "mavlink-router*" >/dev/null 2>&1; then
+    systemctl enable --now mavlink-router >/dev/null 2>&1 || systemctl restart mavlink-router >/dev/null 2>&1 || true
     echo "[INFO] Da khoi dong mavlink-router service."
 fi
 

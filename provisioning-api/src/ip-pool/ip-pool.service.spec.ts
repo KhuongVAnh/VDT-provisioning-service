@@ -69,4 +69,22 @@ describe('IpPoolService', () => {
       await expect(service.allocateIp()).rejects.toThrow('Không còn địa chỉ IP khả dụng trong dải mạng (Pool đã đầy)');
     });
   });
+
+  describe('getPoolStats', () => {
+    it('should return detailed pool stats', async () => {
+      mockDeviceService.findActiveOrPendingIps.mockResolvedValue(['10.13.37.2', '10.13.37.5']);
+      const stats = await service.getPoolStats();
+      expect(stats.totalCapacity).toBe(253);
+      expect(stats.usedCount).toBe(2);
+      expect(stats.availableCount).toBe(251);
+      expect(stats.gatewayIp).toBe('10.13.37.1');
+      expect(stats.subnetPrefix).toBe('10.13.37.');
+    });
+  });
+
+  describe('getSubnetPrefix', () => {
+    it('should return the configured subnet prefix', () => {
+      expect(service.getSubnetPrefix()).toBe('10.13.37.');
+    });
+  });
 });
