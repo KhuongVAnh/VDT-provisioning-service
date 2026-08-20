@@ -1,912 +1,1262 @@
 <!DOCTYPE html>
-<html lang="vi" class="dark">
+<html lang="vi">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drone Provisioning & Fleet Mission Control</title>
-  <meta name="description" content="Trung tâm quản trị cấp phát thiết bị Drone, giám sát kết nối WireGuard VPN và luồng Telemetry thời gian thực.">
-
-  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <title>Drone Fleet Mission Control & Telemetry Ingestion Gateway</title>
+  
+  <!-- Font chữ hiện đại: Inter & JetBrains Mono (cho Terminal) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  
+  <!-- Xterm.js CSS cho Web SSH Terminal -->
+  <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
 
-  <!-- TailwindCSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'monospace'],
-          },
-          colors: {
-            brand: {
-              50: '#ecfeff',
-              100: '#cffafe',
-              400: '#22d3ee',
-              500: '#06b6d4',
-              600: '#0891b2',
-              900: '#164e63',
-            },
-            dark: {
-              bg: '#0B0F19',
-              card: '#111827',
-              border: '#1E293B',
-              hover: '#1F293D',
-            }
-          }
-        }
-      }
-    }
-  </script>
-
-  <!-- Lucide Icons & Chart.js -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
   <style>
+    :root {
+      --bg-base: #0a0e17;
+      --bg-surface: #111827;
+      --bg-surface-elevated: #1e293b;
+      --bg-card: rgba(26, 34, 52, 0.75);
+      --bg-glass: rgba(17, 24, 39, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(56, 189, 248, 0.3);
+      --primary: #0284c7;
+      --primary-glow: rgba(14, 165, 233, 0.35);
+      --accent: #38bdf8;
+      --accent-cyber: #06b6d4;
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.25);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --hud-sky: #0369a1;
+      --hud-ground: #854d0e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      background-color: #0B0F19;
-      color: #F3F4F6;
-      font-family: 'Inter', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.06) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.04) 0%, transparent 40%);
     }
-    .glass-card {
-      background: rgba(17, 24, 39, 0.75);
+
+    /* --- NAVIGATION BAR --- */
+    header {
+      background: var(--bg-glass);
       backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(30, 41, 59, 0.8);
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    .glow-cyan {
-      box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.3);
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
     }
-    .glow-green {
-      box-shadow: 0 0 15px -3px rgba(34, 197, 94, 0.4);
+
+    .brand-logo {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--primary), var(--accent-cyber));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      color: white;
+      box-shadow: 0 0 16px var(--primary-glow);
     }
-    .pulse-dot {
-      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #ffffff, #93c5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: .4; transform: scale(1.15); }
+
+    .brand-subtitle {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
     }
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0B0F19; }
-    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+    .nav-tabs {
+      display: flex;
+      gap: 0.35rem;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 0.25rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .nav-tab {
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .nav-tab:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .nav-tab.active {
+      color: white;
+      background: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.25rem 0.6rem;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--success);
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse-dot 1.8s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.4; }
+    }
+
+    /* --- MAIN CONTENT CONTAINER --- */
+    main {
+      flex: 1;
+      padding: 1.5rem;
+      max-width: 1700px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.25s ease forwards;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* --- KPI CARDS GRID --- */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.2s;
+    }
+
+    .kpi-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+
+    .kpi-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .kpi-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+    }
+
+    .kpi-value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin: 0.4rem 0;
+      letter-spacing: -0.03em;
+    }
+
+    .kpi-subtext {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    /* --- MAP & HUD LAYOUT --- */
+    .tactical-view-grid {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 1.25rem;
+      height: calc(100vh - 200px);
+      min-height: 600px;
+    }
+
+    .map-wrapper {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .map-header {
+      padding: 0.75rem 1rem;
+      background: rgba(17, 24, 39, 0.85);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 500;
+    }
+
+    #tactical-map {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      background: #0f172a;
+    }
+
+    .telemetry-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      overflow-y: auto;
+    }
+
+    .sidebar-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.2rem;
+    }
+
+    .sidebar-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.85rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.5rem;
+    }
+
+    /* --- ARTIFICIAL HORIZON (ATTITUDE HUD) --- */
+    .horizon-container {
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      border: 3px solid #334155;
+      position: relative;
+      overflow: hidden;
+      margin: 0 auto 1rem;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0,0,0,0.8);
+      background: #000;
+    }
+
+    .horizon-sphere {
+      width: 360px;
+      height: 360px;
+      position: absolute;
+      left: -90px;
+      top: -90px;
+      background: linear-gradient(to bottom, var(--hud-sky) 50%, #ffffff 50%, #ffffff 50.5%, var(--hud-ground) 50.5%);
+      transform-origin: center center;
+      transition: transform 0.08s linear;
+    }
+
+    .horizon-crosshair {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 70px;
+      height: 70px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .crosshair-line {
+      position: absolute;
+      background: #f59e0b;
+      box-shadow: 0 0 4px #000;
+    }
+    .crosshair-center {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 2px solid #f59e0b;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .crosshair-h-left { left: 0; top: 50%; width: 22px; height: 3px; transform: translateY(-50%); }
+    .crosshair-h-right { right: 0; top: 50%; width: 22px; height: 3px; transform: translateY(-50%); }
+
+    .telemetry-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.35rem 0;
+      font-size: 0.82rem;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+    }
+    .telemetry-label { color: var(--text-muted); }
+    .telemetry-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--text-main); }
+
+    /* --- TERMINAL TAB --- */
+    .terminal-container {
+      background: #090d16;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1rem;
+      height: calc(100vh - 220px);
+      min-height: 550px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 0.75rem;
+    }
+
+    .terminal-select-bar {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .terminal-box {
+      flex: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+      padding: 0.5rem;
+    }
+
+    /* --- FORM CONTROLS & BUTTONS --- */
+    select, input {
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      color: white;
+      padding: 0.45rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    select:focus, input:focus {
+      border-color: var(--accent);
+    }
+
+    .btn {
+      padding: 0.45rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: #0369a1; box-shadow: 0 0 10px var(--primary-glow); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-secondary { background: #334155; color: white; }
+    .btn-secondary:hover { background: #475569; }
+
+    /* --- FLEET TABLE --- */
+    .table-responsive {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-revoked { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+    /* --- IP MATRIX GRID --- */
+    .ip-matrix-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+      gap: 6px;
+      margin-top: 1rem;
+    }
+
+    .ip-cell {
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 0.5rem 0.2rem;
+      text-align: center;
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ip-cell:hover {
+      transform: scale(1.08);
+      z-index: 10;
+    }
+    .ip-cell.gateway { background: rgba(56, 189, 248, 0.2); border-color: var(--accent); color: var(--accent); }
+    .ip-cell.active-online { background: rgba(16, 185, 129, 0.25); border-color: var(--success); color: #6ee7b7; box-shadow: 0 0 8px rgba(16,185,129,0.3); }
+    .ip-cell.active-offline { background: rgba(245, 158, 11, 0.15); border-color: var(--warning); color: #fcd34d; }
+    .ip-cell.available { opacity: 0.4; }
+
+    /* --- RESPONSIVE --- */
+    @media (max-width: 1024px) {
+      .tactical-view-grid {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      #tactical-map {
+        height: 450px;
+      }
+    }
   </style>
 </head>
-<body class="min-h-screen flex flex-col antialiased">
+<body>
 
-  <!-- ==================== TOP NAVIGATION BAR ==================== -->
-  <header class="sticky top-0 z-40 glass-card border-b border-slate-800/80 px-4 sm:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
-    <!-- Brand & Logo -->
-    <div class="flex items-center gap-3.5">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
-        <i data-lucide="plane-takeoff" class="w-5 h-5"></i>
-      </div>
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo"><i class="fa-solid fa-plane-up"></i></div>
       <div>
-        <div class="flex items-center gap-2">
-          <h1 class="text-lg font-bold tracking-tight text-white">DRONE PROVISIONING</h1>
-          <span class="px-2 py-0.5 text-[10px] font-semibold tracking-wider bg-cyan-950 text-cyan-400 border border-cyan-800/60 rounded-md">V2.4 CORE</span>
-        </div>
-        <p class="text-xs text-slate-400">Mission Control & WireGuard Fleet Management</p>
+        <div class="brand-title">DRONE MISSION CONTROL</div>
+        <div class="brand-subtitle">Core Telemetry Ingestion & Remote Management</div>
       </div>
     </div>
 
-    <!-- Server Status & Polling Controls -->
-    <div class="flex items-center flex-wrap gap-3">
-      <!-- Live Server Indicator -->
-      <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
-        <span class="text-slate-300 font-medium" id="server-status-label">Server 10.13.37.1 Active</span>
-      </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('tab-tactical')"><i class="fa-solid fa-map-location-dot"></i> Bản Đồ Tác Chiến</button>
+      <button class="nav-tab" onclick="switchTab('tab-hud')"><i class="fa-solid fa-compass"></i> Bảng HUD Bay</button>
+      <button class="nav-tab" onclick="switchTab('tab-fleet')"><i class="fa-solid fa-drone"></i> Đội Drone</button>
+      <button class="nav-tab" onclick="switchTab('tab-terminal')"><i class="fa-solid fa-terminal"></i> Web SSH</button>
+      <button class="nav-tab" onclick="switchTab('tab-ip-pool')"><i class="fa-solid fa-network-wired"></i> IP Matrix</button>
+    </div>
 
-      <!-- Auto Refresh Selector -->
-      <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
-        <i data-lucide="timer" class="w-3.5 h-3.5 text-cyan-400"></i>
-        <span>Tự làm mới:</span>
-        <select id="polling-interval-select" onchange="changePollingInterval(this.value)" class="bg-slate-800 text-white rounded px-2 py-0.5 border border-slate-700 outline-none focus:border-cyan-500">
-          <option value="3000">3 giây</option>
-          <option value="5000" selected>5 giây</option>
-          <option value="10000">10 giây</option>
-          <option value="0">Tắt</option>
-        </select>
+    <div class="header-status">
+      <div class="live-badge">
+        <div class="live-dot"></div>
+        <span id="ws-status-text">WEBSOCKET LIVE</span>
       </div>
-
-      <!-- Manual Refresh Button -->
-      <button id="btn-refresh" onclick="fetchDashboardData(true)" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-md shadow-cyan-600/20 transition active:scale-95">
-        <i data-lucide="refresh-cw" id="refresh-icon" class="w-3.5 h-3.5"></i>
-        <span>Làm mới</span>
-      </button>
+      <button class="btn btn-secondary" onclick="refreshAllData()" title="Làm mới dữ liệu"><i class="fa-solid fa-arrows-rotate"></i></button>
     </div>
   </header>
 
-  <!-- ==================== MAIN CONTENT ==================== -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-
-    <!-- KPI STATS CARDS -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- Card 1: Total Fleet -->
-      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-cyan-500/50 transition">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Tổng Đội Drone</p>
-            <h3 class="text-3xl font-extrabold text-white mt-1" id="kpi-total-devices">--</h3>
-          </div>
-          <div class="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition">
-            <i data-lucide="boxes" class="w-6 h-6"></i>
-          </div>
+  <!-- MAIN -->
+  <main>
+    
+    <!-- KPI SUMMARY BAR -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span>Tổng Phi Đội</span>
+          <div class="kpi-icon" style="background: rgba(56, 189, 248, 0.15); color: var(--accent);"><i class="fa-solid fa-plane"></i></div>
         </div>
-        <div class="mt-3 flex items-center gap-2 text-xs">
-          <span class="text-emerald-400 font-medium" id="kpi-active-sub">-- Active</span>
-          <span class="text-slate-600">•</span>
-          <span class="text-rose-400 font-medium" id="kpi-revoked-sub">-- Revoked</span>
-        </div>
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none"></div>
+        <div class="kpi-value" id="kpi-total-devices">0</div>
+        <div class="kpi-subtext" id="kpi-active-pending">0 Active • 0 Pending</div>
       </div>
 
-      <!-- Card 2: Flying Online Now -->
-      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-emerald-500/50 transition">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Đang Bay / Online</p>
-            <h3 class="text-3xl font-extrabold text-emerald-400 mt-1 flex items-center gap-2">
-              <span id="kpi-online-now">--</span>
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-dot inline-block"></span>
-            </h3>
-          </div>
-          <div class="w-12 h-12 rounded-xl bg-emerald-950/40 border border-emerald-800/50 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition">
-            <i data-lucide="radio" class="w-6 h-6"></i>
-          </div>
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span>Đang Bay (Online)</span>
+          <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.15); color: var(--success);"><i class="fa-solid fa-satellite-dish"></i></div>
         </div>
-        <div class="mt-3 text-xs text-slate-400">
-          WireGuard Handshake &lt; 3 phút
-        </div>
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none"></div>
+        <div class="kpi-value" style="color: #34d399;" id="kpi-online-count">0</div>
+        <div class="kpi-subtext">Telemetry Stream 10Hz</div>
       </div>
 
-      <!-- Card 3: IP Pool Utilization -->
-      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-indigo-500/50 transition">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Dải IP 10.13.37.0/24</p>
-            <h3 class="text-3xl font-extrabold text-indigo-400 mt-1" id="kpi-ip-usage">--%</h3>
-          </div>
-          <div class="w-12 h-12 rounded-xl bg-indigo-950/40 border border-indigo-800/50 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition">
-            <i data-lucide="network" class="w-6 h-6"></i>
-          </div>
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span>Dải IP VPN</span>
+          <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.15); color: var(--warning);"><i class="fa-solid fa-network-wired"></i></div>
         </div>
-        <!-- Progress Bar -->
-        <div class="mt-3">
-          <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-            <div id="kpi-ip-progress" class="bg-indigo-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
-          </div>
-          <div class="flex justify-between items-center text-[11px] text-slate-400 mt-1.5">
-            <span id="kpi-ip-used-count">Đã cấp: --</span>
-            <span id="kpi-ip-avail-count">Còn trống: -- / 253</span>
-          </div>
-        </div>
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl pointer-events-none"></div>
+        <div class="kpi-value" id="kpi-ip-usage">0%</div>
+        <div class="kpi-subtext" id="kpi-ip-counts">0 / 253 IP Đã Cấp</div>
       </div>
 
-      <!-- Card 4: Throughput Telemetry -->
-      <div class="glass-card rounded-2xl p-5 relative overflow-hidden group hover:border-amber-500/50 transition">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Lưu Lượng VPN</p>
-            <h3 class="text-2xl font-extrabold text-amber-400 mt-1" id="kpi-total-traffic">--</h3>
-          </div>
-          <div class="w-12 h-12 rounded-xl bg-amber-950/40 border border-amber-800/50 flex items-center justify-center text-amber-400 group-hover:scale-110 transition">
-            <i data-lucide="activity" class="w-6 h-6"></i>
-          </div>
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span>Go Ingestion Port</span>
+          <div class="kpi-icon" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;"><i class="fa-solid fa-bolt"></i></div>
         </div>
-        <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
-          <span id="kpi-rx-traffic">Rx: --</span>
-          <span id="kpi-tx-traffic">Tx: --</span>
-        </div>
-        <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl pointer-events-none"></div>
+        <div class="kpi-value" style="font-size: 1.5rem; font-family: 'JetBrains Mono';">UDP :14550</div>
+        <div class="kpi-subtext">MAVLink 2 Decoder Active</div>
       </div>
     </div>
 
-    <!-- ==================== TABS NAVIGATION ==================== -->
-    <div class="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
-      <button onclick="switchTab('fleet')" id="tab-btn-fleet" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition bg-cyan-600 text-white shadow-lg shadow-cyan-600/20">
-        <i data-lucide="plane" class="w-4 h-4"></i>
-        <span>Quản Lý Đội Drone</span>
-        <span id="badge-fleet-count" class="px-2 py-0.5 text-xs bg-slate-900/60 rounded-md">0</span>
-      </button>
+    <!-- TAB 1: TACTICAL MAP & QUICK TELEMETRY -->
+    <div id="tab-tactical" class="tab-content active">
+      <div class="tactical-view-grid">
+        
+        <!-- MAP WRAPPER -->
+        <div class="map-wrapper">
+          <div class="map-header">
+            <div style="font-weight: 600; font-size: 0.9rem;"><i class="fa-solid fa-crosshairs text-accent"></i> BẢN ĐỒ VỊ TRÍ PHI ĐỘI THỜI GIAN THỰC</div>
+            <div style="display: flex; gap: 0.5rem;">
+              <select id="map-drone-select" onchange="focusDroneOnMap(this.value)">
+                <option value="all">-- Theo dõi toàn bộ Drone --</option>
+              </select>
+              <button class="btn btn-secondary" onclick="fitAllDronesOnMap()"><i class="fa-solid fa-expand"></i> Khung Hình</button>
+            </div>
+          </div>
+          <div id="tactical-map"></div>
+        </div>
 
-      <button onclick="switchTab('matrix')" id="tab-btn-matrix" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800">
-        <i data-lucide="layout-grid" class="w-4 h-4"></i>
-        <span>Bản Đồ IP Pool (254 Ô)</span>
-      </button>
+        <!-- SIDEBAR TELEMETRY -->
+        <div class="telemetry-sidebar">
+          <div class="sidebar-card">
+            <div class="sidebar-title"><i class="fa-solid fa-plane-circle-check"></i> THÔNG SỐ BAY (QUICK HUD)</div>
+            
+            <!-- ATTITUDE HORIZON MINI -->
+            <div class="horizon-container">
+              <div class="horizon-sphere" id="mini-horizon-sphere"></div>
+              <div class="horizon-crosshair">
+                <div class="crosshair-center"></div>
+                <div class="crosshair-line crosshair-h-left"></div>
+                <div class="crosshair-line crosshair-h-right"></div>
+              </div>
+            </div>
 
-      <button onclick="switchTab('diagnostics')" id="tab-btn-diagnostics" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800">
-        <i data-lucide="gauge" class="w-4 h-4"></i>
-        <span>Giám Sát & Telemetry</span>
-      </button>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Drone Đang Chọn</span>
+              <span class="telemetry-val" style="color: var(--accent);" id="hud-device-id">CHƯA CHỌN</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Chế Độ Bay (Mode)</span>
+              <span class="telemetry-val" style="color: #f59e0b;" id="hud-flight-mode">--</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Động Cơ (Armed)</span>
+              <span class="telemetry-val" id="hud-armed-status">DISARMED</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Dung Lượng Pin</span>
+              <span class="telemetry-val" style="color: #10b981;" id="hud-battery">--%</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Độ Cao Tương Đối</span>
+              <span class="telemetry-val" id="hud-altitude">0.0 m</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Vận Tốc Mặt Đất</span>
+              <span class="telemetry-val" id="hud-speed">0.0 m/s</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Hướng Bay (Heading)</span>
+              <span class="telemetry-val" id="hud-heading">000°</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Góc Nghiêng Roll / Pitch</span>
+              <span class="telemetry-val" id="hud-angles">0.0° / 0.0°</span>
+            </div>
 
-      <button onclick="switchTab('setup')" id="tab-btn-setup" class="tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800">
-        <i data-lucide="terminal" class="w-4 h-4"></i>
-        <span>Cài Đặt & Factory Token</span>
-      </button>
+            <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+              <button class="btn btn-primary" style="flex: 1;" onclick="openWebSshForSelectedDrone()"><i class="fa-solid fa-terminal"></i> Mở Web SSH</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
 
-    <!-- ==================== TAB 1: FLEET MANAGEMENT ==================== -->
-    <section id="tab-content-fleet" class="space-y-4">
-      <!-- Search & Filters -->
-      <div class="glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-3 flex-1 min-w-[280px]">
-          <div class="relative flex-1">
-            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-            <input type="text" id="fleet-search-input" oninput="applyFleetFilter()" placeholder="Tìm theo Device ID, IP, Model..." class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-500 transition">
+    <!-- TAB 2: DETAILED AVIATION HUD -->
+    <div id="tab-hud" class="tab-content">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
+        
+        <!-- LARGE ARTIFICIAL HORIZON -->
+        <div class="sidebar-card" style="text-align: center;">
+          <div class="sidebar-title"><i class="fa-solid fa-arrows-to-eye"></i> CHỈ BÁO TƯ THẾ BAY (ARTIFICIAL HORIZON)</div>
+          <div class="horizon-container" style="width: 240px; height: 240px; margin: 1.5rem auto;">
+            <div class="horizon-sphere" id="large-horizon-sphere" style="width: 480px; height: 480px; left: -120px; top: -120px;"></div>
+            <div class="horizon-crosshair" style="width: 100px; height: 100px;">
+              <div class="crosshair-center"></div>
+              <div class="crosshair-line crosshair-h-left" style="width: 32px;"></div>
+              <div class="crosshair-line crosshair-h-right" style="width: 32px;"></div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-around; margin-top: 1rem;">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">GÓC ROLL</div>
+              <div style="font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono';" id="hud-large-roll">0.0°</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">GÓC PITCH</div>
+              <div style="font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono';" id="hud-large-pitch">0.0°</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">HƯỚNG YAW</div>
+              <div style="font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono';" id="hud-large-yaw">000°</div>
+            </div>
           </div>
         </div>
 
-        <div class="flex items-center gap-2.5">
-          <select id="fleet-status-filter" onchange="applyFleetFilter()" class="bg-slate-900/90 border border-slate-700/80 text-sm text-slate-300 rounded-xl px-3 py-2 outline-none focus:border-cyan-500">
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="ONLINE">Đang bay (Online)</option>
-            <option value="ACTIVE">Hoạt động (Active)</option>
-            <option value="REVOKED">Bị khóa (Revoked)</option>
-          </select>
+        <!-- FLIGHT HUD METRICS -->
+        <div class="sidebar-card">
+          <div class="sidebar-title"><i class="fa-solid fa-gauge-high"></i> BUỒNG LÁI ẢO (VFR HUD METRICS)</div>
+          <div class="telemetry-row" style="padding: 0.6rem 0;">
+            <span class="telemetry-label">Tốc Độ Gió (Airspeed)</span>
+            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-airspeed">0.0 m/s</span>
+          </div>
+          <div class="telemetry-row" style="padding: 0.6rem 0;">
+            <span class="telemetry-label">Tốc Độ Leo Cao (Climb Rate)</span>
+            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-climb">0.0 m/s</span>
+          </div>
+          <div class="telemetry-row" style="padding: 0.6rem 0;">
+            <span class="telemetry-label">Mức Ga Động Cơ (Throttle)</span>
+            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-throttle">0%</span>
+          </div>
+          <div class="telemetry-row" style="padding: 0.6rem 0;">
+            <span class="telemetry-label">Độ Cao So Mực Nước Biển (MSL)</span>
+            <span class="telemetry-val" style="font-size: 1.1rem;" id="hud-vfr-alt-msl">0.0 m</span>
+          </div>
+          <div class="telemetry-row" style="padding: 0.6rem 0;">
+            <span class="telemetry-label">Điện Áp Pin (Voltage)</span>
+            <span class="telemetry-val" style="font-size: 1.1rem; color: #38bdf8;" id="hud-vfr-voltage">0.0 V</span>
+          </div>
+          <div class="telemetry-row" style="padding: 0.6rem 0;">
+            <span class="telemetry-label">Dòng Điện Tiêu Thụ (Current)</span>
+            <span class="telemetry-val" style="font-size: 1.1rem; color: #fbbf24;" id="hud-vfr-current">0.0 A</span>
+          </div>
         </div>
+
       </div>
+    </div>
 
-      <!-- Fleet Table -->
-      <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-slate-900/80 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800 font-semibold">
-              <tr>
-                <th class="py-3.5 px-4">Thiết Bị / Device ID</th>
-                <th class="py-3.5 px-4">Trạng Thái</th>
-                <th class="py-3.5 px-4">Địa Chỉ VPN IP</th>
-                <th class="py-3.5 px-4">Public Key</th>
-                <th class="py-3.5 px-4">Handshake / Telemetry</th>
-                <th class="py-3.5 px-4">Dung Lượng (Rx / Tx)</th>
-                <th class="py-3.5 px-4 text-right">Thao Tác</th>
-              </tr>
-            </thead>
-            <tbody id="fleet-table-body" class="divide-y divide-slate-800/60 font-mono text-xs">
-              <!-- Render dynamically -->
-              <tr>
-                <td colspan="7" class="text-center py-8 text-slate-500 font-sans">Đang tải dữ liệu đội Drone...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    <!-- TAB 3: FLEET MANAGEMENT TABLE -->
+    <div id="tab-fleet" class="tab-content">
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Device ID</th>
+              <th>Mô Hình Phần Cứng</th>
+              <th>IP VPN (10.13.37.X)</th>
+              <th>Trạng Thái</th>
+              <th>Telemetry Live</th>
+              <th>Pin %</th>
+              <th>Độ Cao</th>
+              <th>Hành Động</th>
+            </tr>
+          </thead>
+          <tbody id="fleet-table-body">
+            <tr>
+              <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">Đang tải danh sách phi đội...</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </section>
+    </div>
 
-    <!-- ==================== TAB 2: IP POOL MATRIX ==================== -->
-    <section id="tab-content-matrix" class="hidden space-y-4">
-      <div class="glass-card rounded-2xl p-5">
-        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4 mb-4">
-          <div>
-            <h2 class="text-base font-bold text-white flex items-center gap-2">
-              <i data-lucide="network" class="w-5 h-5 text-cyan-400"></i>
-              Bản Đồ Không Gian Dải Mạng IP Pool (10.13.37.0/24)
-            </h2>
-            <p class="text-xs text-slate-400 mt-0.5">Ma trận 254 địa chỉ IP. Hover chuột vào ô để xem chi tiết thiết bị gắn liền.</p>
+    <!-- TAB 4: WEB SSH TERMINAL -->
+    <div id="tab-terminal" class="tab-content">
+      <div class="terminal-container">
+        <div class="terminal-header">
+          <div class="terminal-select-bar">
+            <span style="font-weight: 600; font-size: 0.85rem;"><i class="fa-solid fa-terminal text-accent"></i> CHỌN DRONE:</span>
+            <select id="ssh-drone-select">
+              <option value="">-- Chọn Drone để SSH --</option>
+            </select>
+            <input type="text" id="ssh-username" placeholder="User (vd: root)" value="root" style="width: 110px;" />
+            <input type="password" id="ssh-password" placeholder="Password" style="width: 130px;" />
+            <button class="btn btn-primary" onclick="connectWebSsh()"><i class="fa-solid fa-plug"></i> Kết Nối</button>
+            <button class="btn btn-danger" onclick="disconnectWebSsh()"><i class="fa-solid fa-power-off"></i> Ngắt</button>
           </div>
-          <!-- Legends -->
-          <div class="flex items-center flex-wrap gap-4 text-xs">
-            <div class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-md bg-amber-500 shadow-sm shadow-amber-500/50"></span>
-              <span class="text-slate-300">Gateway (.1)</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-md bg-emerald-500 shadow-sm shadow-emerald-500/50"></span>
-              <span class="text-slate-300">Online Bay</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-md bg-cyan-600"></span>
-              <span class="text-slate-300">Đã Cấp (Active)</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="w-3 h-3 rounded-md bg-slate-800 border border-slate-700"></span>
-              <span class="text-slate-400">Còn Trống</span>
-            </div>
+          <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--text-dim);" id="ssh-status-info">
+            Trạng thái: Chưa kết nối
           </div>
         </div>
-
-        <!-- 254 Grid Cells -->
-        <div id="ip-grid-container" class="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 lg:grid-cols-20 gap-1.5 font-mono text-[11px]">
-          <!-- Rendered dynamically -->
-        </div>
+        <div class="terminal-box" id="terminal-wrapper"></div>
       </div>
-    </section>
+    </div>
 
-    <!-- ==================== TAB 3: DIAGNOSTICS & TELEMETRY ==================== -->
-    <section id="tab-content-diagnostics" class="hidden space-y-6">
-      <!-- Infrastructure Info Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- WireGuard Server Card -->
-        <div class="glass-card rounded-2xl p-5 space-y-3">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i>
-              WireGuard Server Gateway
-            </h3>
-            <span class="px-2 py-0.5 text-[10px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 rounded">KERNEL NATIVE</span>
-          </div>
-          <div class="space-y-2 text-xs font-mono">
-            <div class="flex justify-between py-1 border-b border-slate-800/40">
-              <span class="text-slate-400">Server Endpoint:</span>
-              <span class="text-cyan-300 font-semibold" id="diag-server-endpoint">--</span>
-            </div>
-            <div class="flex justify-between py-1 border-b border-slate-800/40">
-              <span class="text-slate-400">Interface:</span>
-              <span class="text-white" id="diag-interface-name">wg0</span>
-            </div>
-            <div class="flex justify-between py-1 border-b border-slate-800/40">
-              <span class="text-slate-400">Server Public Key:</span>
-              <span class="text-slate-300 truncate max-w-[200px]" id="diag-server-pubkey">--</span>
-            </div>
-            <div class="flex justify-between py-1">
-              <span class="text-slate-400">Subnet Cấp Phát:</span>
-              <span class="text-emerald-400 font-semibold">10.13.37.0/24</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- MAVLink Router Card -->
-        <div class="glass-card rounded-2xl p-5 space-y-3">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <i data-lucide="radio-tower" class="w-4 h-4 text-indigo-400"></i>
-              MAVLink Telemetry Router
-            </h3>
-            <span class="px-2 py-0.5 text-[10px] font-semibold bg-indigo-950 text-indigo-400 border border-indigo-800 rounded">UDP ENDPOINT</span>
-          </div>
-          <div class="space-y-2 text-xs font-mono">
-            <div class="flex justify-between py-1 border-b border-slate-800/40">
-              <span class="text-slate-400">Target Host (VPN):</span>
-              <span class="text-indigo-300 font-semibold">10.13.37.1</span>
-            </div>
-            <div class="flex justify-between py-1 border-b border-slate-800/40">
-              <span class="text-slate-400">Target Port:</span>
-              <span class="text-white font-semibold">14550</span>
-            </div>
-            <div class="flex justify-between py-1 border-b border-slate-800/40">
-              <span class="text-slate-400">MAVLink Dialect:</span>
-              <span class="text-slate-300">ardupilotmega</span>
-            </div>
-            <div class="flex justify-between py-1">
-              <span class="text-slate-400">Default FC Baud:</span>
-              <span class="text-amber-400 font-semibold">57600</span>
-            </div>
-          </div>
-        </div>
+    <!-- TAB 5: IP MATRIX -->
+    <div id="tab-ip-pool" class="tab-content">
+      <div class="sidebar-card">
+        <div class="sidebar-title"><i class="fa-solid fa-border-all"></i> MA TRẬN 254 Ô ĐỊA CHỈ IP VPN (10.13.37.1 - 10.13.37.254)</div>
+        <div class="ip-matrix-grid" id="ip-matrix-container"></div>
       </div>
-
-      <!-- Realtime Chart -->
-      <div class="glass-card rounded-2xl p-5">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <i data-lucide="line-chart" class="w-4 h-4 text-cyan-400"></i>
-              Biểu Đồ Lưu Lượng Băng Thông Thời Gian Thực (Rx / Tx)
-            </h3>
-            <p class="text-xs text-slate-400">Dữ liệu tổng hợp từ toàn bộ các Drone đang hoạt động trong hệ thống.</p>
-          </div>
-          <span class="text-xs text-slate-400 font-mono" id="chart-timestamp">--</span>
-        </div>
-        <div class="h-64 w-full">
-          <canvas id="traffic-chart"></canvas>
-        </div>
-      </div>
-    </section>
-
-    <!-- ==================== TAB 4: QUICK SETUP & FACTORY TOKEN ==================== -->
-    <section id="tab-content-setup" class="hidden space-y-6">
-      <div class="glass-card rounded-2xl p-6 space-y-5">
-        <div>
-          <h2 class="text-base font-bold text-white flex items-center gap-2">
-            <i data-lucide="zap" class="w-5 h-5 text-amber-400"></i>
-            Cài Đặt Siêu Nhanh 1 Lệnh Duy Nhất Trên Drone (One-Liner Setup)
-          </h2>
-          <p class="text-xs text-slate-400 mt-1">Copy lệnh dưới đây và dán trực tiếp vào Terminal trên Raspberry Pi 4 để kích hoạt Zero-Touch Provisioning:</p>
-        </div>
-
-        <!-- 1-Liner Command Box -->
-        <div class="bg-slate-950 rounded-xl p-4 border border-slate-800 relative group">
-          <pre class="text-xs font-mono text-cyan-300 whitespace-pre-wrap break-all select-all leading-relaxed" id="one-liner-code">sudo apt update && sudo apt install -y wireguard-tools jq curl && sudo mkdir -p /opt/drone && sudo curl -fsSL https://raw.githubusercontent.com/KhuongVAnh/VDT-provisioning-service/main/provisioning-api/config/drone-onboard.service -o /etc/systemd/system/drone-onboard.service && sudo systemctl daemon-reload && sudo systemctl enable --now drone-onboard.service</pre>
-          <button onclick="copyToClipboard(document.getElementById('one-liner-code').innerText, 'Đã copy lệnh 1-Liner vào Clipboard!')" class="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white flex items-center gap-1.5 transition">
-            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-            <span>Copy</span>
-          </button>
-        </div>
-
-        <!-- Factory Secret Token Box -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-semibold text-slate-400">Factory Provision Secret Token:</span>
-              <button onclick="toggleTokenVisibility()" class="text-xs text-cyan-400 hover:underline flex items-center gap-1">
-                <i data-lucide="eye" id="token-eye-icon" class="w-3.5 h-3.5"></i>
-                <span id="token-toggle-text">Hiện</span>
-              </button>
-            </div>
-            <div class="flex items-center justify-between gap-2 font-mono text-sm">
-              <span id="factory-token-display" class="text-amber-400 font-bold tracking-wider">••••••••••••••••••••</span>
-              <button onclick="copyFactoryToken()" class="text-slate-400 hover:text-white p-1">
-                <i data-lucide="copy" class="w-4 h-4"></i>
-              </button>
-            </div>
-          </div>
-
-          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
-            <span class="text-xs font-semibold text-slate-400">Cloud Register API Endpoint:</span>
-            <div class="flex items-center justify-between gap-2 font-mono text-xs">
-              <span class="text-slate-300" id="api-register-url">POST /api/v1/provisioning/register</span>
-              <button onclick="copyToClipboard('http://' + window.location.host + '/api/v1/provisioning/register', 'Đã copy API URL!')" class="text-slate-400 hover:text-white p-1">
-                <i data-lucide="copy" class="w-4 h-4"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+    </div>
 
   </main>
 
-  <!-- ==================== CONFIRMATION MODAL ==================== -->
-  <div id="confirm-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4">
-    <div class="glass-card rounded-2xl max-w-md w-full p-6 space-y-4 border border-slate-700 shadow-2xl">
-      <div class="flex items-center gap-3">
-        <div id="modal-icon-container" class="w-10 h-10 rounded-xl bg-rose-950/60 border border-rose-800/60 flex items-center justify-center text-rose-400">
-          <i data-lucide="alert-triangle" class="w-5 h-5"></i>
-        </div>
-        <div>
-          <h3 id="modal-title" class="text-base font-bold text-white">Xác nhận thao tác</h3>
-          <p id="modal-desc" class="text-xs text-slate-400">Bạn có chắc chắn muốn thực hiện?</p>
-        </div>
-      </div>
-      <p id="modal-body-text" class="text-xs text-slate-300 leading-relaxed font-mono bg-slate-950/80 p-3 rounded-lg border border-slate-800"></p>
-      <div class="flex justify-end gap-2.5 pt-2">
-        <button onclick="closeModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition">Hủy bỏ</button>
-        <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white transition">Xác nhận</button>
-      </div>
-    </div>
-  </div>
+  <!-- SCRIPTS -->
+  <!-- Socket.io -->
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Xterm.js & FitAddon -->
+  <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 
-  <!-- ==================== TOAST NOTIFICATION CONTAINER ==================== -->
-  <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
-
-  <!-- ==================== JAVASCRIPT APPLICATION LOGIC ==================== -->
   <script>
-    // App State
-    let currentTab = 'fleet';
-    let pollingInterval = 5000;
-    let pollingTimer = null;
-    let cachedFleet = [];
-    let rawFactoryToken = '';
-    let isTokenVisible = false;
-    let trafficHistory = { labels: [], rx: [], tx: [] };
-    let trafficChart = null;
+    // --- GLOBAL VARIABLES ---
+    let map = null;
+    let droneMarkers = {};
+    let droneFlightTrails = {};
+    let activeDroneId = null;
+    let fleetDevices = [];
+    let socket = null;
+    let term = null;
+    let fitAddon = null;
 
-    // Initialize App
-    document.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
-      initChart();
-      fetchDashboardData(true);
-      startPolling();
-    });
-
-    // Switch Tabs
+    // --- TAB SWITCHING ---
     function switchTab(tabId) {
-      currentTab = tabId;
-      ['fleet', 'matrix', 'diagnostics', 'setup'].forEach(t => {
-        const content = document.getElementById(`tab-content-${t}`);
-        const btn = document.getElementById(`tab-btn-${t}`);
-        if (t === tabId) {
-          content.classList.remove('hidden');
-          btn.className = "tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition bg-cyan-600 text-white shadow-lg shadow-cyan-600/20";
-        } else {
-          content.classList.add('hidden');
-          btn.className = "tab-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition text-slate-400 hover:text-white hover:bg-slate-800";
-        }
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+
+      const target = document.getElementById(tabId);
+      if (target) target.classList.add('active');
+
+      const btn = Array.from(document.querySelectorAll('.nav-tab')).find(b => b.getAttribute('onclick')?.includes(tabId));
+      if (btn) btn.classList.add('active');
+
+      if (tabId === 'tab-tactical' && map) {
+        setTimeout(() => map.invalidateSize(), 150);
+      }
+      if (tabId === 'tab-terminal') {
+        setTimeout(() => fitTerminal(), 150);
+      }
+    }
+
+    // --- MAP INITIALIZATION ---
+    function initTacticalMap() {
+      if (map) return;
+      // Khởi tạo bản đồ tại khu vực Hà Nội (21.0055, 105.8431)
+      map = L.map('tactical-map', { zoomControl: true }).setView([21.005512, 105.843120], 15);
+
+      // Sử dụng CartoDB Dark Matter Tiles để hiển thị nền tối phong cách Aerospace
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; CartoDB &copy; OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+    }
+
+    // Tạo SVG Custom Icon cho Drone xoay theo Heading
+    function createDroneIcon(headingDeg, isArmed) {
+      const color = isArmed ? '#10b981' : '#38bdf8';
+      const svg = `
+        <div style="transform: rotate(${headingDeg}deg); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 6px ${color});">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="${color}">
+            <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+          </svg>
+        </div>
+      `;
+      return L.divIcon({
+        html: svg,
+        className: 'drone-custom-marker',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
       });
-      lucide.createIcons();
-      if (tabId === 'matrix') fetchIpMatrix();
     }
 
-    // Polling Mechanism
-    function startPolling() {
-      if (pollingTimer) clearInterval(pollingTimer);
-      if (pollingInterval > 0) {
-        pollingTimer = setInterval(() => fetchDashboardData(false), pollingInterval);
+    // --- WEBSOCKET CONNECTION ---
+    function initWebSocket() {
+      const host = window.location.host;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      
+      socket = io({
+        transports: ['websocket', 'polling']
+      });
+
+      socket.on('connect', () => {
+        document.getElementById('ws-status-text').innerText = 'WEBSOCKET LIVE';
+        document.getElementById('ws-status-text').style.color = '#10b981';
+      });
+
+      socket.on('disconnect', () => {
+        document.getElementById('ws-status-text').innerText = 'OFFLINE (RECONNECTING)';
+        document.getElementById('ws-status-text').style.color = '#ef4444';
+      });
+
+      // Nhận luồng Telemetry thời gian thực
+      socket.on('telemetry:update', (telemetry) => {
+        handleIncomingTelemetry(telemetry);
+      });
+
+      // Nhận dữ liệu SSH
+      socket.on('ssh:data', (data) => {
+        if (term) term.write(data);
+      });
+
+      socket.on('ssh:status', (statusData) => {
+        document.getElementById('ssh-status-info').innerText = `Trạng thái: ${statusData.message || statusData.status}`;
+      });
+    }
+
+    // --- XỬ LÝ GÓI TIN TELEMETRY VÀO BẢN ĐỒ & HUD ---
+    function handleIncomingTelemetry(t) {
+      if (!t || !t.deviceId) return;
+
+      const lat = t.gps?.lat || 0;
+      const lon = t.gps?.lon || 0;
+      const heading = t.gps?.headingDeg || 0;
+
+      // 1. Cập nhật Marker trên bản đồ
+      if (lat !== 0 && lon !== 0 && map) {
+        if (!droneMarkers[t.deviceId]) {
+          const marker = L.marker([lat, lon], {
+            icon: createDroneIcon(heading, t.armed)
+          }).addTo(map);
+
+          marker.bindTooltip(`<b>${t.deviceId}</b><br>Mode: ${t.flightMode}<br>Alt: ${t.gps?.altRelativeM?.toFixed(1)}m`, {
+            permanent: false,
+            direction: 'top'
+          });
+
+          marker.on('click', () => {
+            selectDroneForHud(t.deviceId);
+          });
+
+          droneMarkers[t.deviceId] = marker;
+          droneFlightTrails[t.deviceId] = L.polyline([[lat, lon]], { color: '#38bdf8', weight: 2, opacity: 0.6 }).addTo(map);
+        } else {
+          droneMarkers[t.deviceId].setLatLng([lat, lon]);
+          droneMarkers[t.deviceId].setIcon(createDroneIcon(heading, t.armed));
+
+          // Thêm điểm vào vết bay (giữ tối đa 150 điểm)
+          const trail = droneFlightTrails[t.deviceId];
+          if (trail) {
+            const points = trail.getLatLngs();
+            points.push([lat, lon]);
+            if (points.length > 150) points.shift();
+            trail.setLatLngs(points);
+          }
+        }
+      }
+
+      // 2. Cập nhật HUD nếu là drone đang chọn
+      if (!activeDroneId || activeDroneId === t.deviceId) {
+        if (!activeDroneId) activeDroneId = t.deviceId;
+        updateHudDisplay(t);
       }
     }
 
-    function changePollingInterval(val) {
-      pollingInterval = parseInt(val, 10);
-      startPolling();
-      showToast('success', `Đã đổi chu kỳ cập nhật: ${pollingInterval > 0 ? pollingInterval/1000 + ' giây' : 'Tắt'}`);
+    // --- CẬP NHẬT GIAO DIỆN HUD BAY ---
+    function updateHudDisplay(t) {
+      document.getElementById('hud-device-id').innerText = t.deviceId;
+      document.getElementById('hud-flight-mode').innerText = t.flightMode || 'UNKNOWN';
+      document.getElementById('hud-armed-status').innerText = t.armed ? 'ARMED' : 'DISARMED';
+      document.getElementById('hud-armed-status').style.color = t.armed ? '#10b981' : '#94a3b8';
+
+      const batt = t.battery?.percentage ?? '--';
+      document.getElementById('hud-battery').innerText = `${batt}%`;
+      document.getElementById('hud-altitude').innerText = `${(t.gps?.altRelativeM || 0).toFixed(1)} m`;
+      document.getElementById('hud-speed').innerText = `${(t.gps?.groundSpeedMs || 0).toFixed(1)} m/s`;
+      document.getElementById('hud-heading').innerText = `${Math.round(t.gps?.headingDeg || 0).toString().padStart(3, '0')}°`;
+
+      const roll = t.attitude?.rollDeg || 0;
+      const pitch = t.attitude?.pitchDeg || 0;
+      const yaw = t.attitude?.yawDeg || 0;
+      document.getElementById('hud-angles').innerText = `${roll.toFixed(1)}° / ${pitch.toFixed(1)}°`;
+
+      // Cập nhật Artificial Horizon (Xoay theo Roll và Dịch chuyển theo Pitch)
+      const miniHorizon = document.getElementById('mini-horizon-sphere');
+      const largeHorizon = document.getElementById('large-horizon-sphere');
+
+      const pitchOffsetMini = pitch * 1.5;
+      const pitchOffsetLarge = pitch * 2.2;
+
+      if (miniHorizon) miniHorizon.style.transform = `rotate(${-roll}deg) translateY(${pitchOffsetMini}px)`;
+      if (largeHorizon) largeHorizon.style.transform = `rotate(${-roll}deg) translateY(${pitchOffsetLarge}px)`;
+
+      // Large HUD tab metrics
+      if (document.getElementById('hud-large-roll')) {
+        document.getElementById('hud-large-roll').innerText = `${roll.toFixed(1)}°`;
+        document.getElementById('hud-large-pitch').innerText = `${pitch.toFixed(1)}°`;
+        document.getElementById('hud-large-yaw').innerText = `${Math.round(yaw).toString().padStart(3, '0')}°`;
+
+        document.getElementById('hud-vfr-airspeed').innerText = `${(t.vfrHud?.airspeedMs || 0).toFixed(1)} m/s`;
+        document.getElementById('hud-vfr-climb').innerText = `${(t.vfrHud?.climbRateMs || 0).toFixed(1)} m/s`;
+        document.getElementById('hud-vfr-throttle').innerText = `${t.vfrHud?.throttlePct || 0}%`;
+        document.getElementById('hud-vfr-alt-msl').innerText = `${(t.gps?.altMslM || 0).toFixed(1)} m`;
+        document.getElementById('hud-vfr-voltage').innerText = `${((t.battery?.voltageMv || 0) / 1000).toFixed(2)} V`;
+        document.getElementById('hud-vfr-current').innerText = `${((t.battery?.currentCa || 0) / 100).toFixed(1)} A`;
+      }
     }
 
-    // Fetch Dashboard Data
-    async function fetchDashboardData(showSpin = false) {
-      const refreshIcon = document.getElementById('refresh-icon');
-      if (showSpin && refreshIcon) refreshIcon.classList.add('animate-spin');
-
+    // --- DATA FETCHING & API CALLS ---
+    async function refreshAllData() {
       try {
-        const [statsRes, fleetRes, configRes] = await Promise.all([
-          fetch('/api/v1/dashboard/stats').then(r => r.json()),
-          fetch('/api/v1/dashboard/devices').then(r => r.json()),
-          fetch('/api/v1/dashboard/config').then(r => r.json()),
-        ]);
-
-        if (statsRes.status === 'success') renderKPIs(statsRes.data);
-        if (fleetRes.status === 'success') {
-          cachedFleet = fleetRes.data;
-          renderFleetTable(cachedFleet);
+        // 1. Fetch Dashboard Stats
+        const statsRes = await fetch('/api/v1/dashboard/stats');
+        const statsJson = await statsRes.json();
+        if (statsJson.status === 'success') {
+          const d = statsJson.data;
+          document.getElementById('kpi-total-devices').innerText = d.devices?.total || 0;
+          document.getElementById('kpi-active-pending').innerText = `${d.devices?.active || 0} Active • ${d.devices?.pending || 0} Pending`;
+          document.getElementById('kpi-online-count').innerText = d.devices?.onlineNow || 0;
+          document.getElementById('kpi-ip-usage').innerText = `${d.ipPool?.utilizationPercentage || 0}%`;
+          document.getElementById('kpi-ip-counts').innerText = `${d.ipPool?.usedCount || 0} / ${d.ipPool?.totalCapacity || 253} IP`;
         }
-        if (configRes.status === 'success') renderConfig(configRes.data);
 
-        if (currentTab === 'matrix') fetchIpMatrix();
+        // 2. Fetch Fleet List
+        const fleetRes = await fetch('/api/v1/telemetry/fleet/states');
+        const fleetJson = await fleetRes.json();
+        if (fleetJson.status === 'success') {
+          fleetDevices = fleetJson.data || [];
+          renderFleetTable(fleetDevices);
+          populateDroneDropdowns(fleetDevices);
+        }
+
+        // 3. Fetch IP Matrix
+        const ipRes = await fetch('/api/v1/dashboard/ip-pool');
+        const ipJson = await ipRes.json();
+        if (ipJson.status === 'success') {
+          renderIpMatrix(ipJson.data || []);
+        }
       } catch (err) {
-        console.error('Lỗi tải dữ liệu Dashboard:', err);
-      } finally {
-        if (showSpin && refreshIcon) {
-          setTimeout(() => refreshIcon.classList.remove('animate-spin'), 400);
-        }
+        console.error('Lỗi khi tải dữ liệu:', err);
       }
     }
 
-    // Render KPI Cards
-    function renderKPIs(stats) {
-      document.getElementById('kpi-total-devices').innerText = stats.devices.total;
-      document.getElementById('kpi-active-sub').innerText = `${stats.devices.active} Active`;
-      document.getElementById('kpi-revoked-sub').innerText = `${stats.devices.revoked} Revoked`;
-      document.getElementById('kpi-online-now').innerText = stats.devices.onlineNow;
-
-      document.getElementById('badge-fleet-count').innerText = stats.devices.total;
-
-      const utilPct = stats.ipPool.utilizationPercentage || 0;
-      document.getElementById('kpi-ip-usage').innerText = `${utilPct}%`;
-      document.getElementById('kpi-ip-progress').style.width = `${Math.min(utilPct, 100)}%`;
-      document.getElementById('kpi-ip-used-count').innerText = `Đã cấp: ${stats.ipPool.usedCount}`;
-      document.getElementById('kpi-ip-avail-count').innerText = `Trống: ${stats.ipPool.availableCount} / 253`;
-
-      const totalBytes = stats.wireguard.totalRxBytes + stats.wireguard.totalTxBytes;
-      document.getElementById('kpi-total-traffic').innerText = formatBytes(totalBytes);
-      document.getElementById('kpi-rx-traffic').innerText = `Rx: ${formatBytes(stats.wireguard.totalRxBytes)}`;
-      document.getElementById('kpi-tx-traffic').innerText = `Tx: ${formatBytes(stats.wireguard.totalTxBytes)}`;
-
-      // Update Diagnostics
-      document.getElementById('diag-server-endpoint').innerText = stats.wireguard.endpoint || '--';
-      document.getElementById('diag-server-pubkey').innerText = stats.wireguard.publicKey || '--';
-      document.getElementById('diag-server-pubkey').title = stats.wireguard.publicKey || '';
-
-      // Update Chart
-      updateTrafficChart(stats.wireguard.totalRxBytes, stats.wireguard.totalTxBytes);
-    }
-
-    // Render Fleet Table
     function renderFleetTable(devices) {
       const tbody = document.getElementById('fleet-table-body');
-      const search = (document.getElementById('fleet-search-input').value || '').toLowerCase();
-      const statusFilter = document.getElementById('fleet-status-filter').value;
-
-      const filtered = devices.filter(d => {
-        const matchSearch = d.deviceId.toLowerCase().includes(search) ||
-                            (d.vpnIp && d.vpnIp.includes(search)) ||
-                            (d.hardwareModel && d.hardwareModel.toLowerCase().includes(search));
-        if (!matchSearch) return false;
-
-        if (statusFilter === 'ONLINE') return d.isOnline;
-        if (statusFilter === 'ACTIVE') return d.status === 'ACTIVE';
-        if (statusFilter === 'REVOKED') return d.status === 'REVOKED';
-        return true;
-      });
-
-      if (filtered.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="7" class="text-center py-10 text-slate-500 font-sans">
-              <i data-lucide="radar" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
-              Không tìm thấy Drone nào khớp với điều kiện lọc.
-            </td>
-          </tr>`;
-        lucide.createIcons();
+      if (!devices || devices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">Chưa có Drone nào trong hệ thống.</td></tr>';
         return;
       }
 
-      tbody.innerHTML = filtered.map(d => {
-        let statusBadge = '';
-        if (d.status === 'REVOKED') {
-          statusBadge = `<span class="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-rose-950/80 text-rose-400 border border-rose-800">REVOKED</span>`;
-        } else if (d.isOnline) {
-          statusBadge = `<span class="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800 flex items-center gap-1.5 w-fit"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span>ONLINE</span>`;
-        } else {
-          statusBadge = `<span class="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">STANDBY</span>`;
-        }
+      tbody.innerHTML = devices.map(d => {
+        const t = d.telemetry || {};
+        const isOnline = t.connected || false;
+        const statusBadge = d.status === 'ACTIVE' 
+          ? '<span class="badge badge-active">ACTIVE</span>'
+          : (d.status === 'REVOKED' ? '<span class="badge badge-revoked">REVOKED</span>' : '<span class="badge badge-pending">PENDING</span>');
 
-        const formattedHandshake = d.latestHandshake > 0 ? formatTimeAgo(d.latestHandshake) : 'Chưa kết nối';
-        const formattedVpnIp = d.vpnIp ? `<span class="text-cyan-400 font-semibold">${d.vpnIp}</span>` : '<span class="text-slate-600">None</span>';
-        const shortKey = d.vpnPublicKey ? `${d.vpnPublicKey.substring(0, 8)}...${d.vpnPublicKey.substring(d.vpnPublicKey.length - 4)}` : '--';
+        const liveBadge = isOnline
+          ? '<span style="color: #34d399; font-weight: 600;"><i class="fa-solid fa-circle-dot"></i> ' + (t.flightMode || 'ONLINE') + '</span>'
+          : '<span style="color: #64748b;"><i class="fa-regular fa-circle"></i> OFFLINE</span>';
 
         return `
-          <tr class="hover:bg-slate-800/40 transition">
-            <td class="py-3 px-4">
-              <div class="font-bold text-white flex items-center gap-1.5">
-                <span>${d.deviceId}</span>
-                <button onclick="copyToClipboard('${d.deviceId}', 'Đã copy Device ID!')" class="text-slate-500 hover:text-cyan-400 p-0.5"><i data-lucide="copy" class="w-3 h-3"></i></button>
+          <tr>
+            <td style="font-family: 'JetBrains Mono'; font-weight: 700; color: var(--accent);">${d.deviceId}</td>
+            <td>${d.hardwareModel || '--'}</td>
+            <td style="font-family: 'JetBrains Mono';">${d.vpnIp || '<i style="color:#64748b">None</i>'}</td>
+            <td>${statusBadge}</td>
+            <td>${liveBadge}</td>
+            <td style="font-family: 'JetBrains Mono'; color: #34d399;">${t.battery?.percentage ?? '--'}%</td>
+            <td style="font-family: 'JetBrains Mono';">${(t.gps?.altRelativeM || 0).toFixed(1)}m</td>
+            <td>
+              <div style="display: flex; gap: 0.35rem;">
+                <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="selectDroneForHud('${d.deviceId}')" title="Xem trên HUD/Bản đồ"><i class="fa-solid fa-crosshairs"></i></button>
+                <button class="btn btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="openSshForDrone('${d.deviceId}')" title="Mở Web SSH"><i class="fa-solid fa-terminal"></i></button>
+                ${d.status === 'ACTIVE' 
+                  ? `<button class="btn btn-danger" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="revokeDrone('${d.deviceId}')" title="Khóa Drone"><i class="fa-solid fa-ban"></i></button>`
+                  : `<button class="btn btn-success" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="reactivateDrone('${d.deviceId}')" title="Mở khóa"><i class="fa-solid fa-unlock"></i></button>`}
               </div>
-              <div class="text-[10px] text-slate-400 font-sans mt-0.5">${d.hardwareModel || 'Raspberry Pi 4'}</div>
-            </td>
-            <td class="py-3 px-4">${statusBadge}</td>
-            <td class="py-3 px-4">${formattedVpnIp}</td>
-            <td class="py-3 px-4">
-              <span title="${d.vpnPublicKey}" class="text-slate-400 cursor-help">${shortKey}</span>
-            </td>
-            <td class="py-3 px-4">
-              <div class="text-slate-300">${formattedHandshake}</div>
-              <div class="text-[10px] text-slate-500">${d.endpoint || '(Chưa có IP ngoài)'}</div>
-            </td>
-            <td class="py-3 px-4">
-              <div class="text-cyan-300">↓ ${formatBytes(d.transferRx)}</div>
-              <div class="text-indigo-300">↑ ${formatBytes(d.transferTx)}</div>
-            </td>
-            <td class="py-3 px-4 text-right space-x-1.5 font-sans">
-              ${d.status === 'ACTIVE' 
-                ? `<button onclick="confirmAction('revoke', '${d.deviceId}')" class="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-[11px] font-medium transition">Khóa</button>`
-                : `<button onclick="confirmAction('reactivate', '${d.deviceId}')" class="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 text-[11px] font-medium transition">Mở Khóa</button>`
-              }
-              <button onclick="confirmAction('delete', '${d.deviceId}')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 text-[11px] transition" title="Xóa"><i data-lucide="trash-2" class="w-3 h-3 inline"></i></button>
             </td>
           </tr>
         `;
       }).join('');
-
-      lucide.createIcons();
     }
 
-    function applyFleetFilter() {
-      renderFleetTable(cachedFleet);
+    function renderIpMatrix(cells) {
+      const container = document.getElementById('ip-matrix-container');
+      container.innerHTML = cells.map(c => {
+        let cls = 'available';
+        let tooltip = `IP: ${c.ip} (Trống)`;
+        if (c.status === 'gateway') {
+          cls = 'gateway';
+          tooltip = `IP: ${c.ip} (WireGuard Gateway)`;
+        } else if (c.status === 'active') {
+          cls = c.isOnline ? 'active-online' : 'active-offline';
+          tooltip = `IP: ${c.ip} (${c.deviceId || 'Active'}) - ${c.isOnline ? 'Online' : 'Offline'}`;
+        }
+        return `<div class="ip-cell ${cls}" title="${tooltip}">.${c.hostNumber}</div>`;
+      }).join('');
     }
 
-    // Fetch and Render IP Matrix (254 cells)
-    async function fetchIpMatrix() {
-      try {
-        const res = await fetch('/api/v1/dashboard/ip-pool').then(r => r.json());
-        if (res.status !== 'success') return;
+    function populateDroneDropdowns(devices) {
+      const mapSelect = document.getElementById('map-drone-select');
+      const sshSelect = document.getElementById('ssh-drone-select');
 
-        const container = document.getElementById('ip-grid-container');
-        container.innerHTML = res.data.map(cell => {
-          let bgClass = 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600';
-          let title = `IP: ${cell.ip} (Trống)`;
+      const optionsHtml = '<option value="all">-- Theo dõi toàn bộ Drone --</option>' + 
+        devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || 'No IP'})</option>`).join('');
 
-          if (cell.status === 'gateway') {
-            bgClass = 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-sm shadow-amber-500/30';
-            title = `Gateway Server: ${cell.ip}`;
-          } else if (cell.status === 'active') {
-            if (cell.isOnline) {
-              bgClass = 'bg-emerald-950/90 border-emerald-500 text-emerald-300 shadow-sm shadow-emerald-500/40';
-              title = `Online: ${cell.ip} - ${cell.deviceId} (${cell.hardwareModel})`;
-            } else {
-              bgClass = 'bg-cyan-950/80 border-cyan-600 text-cyan-300';
-              title = `Active: ${cell.ip} - ${cell.deviceId}`;
-            }
-          }
+      const sshOptionsHtml = '<option value="">-- Chọn Drone để SSH --</option>' + 
+        devices.filter(d => d.vpnIp).map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp})</option>`).join('');
 
-          return `
-            <div title="${title}" class="h-9 rounded-lg border flex flex-col items-center justify-center font-bold cursor-pointer transition transform hover:scale-110 ${bgClass}">
-              <span class="text-[10px]">.${cell.hostNumber}</span>
-            </div>
-          `;
-        }).join('');
-      } catch (err) {
-        console.error('Lỗi tải IP Matrix:', err);
+      if (mapSelect) mapSelect.innerHTML = optionsHtml;
+      if (sshSelect) sshSelect.innerHTML = sshOptionsHtml;
+    }
+
+    function selectDroneForHud(deviceId) {
+      activeDroneId = deviceId;
+      const drone = fleetDevices.find(d => d.deviceId === deviceId);
+      if (drone && drone.telemetry) {
+        updateHudDisplay(drone.telemetry);
+      }
+      switchTab('tab-tactical');
+    }
+
+    function focusDroneOnMap(deviceId) {
+      if (deviceId === 'all') {
+        fitAllDronesOnMap();
+        return;
+      }
+      activeDroneId = deviceId;
+      const marker = droneMarkers[deviceId];
+      if (marker && map) {
+        map.setView(marker.getLatLng(), 17);
       }
     }
 
-    // Render Config
-    function renderConfig(cfg) {
-      rawFactoryToken = cfg.provisionSecretToken || '';
-      document.getElementById('api-register-url').innerText = `POST http://${window.location.host}/api/v1/provisioning/register`;
+    function fitAllDronesOnMap() {
+      const markers = Object.values(droneMarkers);
+      if (markers.length > 0 && map) {
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.2));
+      }
     }
 
-    function toggleTokenVisibility() {
-      isTokenVisible = !isTokenVisible;
-      const display = document.getElementById('factory-token-display');
-      const text = document.getElementById('token-toggle-text');
-      const icon = document.getElementById('token-eye-icon');
+    // --- ACTIONS: REVOKE / REACTIVATE ---
+    async function revokeDrone(deviceId) {
+      if (!confirm(`Bạn có chắc muốn KHÓA quyền truy cập của Drone ${deviceId}?`)) return;
+      try {
+        await fetch(`/api/v1/dashboard/devices/${deviceId}/revoke`, { method: 'POST' });
+        refreshAllData();
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    }
 
-      if (isTokenVisible) {
-        display.innerText = rawFactoryToken;
-        text.innerText = 'Ẩn';
-        icon.setAttribute('data-lucide', 'eye-off');
+    async function reactivateDrone(deviceId) {
+      try {
+        await fetch(`/api/v1/dashboard/devices/${deviceId}/reactivate`, { method: 'POST' });
+        refreshAllData();
+      } catch (err) {
+        alert('Lỗi: ' + err.message);
+      }
+    }
+
+    // --- WEB SSH TERMINAL ---
+    function initTerminal() {
+      if (term) return;
+      const wrapper = document.getElementById('terminal-wrapper');
+      term = new Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', monospace",
+        theme: {
+          background: '#090d16',
+          foreground: '#f8fafc',
+          cursor: '#38bdf8',
+          selection: 'rgba(56, 189, 248, 0.3)'
+        }
+      });
+      fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(wrapper);
+      fitAddon.fit();
+
+      term.onData((data) => {
+        if (socket) {
+          socket.emit('ssh:input', { data });
+        }
+      });
+
+      window.addEventListener('resize', () => fitTerminal());
+    }
+
+    function fitTerminal() {
+      if (fitAddon && term) {
+        fitAddon.fit();
+        if (socket) {
+          socket.emit('ssh:resize', { cols: term.cols, rows: term.rows });
+        }
+      }
+    }
+
+    function openSshForDrone(deviceId) {
+      const select = document.getElementById('ssh-drone-select');
+      if (select) select.value = deviceId;
+      switchTab('tab-terminal');
+      connectWebSsh();
+    }
+
+    function openWebSshForSelectedDrone() {
+      if (activeDroneId) {
+        openSshForDrone(activeDroneId);
       } else {
-        display.innerText = '••••••••••••••••••••';
-        text.innerText = 'Hiện';
-        icon.setAttribute('data-lucide', 'eye');
-      }
-      lucide.createIcons();
-    }
-
-    function copyFactoryToken() {
-      if (!rawFactoryToken) return;
-      copyToClipboard(rawFactoryToken, 'Đã copy Factory Secret Token!');
-    }
-
-    // Modal Confirmation Actions
-    let pendingAction = null;
-
-    function confirmAction(action, deviceId) {
-      pendingAction = { action, deviceId };
-      const modal = document.getElementById('confirm-modal');
-      const title = document.getElementById('modal-title');
-      const desc = document.getElementById('modal-desc');
-      const body = document.getElementById('modal-body-text');
-      const confirmBtn = document.getElementById('modal-confirm-btn');
-
-      if (action === 'revoke') {
-        title.innerText = 'Xác nhận Thu Hồi (Khóa Drone)';
-        desc.innerText = 'Cắt đứt kết nối VPN và thu hồi IP về Pool.';
-        body.innerText = `Thiết bị: ${deviceId}\nThao tác: Gỡ peer khỏi WireGuard kernel và chuyển trạng thái sang REVOKED.`;
-        confirmBtn.className = 'px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white transition';
-        confirmBtn.innerText = 'Khóa Drone Ngay';
-      } else if (action === 'reactivate') {
-        title.innerText = 'Xác nhận Mở Khóa (Kích hoạt lại)';
-        desc.innerText = 'Cấp địa chỉ IP mới và nạp lại vào WireGuard.';
-        body.innerText = `Thiết bị: ${deviceId}\nThao tác: Cấp IP mới từ IP Pool và nạp lại peer vào kernel.`;
-        confirmBtn.className = 'px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition';
-        confirmBtn.innerText = 'Mở Khóa Thiết Bị';
-      } else if (action === 'delete') {
-        title.innerText = 'Xác nhận Xóa Vĩnh Viễn';
-        desc.innerText = 'Xóa toàn bộ bản ghi khỏi Database.';
-        body.innerText = `Thiết bị: ${deviceId}\nHành động này không thể hoàn tác!`;
-        confirmBtn.className = 'px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-xs font-semibold text-white transition';
-        confirmBtn.innerText = 'Xóa Vĩnh Viễn';
-      }
-
-      confirmBtn.onclick = executePendingAction;
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-    }
-
-    function closeModal() {
-      const modal = document.getElementById('confirm-modal');
-      modal.classList.add('hidden');
-      modal.classList.remove('flex');
-      pendingAction = null;
-    }
-
-    async function executePendingAction() {
-      if (!pendingAction) return;
-      const { action, deviceId } = pendingAction;
-      closeModal();
-
-      try {
-        let res;
-        if (action === 'revoke') {
-          res = await fetch(`/api/v1/dashboard/devices/${deviceId}/revoke`, { method: 'POST' }).then(r => r.json());
-        } else if (action === 'reactivate') {
-          res = await fetch(`/api/v1/dashboard/devices/${deviceId}/reactivate`, { method: 'POST' }).then(r => r.json());
-        } else if (action === 'delete') {
-          res = await fetch(`/api/v1/dashboard/devices/${deviceId}`, { method: 'DELETE' }).then(r => r.json());
-        }
-
-        if (res && res.status === 'success') {
-          showToast('success', res.message || 'Thao tác thành công!');
-          fetchDashboardData(true);
-        } else {
-          showToast('error', res.message || 'Có lỗi xảy ra!');
-        }
-      } catch (err) {
-        showToast('error', 'Lỗi mạng khi thực hiện thao tác!');
+        switchTab('tab-terminal');
       }
     }
 
-    // Chart.js Live Throughput Telemetry
-    function initChart() {
-      const ctx = document.getElementById('traffic-chart').getContext('2d');
-      trafficChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: [],
-          datasets: [
-            {
-              label: 'Download (Rx Bytes)',
-              borderColor: '#06b6d4',
-              backgroundColor: 'rgba(6, 182, 212, 0.1)',
-              borderWidth: 2,
-              fill: true,
-              tension: 0.3,
-              data: [],
-            },
-            {
-              label: 'Upload (Tx Bytes)',
-              borderColor: '#6366f1',
-              backgroundColor: 'rgba(99, 102, 241, 0.1)',
-              borderWidth: 2,
-              fill: true,
-              tension: 0.3,
-              data: [],
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
-          scales: {
-            x: { grid: { color: 'rgba(30, 41, 59, 0.5)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-            y: { grid: { color: 'rgba(30, 41, 59, 0.5)' }, ticks: { color: '#94a3b8', font: { size: 10 } } }
-          },
-          plugins: {
-            legend: { labels: { color: '#e2e8f0', font: { size: 11 } } }
-          }
-        }
-      });
-    }
+    function connectWebSsh() {
+      const deviceId = document.getElementById('ssh-drone-select').value;
+      const username = document.getElementById('ssh-username').value || 'root';
+      const password = document.getElementById('ssh-password').value || '';
 
-    function updateTrafficChart(rx, tx) {
-      if (!trafficChart) return;
-      const now = new Date().toLocaleTimeString();
-
-      trafficChart.data.labels.push(now);
-      trafficChart.data.datasets[0].data.push(rx);
-      trafficChart.data.datasets[1].data.push(tx);
-
-      if (trafficChart.data.labels.length > 12) {
-        trafficChart.data.labels.shift();
-        trafficChart.data.datasets[0].data.shift();
-        trafficChart.data.datasets[1].data.shift();
+      if (!deviceId) {
+        alert('Vui lòng chọn Drone cần SSH!');
+        return;
       }
 
-      trafficChart.update();
-      document.getElementById('chart-timestamp').innerText = `Cập nhật lúc: ${now}`;
+      initTerminal();
+      term.clear();
+      term.writeln(`\x1b[36m>>> Đang khởi tạo kết nối SSH tới ${deviceId}... (User: ${username})\x1b[0m\r\n`);
+
+      if (socket) {
+        socket.emit('ssh:connect', {
+          deviceId,
+          username,
+          password,
+          cols: term.cols,
+          rows: term.rows
+        });
+      }
     }
 
-    // Toast Notification System
-    function showToast(type, message) {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      const bg = type === 'success' ? 'bg-emerald-950/90 border-emerald-700 text-emerald-300' : 'bg-rose-950/90 border-rose-700 text-rose-300';
-      const icon = type === 'success' ? 'check-circle' : 'alert-circle';
-
-      toast.className = `flex items-center gap-2.5 px-4 py-3 rounded-xl border backdrop-blur-md text-xs font-semibold shadow-2xl transition duration-300 transform translate-y-2 pointer-events-auto ${bg}`;
-      toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i><span>${message}</span>`;
-      container.appendChild(toast);
-      lucide.createIcons();
-
-      setTimeout(() => {
-        toast.classList.add('opacity-0', 'translate-x-4');
-        setTimeout(() => toast.remove(), 300);
-      }, 3500);
+    function disconnectWebSsh() {
+      if (term) {
+        term.writeln('\r\n\x1b[31m>>> Đã ngắt kết nối SSH.\x1b[0m\r\n');
+      }
+      if (socket) {
+        socket.emit('ssh:input', { data: '\x03' }); // Ctrl+C
+      }
     }
 
-    // Helper Utilities
-    function formatBytes(bytes) {
-      if (!bytes || bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    }
-
-    function formatTimeAgo(epochSec) {
-      const now = Math.floor(Date.now() / 1000);
-      const diff = Math.max(0, now - epochSec);
-      if (diff < 60) return `${diff}s trước`;
-      if (diff < 3600) return `${Math.floor(diff / 60)}m trước`;
-      return `${Math.floor(diff / 3600)}h trước`;
-    }
-
-    function copyToClipboard(text, msg) {
-      navigator.clipboard.writeText(text).then(() => {
-        showToast('success', msg || 'Đã sao chép vào Clipboard!');
-      });
-    }
+    // --- ENTRYPOINT ---
+    window.addEventListener('DOMContentLoaded', () => {
+      initTacticalMap();
+      initWebSocket();
+      refreshAllData();
+      // Polling refresh KPI mỗi 5 giây
+      setInterval(refreshAllData, 5000);
+    });
   </script>
 </body>
 </html>

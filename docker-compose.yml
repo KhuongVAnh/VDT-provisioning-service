@@ -1,0 +1,59 @@
+services:
+  # 1. Redis Cache & Pub/Sub Message Broker (Chạy tại cổng 6380 để tránh trùng cổng 6379)
+  redis:
+    image: redis:7.4-alpine
+    container_name: drone-redis
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./data/redis:/data
+    command: ["redis-server", "--appendonly", "yes", "--port", "6380"]
+
+  # 2. Go MAVLink Ingestion Service (Core Ingest Worker)
+  telemetry-ingestion:
+    build:
+      context: ./telemetry-ingestion-service
+      dockerfile: Dockerfile
+    container_name: drone-telemetry-ingestion
+    restart: unless-stopped
+    network_mode: "host"
+    depends_on:
+      - redis
+    environment:
+      # Lắng nghe tại cổng 14551 (nhận luồng chuyển tiếp từ mavlink-routerd trên VPS)
+      - UDP_LISTEN_ADDR=0.0.0.0:14551
+      - REDIS_ADDR=127.0.0.1:6380
+      - REDIS_DB=0
+      - STATE_TTL_SECONDS=30
+      - PUBLISH_INTERVAL_MS=100
+
+  # 3. NestJS API Gateway, Provisioning & Mission Control Dashboard
+  provisioning-api:
+    build:
+      context: ./provisioning-api
+      dockerfile: Dockerfile
+    container_name: drone-provisioning-api
+    restart: unless-stopped
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    depends_on:
+      - redis
+    volumes:
+      - ./data/db:/data
+      - /lib/modules:/lib/modules:ro
+    environment:
+      - PORT=10004
+      - DATABASE_URL=file:/data/provisioning.db
+      - REDIS_HOST=127.0.0.1
+      - REDIS_PORT=6380
+      - PROVISION_SECRET_TOKEN=FACTORY_SECRET_KEY_2026
+      - WG_SERVER_ENDPOINT=103.253.20.32:10006
+      - WG_SERVER_ALLOWED_IPS=10.13.37.0/24
+      - WG_SERVER_PUBLIC_KEY=YOUR_SERVER_PUBLIC_KEY
+      - MAVLINK_TARGET_HOST=10.13.37.1
+      - MAVLINK_TARGET_PORT=14550
+      - VPN_SUBNET_PREFIX=10.13.37.
+    env_file:
+      - ./provisioning-api/.env

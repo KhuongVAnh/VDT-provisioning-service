@@ -1,0 +1,11 @@
+bin
+.git
+.agents
+.windsurf
+.claude
+.gemini
+.vscode
+.idea
+.env
+*.exe
+*.log

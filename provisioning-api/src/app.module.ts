@@ -3,32 +3,42 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
 import { DeviceModule } from './device/device.module';
 import { IpPoolModule } from './ip-pool/ip-pool.module';
 import { WireguardModule } from './wireguard/wireguard.module';
 import { ProvisioningModule } from './provisioning/provisioning.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
+import { WebSshModule } from './web-ssh/web-ssh.module';
 
 /**
- * AppModule là "bảng mạch chính" của toàn bộ hệ thống.
- * Mọi module tính năng độc lập (như Device, IpPool, Wireguard, Dashboard) đều được đăng ký tại đây.
+ * AppModule là "bảng mạch chính" của toàn bộ hệ thống NestJS API Gateway & Mission Control.
+ * Mọi module tính năng (Provisioning, Device, IP Pool, WireGuard, Dashboard, Redis, Telemetry, Web SSH)
+ * đều được đăng ký và liên kết tại đây.
  */
 @Module({
   imports: [
-    // Đọc file .env và nạp các biến môi trường
+    // 1. Đọc file .env và nạp các biến môi trường toàn cục
     ConfigModule.forRoot({ isGlobal: true }),
-    // Kết nối CSDL SQLite
+    // 2. Kết nối CSDL SQLite / LibSQL
     PrismaModule,
-    // Module quản lý thực thể thiết bị
+    // 3. Kết nối Redis Server (Hashes & Pub/Sub)
+    RedisModule,
+    // 4. Module quản lý thực thể thiết bị Drone
     DeviceModule,
-    // Module cấp phát IP nội bộ
+    // 5. Module quản lý cấp phát IP VPN nội bộ
     IpPoolModule,
-    // Module giao tiếp với hệ điều hành (WireGuard)
+    // 6. Module giao tiếp Linux Kernel WireGuard
     WireguardModule,
-    // Module nghiệp vụ chính xử lý request từ Drone
+    // 7. Module nghiệp vụ cấp phát Zero-Touch Provisioning (Phase 1)
     ProvisioningModule,
-    // Module Dashboard quản trị thời gian thực
+    // 8. Module Dashboard quản trị chỉ số KPI & Đội bay
     DashboardModule,
+    // 9. Module Telemetry Stream & WebSocket Gateway (Phase 2)
+    TelemetryModule,
+    // 10. Module Web-based SSH Terminal qua VPN IP (Phase 4)
+    WebSshModule,
   ],
   controllers: [AppController],
   providers: [AppService],

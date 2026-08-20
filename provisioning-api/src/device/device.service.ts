@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { Device } from '@prisma/client';
 
 export interface CreateDeviceInput {
@@ -20,13 +21,35 @@ export interface UpdateDeviceInput {
 
 /**
  * DeviceService chịu trách nhiệm quản lý toàn bộ vòng đời thực thể Thiết bị (Device),
- * bao gồm truy vấn, tạo mới, cập nhật cấu hình VPN, xoay key, quản trị Dashboard và thu hồi thiết bị.
+ * bao gồm truy vấn, tạo mới, cập nhật cấu hình VPN, xoay key, quản trị Dashboard, thu hồi thiết bị,
+ * và tự động đồng bộ ánh xạ IP-Device vào Redis Cache (`drone:ip_map`).
  */
 @Injectable()
-export class DeviceService {
+export class DeviceService implements OnModuleInit {
   private readonly logger = new Logger(DeviceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly redisService?: RedisService,
+  ) {}
+
+  /**
+   * Khi server khởi động, đồng bộ toàn bộ ánh xạ IP -> DeviceID của các Drone đang ACTIVE vào Redis
+   */
+  async onModuleInit() {
+    if (!this.redisService) return;
+    try {
+      const activeDevices = await this.findActiveDevices();
+      for (const dev of activeDevices) {
+        if (dev.vpnIp) {
+          await this.redisService.mapIpToDevice(dev.vpnIp, dev.deviceId);
+        }
+      }
+      this.logger.log(`Đã đồng bộ ${activeDevices.length} ánh xạ IP Drone vào Redis drone:ip_map`);
+    } catch (error) {
+      this.logger.warn(`Không thể đồng bộ IP Mapping lúc khởi động: ${error.message}`);
+    }
+  }
 
   /**
    * Tìm kiếm thiết bị theo mã định danh duy nhất (CPU Serial / MAC)
@@ -97,11 +120,11 @@ export class DeviceService {
   }
 
   /**
-   * Tạo bản ghi thiết bị mới
+   * Tạo bản ghi thiết bị mới và nạp ánh xạ IP vào Redis
    */
   async createDevice(input: CreateDeviceInput): Promise<Device> {
     this.logger.log(`Tạo thiết bị mới trong Database: ${input.deviceId} với IP ${input.vpnIp}`);
-    return this.prisma.device.create({
+    const device = await this.prisma.device.create({
       data: {
         deviceId: input.deviceId,
         hardwareModel: input.hardwareModel,
@@ -110,6 +133,13 @@ export class DeviceService {
         status: input.status || 'ACTIVE',
       },
     });
+
+    // Đồng bộ ánh xạ IP vào Redis
+    if (this.redisService && input.vpnIp) {
+      await this.redisService.mapIpToDevice(input.vpnIp, input.deviceId);
+    }
+
+    return device;
   }
 
   /**
@@ -117,7 +147,7 @@ export class DeviceService {
    */
   async updateDevice(id: string, input: UpdateDeviceInput): Promise<Device> {
     this.logger.log(`Cập nhật thông tin thiết bị ID: ${id}`);
-    return this.prisma.device.update({
+    const device = await this.prisma.device.update({
       where: { id },
       data: {
         ...(input.hardwareModel && { hardwareModel: input.hardwareModel }),
@@ -127,6 +157,13 @@ export class DeviceService {
         ...(input.lastSeen && { lastSeen: input.lastSeen }),
       },
     });
+
+    // Cập nhật ánh xạ IP vào Redis
+    if (this.redisService && device.vpnIp) {
+      await this.redisService.mapIpToDevice(device.vpnIp, device.deviceId);
+    }
+
+    return device;
   }
 
   /**
@@ -134,6 +171,11 @@ export class DeviceService {
    */
   async revokeDevice(deviceId: string): Promise<Device> {
     this.logger.warn(`Thu hồi thiết bị: ${deviceId}`);
+    const existing = await this.findByDeviceId(deviceId);
+    if (existing?.vpnIp && this.redisService) {
+      await this.redisService.removeIpMapping(existing.vpnIp);
+    }
+
     return this.prisma.device.update({
       where: { deviceId },
       data: {
@@ -148,7 +190,7 @@ export class DeviceService {
    */
   async reActivateDevice(deviceId: string, newVpnIp: string): Promise<Device> {
     this.logger.log(`Kích hoạt lại thiết bị: ${deviceId} với IP mới: ${newVpnIp}`);
-    return this.prisma.device.update({
+    const device = await this.prisma.device.update({
       where: { deviceId },
       data: {
         status: 'ACTIVE',
@@ -156,6 +198,12 @@ export class DeviceService {
         lastSeen: new Date(),
       },
     });
+
+    if (this.redisService) {
+      await this.redisService.mapIpToDevice(newVpnIp, deviceId);
+    }
+
+    return device;
   }
 
   /**
@@ -163,6 +211,11 @@ export class DeviceService {
    */
   async deleteDevice(deviceId: string): Promise<Device> {
     this.logger.warn(`Xóa vĩnh viễn thiết bị: ${deviceId}`);
+    const existing = await this.findByDeviceId(deviceId);
+    if (existing?.vpnIp && this.redisService) {
+      await this.redisService.removeIpMapping(existing.vpnIp);
+    }
+
     return this.prisma.device.delete({
       where: { deviceId },
     });
