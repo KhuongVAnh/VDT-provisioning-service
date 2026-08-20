@@ -1,19 +1,22 @@
 [Unit]
-Description=Drone Zero-Touch Provisioning Agent
+Description=Drone Dynamic Onboarding & Peripheral Routing Agent
+Documentation=https://github.com/KhuongVAnh/VDT-provisioning-service
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Path to the onboard-agent.sh script
+# Tự động tải file script về nếu trên máy Pi chưa có sẵn (Self-Bootstrapping)
+ExecStartPre=/bin/sh -c 'if [ ! -f /opt/drone/onboard-agent.sh ]; then mkdir -p /opt/drone && curl -fsSL https://raw.githubusercontent.com/KhuongVAnh/VDT-provisioning-service/main/provisioning-api/scripts/onboard-agent.sh -o /opt/drone/onboard-agent.sh && chmod +x /opt/drone/onboard-agent.sh; fi'
 ExecStart=/opt/drone/onboard-agent.sh
-# Ensure it runs as root to configure network interfaces and write to /etc
+RemainAfterExit=yes
 User=root
 Group=root
 
-# Keep service enabled if it fails so it can retry next boot
+# Cơ chế tự động retry khi gặp lỗi trong quá trình khởi động
 Restart=on-failure
-RestartSec=30s
+RestartSec=15s
+TimeoutStartSec=180
 
 [Install]
 WantedBy=multi-user.target

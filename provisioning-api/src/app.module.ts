@@ -3,13 +3,14 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { DeviceModule } from './device/device.module';
 import { IpPoolModule } from './ip-pool/ip-pool.module';
 import { WireguardModule } from './wireguard/wireguard.module';
 import { ProvisioningModule } from './provisioning/provisioning.module';
 
 /**
  * AppModule là "bảng mạch chính" của toàn bộ hệ thống.
- * Mọi module tính năng độc lập (như IpPool, Wireguard) đều phải được "cắm" vào đây để chạy.
+ * Mọi module tính năng độc lập (như Device, IpPool, Wireguard) đều được đăng ký tại đây.
  */
 @Module({
   imports: [
@@ -17,6 +18,8 @@ import { ProvisioningModule } from './provisioning/provisioning.module';
     ConfigModule.forRoot({ isGlobal: true }),
     // Kết nối CSDL SQLite
     PrismaModule,
+    // Module quản lý thực thể thiết bị
+    DeviceModule,
     // Module cấp phát IP nội bộ
     IpPoolModule,
     // Module giao tiếp với hệ điều hành (WireGuard)

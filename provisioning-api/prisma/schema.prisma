@@ -10,7 +10,7 @@ model Device {
   id              String   @id @default(uuid())
   deviceId        String   @unique
   hardwareModel   String
-  vpnIp           String   @unique
+  vpnIp           String?  @unique
   vpnPublicKey    String
   // We do not store the vpnPrivateKey in the database according to requirement #3
   status          String   @default("PENDING") // PENDING, ACTIVE, REVOKED

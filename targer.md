@@ -19,7 +19,7 @@ Dự án đang xây dựng hệ thống **Drone Companion Computer thương mạ
   1. Pi 4 khởi động, kết nối mạng 5G thành công.
   2. Script chạy nền tự động đọc mã định danh duy nhất của phần cứng (CPU Serial Number hoặc eth0 MAC Address).
   3. Pi 4 gửi request HTTP POST kèm `Device ID` và `Factory Provisioning Token` lên Cloud Provisioning API.
-  4. Cloud kiểm tra hợp lệ, tự động cấp phát địa chỉ IP VPN duy nhất trong dải `10.0.0.X`, sinh cặp khóa WireGuard, nạp peer trực tiếp vào kernel Linux của VPS mà không restart dịch vụ.
+  4. Cloud kiểm tra hợp lệ, tự động cấp phát địa chỉ IP VPN duy nhất trong dải `10.13.37.X`, sinh cặp khóa WireGuard, nạp peer trực tiếp vào kernel Linux của VPS mà không restart dịch vụ.
   5. Cloud trả về file cấu hình hoàn chỉnh; Pi tự ghi file `/etc/wireguard/wg0.conf` và `/etc/mavlink-router/main.conf`, sau đó tự kích hoạt VPN và gửi telemetry về Cloud.
 
 #### 3. Định hướng kiến trúc Cloud tổng thể (Future-Proof Architecture):
@@ -31,11 +31,11 @@ Dự án đang xây dựng hệ thống **Drone Companion Computer thương mạ
 ### II. RÀNG BUỘC HẠ TẦNG VÀ THÔNG SỐ HỆ THỐNG (INFRASTRUCTURE SPECS)
 
 * **Cloud VPS Public IP:** `103.253.20.32` (Lưu ý: Tường lửa VPS chặn gói ICMP ping, nhưng thông các cổng TCP/UDP được chỉ định).
-* **WireGuard Server:** Chạy trực tiếp trên VPS với interface `wg0`, lắng nghe tại cổng **UDP `10006`**, IP máy chủ là `10.0.0.1/24`.
-* **Dải mạng VPN nội bộ:** Subnet `10.0.0.0/24`, trong đó dải cấp phát cho Drone là từ **`10.0.0.2` đến `10.0.0.254`**.
+* **WireGuard Server:** Chạy trực tiếp trên VPS với interface `wg0`, lắng nghe tại cổng **UDP `10006`**, IP máy chủ là `10.13.37.1/24`.
+* **Dải mạng VPN nội bộ:** Subnet `10.13.37.0/24`, trong đó dải cấp phát cho Drone là từ **`10.13.37.2` đến `10.13.37.254`**.
 * **Dải Port NAT công khai (TCP):** Chỉ được sử dụng các cổng từ `10001` đến `10005`.
   * **Cổng NestJS Provisioning API:** Lắng nghe tại TCP **`10004`**.
-* **Ingestion MAVLink Endpoint (nội bộ VPS):** UDP `10.0.0.1:14550`.
+* **Ingestion MAVLink Endpoint (nội bộ VPS):** UDP `10.13.37.1:14550`.
 
 ---
 
@@ -45,7 +45,7 @@ Dự án đang xây dựng hệ thống **Drone Companion Computer thương mạ
 Xây dựng dự án NestJS với cấu trúc module hóa rõ ràng:
 * `ProvisioningModule`: Tiếp nhận và điều phối luồng đăng ký thiết bị mới.
 * `DeviceModule`: Quản lý thực thể thiết bị, trạng thái kích hoạt, lưu trữ Database bằng **Prisma ORM** (sử dụng SQLite hoặc PostgreSQL).
-* `IpPoolService`: Quản lý danh sách IP từ `10.0.0.2` đến `10.0.0.254`, cấp phát IP chưa sử dụng, tái sử dụng IP khi thiết bị bị xóa hoặc tái đăng ký.
+* `IpPoolService`: Quản lý danh sách IP từ `10.13.37.2` đến `10.13.37.254`, cấp phát IP chưa sử dụng, tái sử dụng IP khi thiết bị bị xóa hoặc tái đăng ký.
 * `WireguardService`: Module tương tác trực tiếp với hệ điều hành:
   * Sinh cặp khóa (Private Key / Public Key) cho thiết bị.
   * Thực thi lệnh shell: `sudo wg set wg0 peer <PUBLIC_KEY> allowed-ips <ASSIGNED_IP>/32`.
@@ -56,7 +56,7 @@ Bao gồm các trường:
 * `id` (UUID)
 * `deviceId` (String, Unique - CPU Serial của Pi)
 * `hardwareModel` (String)
-* `vpnIp` (String, Unique - ví dụ `10.0.0.5`)
+* `vpnIp` (String, Unique, Nullable khi Revoked - ví dụ `10.13.37.5`)
 * `vpnPublicKey` (String)
 * `vpnPrivateKey` (String - mã hóa an toàn hoặc chỉ lưu tạm để trả về 1 lần)
 * `status` (Enum: `PENDING`, `ACTIVE`, `REVOKED`)
@@ -94,17 +94,17 @@ Bao gồm các trường:
   "status": "success",
   "data": {
     "deviceId": "DRONE-10000000a1b2c3d4",
-    "assignedIp": "10.0.0.5",
+    "assignedIp": "10.13.37.5",
     "vpn": {
-      "address": "10.0.0.5/24",
+      "address": "10.13.37.5/24",
       "privateKey": "<CLIENT_PRIVATE_KEY>",
       "serverPublicKey": "<SERVER_PUBLIC_KEY>",
       "serverEndpoint": "103.253.20.32:10006",
-      "allowedIps": "10.0.0.0/24",
+      "allowedIps": "10.13.37.0/24",
       "persistentKeepalive": 25
     },
     "mavlink": {
-      "targetHost": "10.0.0.1",
+      "targetHost": "10.13.37.1",
       "targetPort": 14550
     }
   }
