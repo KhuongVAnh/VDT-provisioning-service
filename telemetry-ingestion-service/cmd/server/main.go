@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -132,19 +133,45 @@ func main() {
 		node.Close()
 	}()
 
+	// Quản lý danh sách các Channel kết nối (phân biệt GCS TCP và Drone UDP)
+	var (
+		gcsChannels   sync.Map // key: *gomavlib.Channel, value: struct{}
+		droneChannels sync.Map // key: *gomavlib.Channel, value: struct{}
+	)
+
 	// 7. Vòng lặp chính tiếp nhận và xử lý sự kiện MAVLink (Event Loop)
 	for evt := range node.Events() {
 		switch e := evt.(type) {
 		case *gomavlib.EventFrame:
-			// 1. ĐỊNH TUYẾN 2 CHIỀU (MAVLINK ROUTER MODE):
-			//    - Gói tin từ Drone (UDP) -> Chuyển tiếp ngay lập tức sang TCP 10002 cho QGroundControl
-			//    - Gói tin/Lệnh từ QGroundControl (TCP) -> Chuyển tiếp ngược lại xuống Drone (UDP)
-			//    - WriteFrameExcept tránh loop ngược lại kênh vừa nhận
-			_ = node.WriteFrameExcept(e.Channel, e.Frame)
+			isGCS := strings.Contains(e.Channel.String(), "tcp") || e.SystemID() == 255
 
-			// 2. Bỏ qua gói tin gửi từ chính GCS (QGroundControl / Mission Planner)
-			//    để không phân tích nhầm GCS thành một chiếc Drone
-			if e.SystemID() == 255 || e.SystemID() == 0 {
+			// 1. ĐỊNH TUYẾN 2 CHIỀU ĐỘC LẬP (CHỐNG FORWARD CHÉO GIỮA CÁC DRONE):
+			if isGCS {
+				// Nếu là Lệnh/Heartbeat từ GCS (QGroundControl / Mission Planner):
+				// Chuyển tiếp xuống TẤT CẢ các Drone đang kết nối
+				droneChannels.Range(func(key, _ interface{}) bool {
+					ch := key.(*gomavlib.Channel)
+					_ = node.WriteFrameTo(ch, e.Frame)
+					return true
+				})
+				// Bỏ qua không phân tích telemetry từ GCS
+				continue
+			}
+
+			// Nếu là Telemetry từ Drone (UDP):
+			// Đảm bảo kênh Drone đã được lưu
+			droneChannels.Store(e.Channel, struct{}{})
+
+			// CHỈ chuyển tiếp gói tin sang các GCS đang kết nối (TCP 10002)
+			// TUYỆT ĐỐI KHÔNG forward sang các Drone khác để tránh xung đột System ID / routing loop
+			gcsChannels.Range(func(key, _ interface{}) bool {
+				ch := key.(*gomavlib.Channel)
+				_ = node.WriteFrameTo(ch, e.Frame)
+				return true
+			})
+
+			// 2. Bỏ qua gói tin không hợp lệ hoặc Heartbeat từ GCS
+			if e.SystemID() == 0 {
 				continue
 			}
 			if hb, ok := e.Message().(*ardupilotmega.MessageHeartbeat); ok {
@@ -171,9 +198,17 @@ func main() {
 			}
 
 		case *gomavlib.EventChannelOpen:
+			isTCP := strings.Contains(e.Channel.String(), "tcp")
+			if isTCP {
+				gcsChannels.Store(e.Channel, struct{}{})
+			} else {
+				droneChannels.Store(e.Channel, struct{}{})
+			}
 			logChannelEvent("kết nối", e.Channel.String())
 
 		case *gomavlib.EventChannelClose:
+			gcsChannels.Delete(e.Channel)
+			droneChannels.Delete(e.Channel)
 			logChannelEvent("ngắt kết nối", e.Channel.String())
 		}
 	}
