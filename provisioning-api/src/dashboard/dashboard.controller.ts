@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 
 @Controller('api/v1/dashboard')
@@ -74,32 +74,5 @@ export class DashboardController {
   @HttpCode(HttpStatus.CREATED)
   async createManualDevice(@Body() body: { deviceId: string; vpnIp: string; hardwareModel?: string; vpnPublicKey?: string }) {
     return this.dashboardService.createManualDevice(body);
-  }
-
-  /**
-   * Thu hồi quyền truy cập của một Drone (Khóa thiết bị & giải phóng IP)
-   */
-  @Post('devices/:deviceId/revoke')
-  @HttpCode(HttpStatus.OK)
-  async revokeDevice(@Param('deviceId') deviceId: string) {
-    return this.dashboardService.revokeDevice(deviceId);
-  }
-
-  /**
-   * Kích hoạt lại Drone bị thu hồi (Cấp IP mới & nạp lại vào WireGuard)
-   */
-  @Post('devices/:deviceId/reactivate')
-  @HttpCode(HttpStatus.OK)
-  async reActivateDevice(@Param('deviceId') deviceId: string) {
-    return this.dashboardService.reActivateDevice(deviceId);
-  }
-
-  /**
-   * Xóa vĩnh viễn Drone khỏi hệ thống
-   */
-  @Delete('devices/:deviceId')
-  @HttpCode(HttpStatus.OK)
-  async deleteDevice(@Param('deviceId') deviceId: string) {
-    return this.dashboardService.deleteDevice(deviceId);
   }
 }

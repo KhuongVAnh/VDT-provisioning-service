@@ -25,9 +25,6 @@ describe('DashboardController', () => {
         provisionSecretToken: 'TOKEN',
         serverEndpoint: '103.253.20.32:10006',
       }),
-      revokeDevice: jest.fn().mockResolvedValue({ status: 'success', message: 'Revoked' }),
-      reActivateDevice: jest.fn().mockResolvedValue({ status: 'success', message: 'Reactivated' }),
-      deleteDevice: jest.fn().mockResolvedValue({ status: 'success', message: 'Deleted' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -59,23 +56,5 @@ describe('DashboardController', () => {
     const res = await controller.getIpPoolMatrix();
     expect(res.status).toBe('success');
     expect(res.data).toHaveLength(1);
-  });
-
-  it('should revoke device', async () => {
-    const res = await controller.revokeDevice('DRONE-1');
-    expect(res.status).toBe('success');
-    expect(service.revokeDevice).toHaveBeenCalledWith('DRONE-1');
-  });
-
-  it('should reactivate device', async () => {
-    const res = await controller.reActivateDevice('DRONE-1');
-    expect(res.status).toBe('success');
-    expect(service.reActivateDevice).toHaveBeenCalledWith('DRONE-1');
-  });
-
-  it('should delete device', async () => {
-    const res = await controller.deleteDevice('DRONE-1');
-    expect(res.status).toBe('success');
-    expect(service.deleteDevice).toHaveBeenCalledWith('DRONE-1');
   });
 });

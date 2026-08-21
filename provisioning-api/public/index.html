@@ -1107,10 +1107,6 @@
               <div style="display: flex; gap: 0.35rem;">
                 <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="selectDroneForHud('${d.deviceId}')" title="Xem trên HUD/Bản đồ"><i class="fa-solid fa-crosshairs"></i></button>
                 <button class="btn btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="openSshForDrone('${d.deviceId}')" title="Mở Web SSH"><i class="fa-solid fa-terminal"></i></button>
-                ${d.status === 'ACTIVE' 
-                  ? `<button class="btn btn-warning" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: #92400e; border-color: #b45309;" onclick="revokeDrone('${d.deviceId}')" title="Khóa Drone (Tạm ngắt VPN)"><i class="fa-solid fa-ban"></i></button>`
-                  : `<button class="btn btn-success" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="reactivateDrone('${d.deviceId}')" title="Mở khóa (Cấp lại VPN)"><i class="fa-solid fa-unlock"></i></button>`}
-                <button class="btn btn-danger" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: #7f1d1d; border-color: #991b1b;" onclick="deleteDrone('${d.deviceId}')" title="Xóa vĩnh viễn khỏi Database"><i class="fa-solid fa-trash-can"></i></button>
               </div>
             </td>
           </tr>
@@ -1244,20 +1240,6 @@
         if (DOM.manualDevId) DOM.manualDevId.value = '';
         if (DOM.manualVpnIp) DOM.manualVpnIp.value = '';
       }
-    }
-
-    function revokeDrone(deviceId) {
-      apiAction(`/api/v1/dashboard/devices/${deviceId}/revoke`, 'POST', null, `⚠️ XÁC NHẬN KHÓA DRONE "${deviceId}":\n- Ngắt kết nối VPN WireGuard ngay lập tức.\n- Thu hồi IP VPN trả về kho IP Pool.\nBạn có chắc muốn khóa?`, `🔒 ĐÃ KHÓA DRONE ${deviceId}`);
-    }
-
-    function reactivateDrone(deviceId) {
-      apiAction(`/api/v1/dashboard/devices/${deviceId}/reactivate`, 'POST', null, `🔄 XÁC NHẬN MỞ KHÓA DRONE "${deviceId}":\n- Cấp IP VPN mới từ kho IP Pool.\n- Kích hoạt lại Peer WireGuard.\nBạn có muốn mở khóa ngay?`, `✅ ĐÃ MỞ KHÓA DRONE ${deviceId}`);
-    }
-
-    function deleteDrone(deviceId) {
-      apiAction(`/api/v1/dashboard/devices/${deviceId}`, 'DELETE', null, `🚨 CẢNH BÁO: XÓA VĨNH VIỄN DRONE "${deviceId}" khỏi cơ sở dữ liệu và thu hồi VPN?\nHành động này không thể hoàn tác!`, `🗑️ ĐÃ XÓA VĨNH VIỄN DRONE ${deviceId}`);
-      if (droneMarkers[deviceId]) { map.removeLayer(droneMarkers[deviceId]); delete droneMarkers[deviceId]; }
-      if (droneFlightTrails[deviceId]) { map.removeLayer(droneFlightTrails[deviceId]); delete droneFlightTrails[deviceId]; }
     }
 
     // --- WEB SSH TERMINAL ---

@@ -102,42 +102,4 @@ describe('DeviceService', () => {
       expect(result).toEqual(created);
     });
   });
-
-  describe('revokeDevice', () => {
-    it('should set status to REVOKED and vpnIp to null', async () => {
-      const revoked = { id: 'uuid-1', deviceId: 'DRONE-123', status: 'REVOKED', vpnIp: null };
-      mockPrismaService.device.update.mockResolvedValue(revoked);
-
-      const result = await service.revokeDevice('DRONE-123');
-      expect(result).toEqual(revoked);
-      expect(mockPrismaService.device.update).toHaveBeenCalledWith({
-        where: { deviceId: 'DRONE-123' },
-        data: { status: 'REVOKED', vpnIp: null },
-      });
-    });
-  });
-
-  describe('reActivateDevice', () => {
-    it('should reactivate device with new IP', async () => {
-      const reactivated = { id: 'uuid-1', deviceId: 'DRONE-123', status: 'ACTIVE', vpnIp: '10.13.37.10' };
-      mockPrismaService.device.update.mockResolvedValue(reactivated);
-
-      const result = await service.reActivateDevice('DRONE-123', '10.13.37.10');
-      expect(result.status).toBe('ACTIVE');
-      expect(result.vpnIp).toBe('10.13.37.10');
-    });
-  });
-
-  describe('deleteDevice', () => {
-    it('should delete device record', async () => {
-      const deleted = { id: 'uuid-1', deviceId: 'DRONE-123' };
-      mockPrismaService.device.delete.mockResolvedValue(deleted);
-
-      const result = await service.deleteDevice('DRONE-123');
-      expect(result).toEqual(deleted);
-      expect(mockPrismaService.device.delete).toHaveBeenCalledWith({
-        where: { deviceId: 'DRONE-123' },
-      });
-    });
-  });
 });

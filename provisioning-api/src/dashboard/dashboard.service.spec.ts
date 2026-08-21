@@ -138,25 +138,4 @@ describe('DashboardService', () => {
       expect(matrix[2].status).toBe('available');
     });
   });
-
-  describe('revokeDevice', () => {
-    it('should revoke active device and remove peer from kernel', async () => {
-      const result = await service.revokeDevice('DRONE-1000');
-      expect(result.status).toBe('success');
-      expect(wireguardService.removePeer).toHaveBeenCalledWith('pubkey123');
-      expect(deviceService.revokeDevice).toHaveBeenCalledWith('DRONE-1000');
-    });
-
-    it('should throw NotFoundException if device not found', async () => {
-      await expect(service.revokeDevice('UNKNOWN')).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  describe('deleteDevice', () => {
-    it('should delete device and remove peer from kernel', async () => {
-      const result = await service.deleteDevice('DRONE-1000');
-      expect(result.status).toBe('success');
-      expect(deviceService.deleteDevice).toHaveBeenCalledWith('DRONE-1000');
-    });
-  });
 });
