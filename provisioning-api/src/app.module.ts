@@ -11,10 +11,11 @@ import { ProvisioningModule } from './provisioning/provisioning.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 import { WebSshModule } from './web-ssh/web-ssh.module';
+import { VideoModule } from './video/video.module';
 
 /**
  * AppModule là "bảng mạch chính" của toàn bộ hệ thống NestJS API Gateway & Mission Control.
- * Mọi module tính năng (Provisioning, Device, IP Pool, WireGuard, Dashboard, Redis, Telemetry, Web SSH)
+ * Mọi module tính năng (Provisioning, Device, IP Pool, WireGuard, Dashboard, Redis, Telemetry, Web SSH, Video)
  * đều được đăng ký và liên kết tại đây.
  */
 @Module({
@@ -42,6 +43,8 @@ import { WebSshModule } from './web-ssh/web-ssh.module';
     TelemetryModule,
     // 10. Module Web-based SSH Terminal qua VPN IP (Phase 4)
     WebSshModule,
+    // 11. Module Video Gateway tập trung qua Port 10004 (Đóng cổng 10001/10005)
+    VideoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

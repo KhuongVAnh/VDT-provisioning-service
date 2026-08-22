@@ -22,13 +22,14 @@ type Config struct {
 	TcpGcsPort string
 
 	// === CẤU HÌNH REDIS ===
-	RedisAddr          string // Địa chỉ Redis Server (ví dụ: "127.0.0.1:6380")
-	RedisPassword      string // Mật khẩu Redis (nếu có)
-	RedisDB            int    // Database index trong Redis (mặc định 0)
-	StateTtlSeconds    int    // Thời gian sống (TTL) của trạng thái tức thời trong Redis (giây)
-	PublishIntervalMs  int    // Tần suất đẩy dữ liệu tổng hợp ra Redis Pub/Sub (mili-giây)
-	DefaultMavlinkDial string // Phương ngữ MAVLink mặc định
-	VpnSubnetPrefix    string // Tiền tố dải mạng VPN (ví dụ: "10.13.37.")
+	RedisAddr                string // Địa chỉ Redis Server (ví dụ: "127.0.0.1:6380")
+	RedisPassword            string // Mật khẩu Redis (nếu có)
+	RedisDB                  int    // Database index trong Redis (mặc định 0)
+	StateTtlSeconds          int    // Thời gian sống (TTL) của trạng thái tức thời trong Redis (giây)
+	PublishIntervalMs        int    // Tần suất đẩy dữ liệu tổng hợp ra Redis Pub/Sub (mili-giây)
+	DefaultMavlinkDial       string // Phương ngữ MAVLink mặc định
+	VpnSubnetPrefix          string // Tiền tố dải mạng VPN (ví dụ: "10.13.37.")
+	UdpChannelTimeoutSeconds int    // Thời gian timeout thu hồi kênh UDP không hoạt động (giây)
 }
 
 // LoadConfig đọc cấu hình từ file .env và biến môi trường của hệ điều hành
@@ -46,16 +47,17 @@ func LoadConfig() *Config {
 	cfg := &Config{
 		// Lắng nghe tại 0.0.0.0:14551 - Drone gửi MAVLink thẳng tới cổng này
 		// Khi Drone kết nối qua WireGuard VPN, gói UDP mang đúng IP nguồn VPN
-		UdpListenAddr:      getEnv("UDP_LISTEN_ADDR", "0.0.0.0:14551"),
+		UdpListenAddr: getEnv("UDP_LISTEN_ADDR", "0.0.0.0:14551"),
 		// Cổng TCP cho QGroundControl / Mission Planner kết nối vào
-		TcpGcsPort:         getEnv("TCP_GCS_PORT", "10002"),
-		RedisAddr:          getEnv("REDIS_ADDR", "127.0.0.1:6380"),
-		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
-		RedisDB:            getEnvAsInt("REDIS_DB", 0),
-		StateTtlSeconds:    getEnvAsInt("STATE_TTL_SECONDS", 30),
-		PublishIntervalMs:  getEnvAsInt("PUBLISH_INTERVAL_MS", 100),
-		DefaultMavlinkDial: getEnv("MAVLINK_DIALECT", "ardupilotmega"),
-		VpnSubnetPrefix:    getEnv("VPN_SUBNET_PREFIX", "10.13.37."),
+		TcpGcsPort:               getEnv("TCP_GCS_PORT", "10002"),
+		RedisAddr:                getEnv("REDIS_ADDR", "127.0.0.1:6380"),
+		RedisPassword:            getEnv("REDIS_PASSWORD", ""),
+		RedisDB:                  getEnvAsInt("REDIS_DB", 0),
+		StateTtlSeconds:          getEnvAsInt("STATE_TTL_SECONDS", 30),
+		PublishIntervalMs:        getEnvAsInt("PUBLISH_INTERVAL_MS", 100),
+		DefaultMavlinkDial:       getEnv("MAVLINK_DIALECT", "ardupilotmega"),
+		VpnSubnetPrefix:          getEnv("VPN_SUBNET_PREFIX", "10.13.37."),
+		UdpChannelTimeoutSeconds: getEnvAsInt("UDP_CHANNEL_TIMEOUT_SECONDS", 30),
 	}
 
 	return cfg

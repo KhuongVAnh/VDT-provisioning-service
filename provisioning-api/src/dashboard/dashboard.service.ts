@@ -239,22 +239,23 @@ export class DashboardService {
   }
 
   /**
-   * Cung cấp thông tin endpoint xem video stream trực tiếp cho Drone
+   * Cung cấp thông tin endpoint xem video stream trực tiếp cho Drone.
+   * Toàn bộ các luồng được gom về Port 10004 duy nhất của NestJS Gateway.
    */
   async getStreamInfo(deviceId: string) {
     const cleanId = deviceId.trim();
     const vpsPublicIp = this.configService.get<string>('VPS_PUBLIC_IP') || '127.0.0.1';
-    const webrtcPort = this.configService.get<string>('MTX_WEBRTC_PORT') || '10001';
-    const rtspPort = this.configService.get<string>('MTX_RTSP_PORT') || '8554';
-    const hlsPort = this.configService.get<string>('MTX_HLS_PORT') || '8888';
+    const gatewayPort = this.configService.get<string>('PORT') || '10004';
+    const rtspPort = this.configService.get<string>('INTERNAL_MTX_RTSP_PORT') || '8554';
 
     return {
       deviceId: cleanId,
       streamPath: `live/${cleanId}`,
-      webrtcUrl: `http://${vpsPublicIp}:${webrtcPort}/live/${cleanId}`,
-      whepEndpoint: `http://${vpsPublicIp}:${webrtcPort}/live/${cleanId}/whep`,
-      rtspUrl: `rtsp://${vpsPublicIp}:${rtspPort}/live/${cleanId}`,
-      hlsUrl: `http://${vpsPublicIp}:${hlsPort}/live/${cleanId}/index.m3u8`,
+      whepEndpoint: `http://${vpsPublicIp}:${gatewayPort}/api/v1/video/${cleanId}/whep`,
+      hlsUrl: `http://${vpsPublicIp}:${gatewayPort}/api/v1/video/${cleanId}/index.m3u8`,
+      httpStreamUrl: `http://${vpsPublicIp}:${gatewayPort}/api/v1/video/${cleanId}/live.mp4`,
+      wsEndpoint: `ws://${vpsPublicIp}:${gatewayPort}/socket.io/`,
+      rtspInternalUrl: `rtsp://10.13.37.1:${rtspPort}/live/${cleanId}`,
     };
   }
 }

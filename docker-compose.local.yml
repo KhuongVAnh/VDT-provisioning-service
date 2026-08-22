@@ -53,6 +53,11 @@ services:
       - WG_SERVER_ENDPOINT=103.253.20.32:10006
       - WG_INTERFACE=wg0
       - VPN_SUBNET_PREFIX=10.13.37.
+      - INTERNAL_MTX_HOST=media-server
+      - INTERNAL_MTX_HLS_PORT=8888
+      - INTERNAL_MTX_WHEP_PORT=10001
+      - INTERNAL_MTX_RTSP_PORT=8554
+
 
   # 4. Ultra-Low Latency Video Streaming Server (MediaMTX - Local Bridge Mode)
   media-server:

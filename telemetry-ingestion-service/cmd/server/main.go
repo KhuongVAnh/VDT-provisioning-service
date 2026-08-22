@@ -125,6 +125,43 @@ func main() {
 		}
 	}()
 
+	// Quản lý danh sách các Channel kết nối (phân biệt GCS TCP và Drone UDP)
+	var (
+		gcsChannels   sync.Map // key: *gomavlib.Channel, value: struct{}
+		droneChannels sync.Map // key: *gomavlib.Channel, value: time.Time (Dấu thời gian nhận gói tin cuối cùng)
+	)
+
+	// 5b. Goroutine chạy nền: Quét định kỳ dọn dẹp các UDP Channel không hoạt động (Inactive UDP Channel Pruner)
+	go func() {
+		pruneInterval := 5 * time.Second
+		if cfg.UdpChannelTimeoutSeconds <= 5 {
+			pruneInterval = 1 * time.Second
+		}
+		ticker := time.NewTicker(pruneInterval)
+		defer ticker.Stop()
+		timeout := time.Duration(cfg.UdpChannelTimeoutSeconds) * time.Second
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				prunedCount := 0
+				droneChannels.Range(func(key, value interface{}) bool {
+					ch := key.(*gomavlib.Channel)
+					lastSeen, ok := value.(time.Time)
+					if !ok || now.Sub(lastSeen) > timeout {
+						droneChannels.Delete(ch)
+						prunedCount++
+						log.Printf("[CHANNEL PRUNER] 🧹 Đã thu hồi kênh UDP Drone không hoạt động: %s (Inactive > %v)", ch.String(), timeout)
+					}
+					return true
+				})
+			}
+		}
+	}()
+
 	// 6. Goroutine chạy nền: Bắt tín hiệu Graceful Shutdown (Ctrl+C, SIGTERM)
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -135,12 +172,6 @@ func main() {
 		node.Close()
 	}()
 
-	// Quản lý danh sách các Channel kết nối (phân biệt GCS TCP và Drone UDP)
-	var (
-		gcsChannels   sync.Map // key: *gomavlib.Channel, value: struct{}
-		droneChannels sync.Map // key: *gomavlib.Channel, value: struct{}
-	)
-
 	// 7. Vòng lặp chính tiếp nhận và xử lý sự kiện MAVLink (Event Loop)
 	for evt := range node.Events() {
 		switch e := evt.(type) {
@@ -150,10 +181,14 @@ func main() {
 			// 1. ĐỊNH TUYẾN 2 CHIỀU ĐỘC LẬP (CHỐNG FORWARD CHÉO GIỮA CÁC DRONE):
 			if isGCS {
 				// Nếu là Lệnh/Heartbeat từ GCS (QGroundControl / Mission Planner):
-				// Chuyển tiếp xuống TẤT CẢ các Drone đang kết nối
-				droneChannels.Range(func(key, _ interface{}) bool {
+				// Chuyển tiếp xuống TẤT CẢ các Drone đang active (còn trong timeout)
+				droneChannels.Range(func(key, value interface{}) bool {
 					ch := key.(*gomavlib.Channel)
-					_ = node.WriteFrameTo(ch, e.Frame)
+					if lastSeen, ok := value.(time.Time); ok {
+						if time.Since(lastSeen) <= time.Duration(cfg.UdpChannelTimeoutSeconds)*time.Second {
+							_ = node.WriteFrameTo(ch, e.Frame)
+						}
+					}
 					return true
 				})
 				// Bỏ qua không phân tích telemetry từ GCS
@@ -161,8 +196,8 @@ func main() {
 			}
 
 			// Nếu là Telemetry từ Drone (UDP):
-			// Đảm bảo kênh Drone đã được lưu
-			droneChannels.Store(e.Channel, struct{}{})
+			// Cập nhật dấu thời gian hoạt động mới nhất cho kênh Drone
+			droneChannels.Store(e.Channel, time.Now())
 
 			// CHỈ chuyển tiếp gói tin sang các GCS đang kết nối (TCP 10002)
 			// TUYỆT ĐỐI KHÔNG forward sang các Drone khác để tránh xung đột System ID / routing loop
@@ -204,7 +239,7 @@ func main() {
 			if isTCP {
 				gcsChannels.Store(e.Channel, struct{}{})
 			} else {
-				droneChannels.Store(e.Channel, struct{}{})
+				droneChannels.Store(e.Channel, time.Now())
 			}
 			logChannelEvent("kết nối", e.Channel.String())
 

@@ -55,27 +55,25 @@ services:
       - path: ./provisioning-api/.env
         required: false
 
-  # 4. Ultra-Low Latency Video Streaming Server (MediaMTX)
-  media-server:
-    image: bluenviron/mediamtx:latest
-    container_name: drone-media-server
-    restart: unless-stopped
-    network_mode: "host"
-    environment:
-      - MTX_PROTOCOLS=tcp,udp
-      # IP Public để WebRTC STUN/ICE kết nối tới trình duyệt Web
-      - MTX_WEBRTCADDITIONALHOSTS=${VPS_PUBLIC_IP:-127.0.0.1}
-      # RTSP nhận luồng từ Drone
-      - MTX_RTSPADDRESS=${MTX_RTSP_ADDR:-:8554}
-      # Cổng 1: Bắt tay WebRTC WHEP qua TCP 10001
-      - MTX_WEBRTCADDRESS=${MTX_WEBRTC_ADDR:-:10001}
-      # (Tùy chọn tương lai khi VPS mở được cổng UDP): Mở cổng UDP để WebRTC đạt độ trễ siêu thấp < 150ms
-      # - MTX_WEBRTCICEUDPMUXADDRESS=:8189
-      # Cổng 2: Bơm hình ảnh WebRTC qua TCP 10005 (100% TCP, KHÔNG CẦN UDP)
-      - MTX_WEBRTCICETCPMUXADDRESS=:10005
-      - MTX_HLSADDRESS=:8888
-      - MTX_API=yes
-      - MTX_APIADDRESS=127.0.0.1:9997
-    env_file:
-      - path: ./.env
-        required: false
+  # 4. MediaMTX Video Streaming Server (Được triển khai thủ công qua Native Systemd Service trên VPS)
+  # Chi tiết các bước cài đặt thủ công & hủy bỏ xem tại: huong_dan_cai_dat_mediamtx_manual.md
+  # MediaMTX chỉ lắng nghe nội bộ tại 10.13.37.1:8554 (từ Drone) và 127.0.0.1 (NestJS Video Gateway).
+  # ĐÓNG HOÀN TOÀN các cổng 10001 và 10005 ra Internet - Toàn bộ video đi qua Port 10004 của NestJS.
+  # 
+  # (Tùy chọn: Nếu muốn chạy qua Docker nội bộ thay vì Systemd, mở comment bên dưới):
+  # media-server:
+  #   image: bluenviron/mediamtx:latest
+  #   container_name: drone-media-server
+  #   restart: unless-stopped
+  #   network_mode: "host"
+  #   environment:
+  #     - MTX_PROTOCOLS=tcp,udp
+  #     - MTX_RTSPADDRESS=10.13.37.1:8554
+  #     - MTX_HLSADDRESS=127.0.0.1:8888
+  #     - MTX_WEBRTCADDRESS=127.0.0.1:8889
+  #     - MTX_API=yes
+  #     - MTX_APIADDRESS=127.0.0.1:9997
+  #   env_file:
+  #     - path: ./.env
+  #       required: false
+
