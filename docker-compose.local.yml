@@ -53,3 +53,22 @@ services:
       - WG_SERVER_ENDPOINT=103.253.20.32:10006
       - WG_INTERFACE=wg0
       - VPN_SUBNET_PREFIX=10.13.37.
+
+  # 4. Ultra-Low Latency Video Streaming Server (MediaMTX - Local Bridge Mode)
+  media-server:
+    image: bluenviron/mediamtx:latest
+    container_name: drone-media-server
+    restart: unless-stopped
+    ports:
+      - "8554:8554"        # RTSP Ingest từ Drone
+      - "10001:10001"      # WebRTC WHEP Egress cho Web Dashboard
+      - "8888:8888"        # HLS Video Stream
+    environment:
+      - MTX_PROTOCOLS=tcp,udp
+      - MTX_WEBRTCADDITIONALHOSTS=127.0.0.1
+      - MTX_RTSPADDRESS=:8554
+      - MTX_WEBRTCADDRESS=:10001
+      - MTX_WEBRTCICETCPMUXADDRESS=:10005
+      - MTX_HLSADDRESS=:8888
+      - MTX_API=yes
+      - MTX_APIADDRESS=:9997

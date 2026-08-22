@@ -19,15 +19,18 @@ services:
     network_mode: "host"
     depends_on:
       - redis
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./telemetry-ingestion-service/.env
+        required: false
     environment:
-      # Lắng nghe MAVLink UDP từ Drone (có thể bind cụ thể IP VPN WireGuard hoặc 0.0.0.0)
       - UDP_LISTEN_ADDR=${UDP_LISTEN_ADDR:-0.0.0.0:14551}
-      # Cổng TCP cho QGroundControl / Mission Planner kết nối vào
       - TCP_GCS_PORT=${TCP_GCS_PORT:-10002}
-      - REDIS_ADDR=127.0.0.1:6380
-      - REDIS_DB=0
-      - STATE_TTL_SECONDS=30
-      - PUBLISH_INTERVAL_MS=100
+      - REDIS_ADDR=${REDIS_ADDR:-127.0.0.1:6380}
+      - REDIS_DB=${REDIS_DB:-0}
+      - STATE_TTL_SECONDS=${STATE_TTL_SECONDS:-30}
+      - PUBLISH_INTERVAL_MS=${PUBLISH_INTERVAL_MS:-100}
       - VPN_SUBNET_PREFIX=${VPN_SUBNET_PREFIX:-10.13.37.}
 
   # 3. NestJS API Gateway, Provisioning & Mission Control Dashboard
@@ -46,9 +49,11 @@ services:
     volumes:
       - ./data/db:/data
       - /lib/modules:/lib/modules:ro
-    # Đọc bảo mật toàn bộ Secret Token, Key từ file .env
     env_file:
-      - ./provisioning-api/.env
+      - path: ./.env
+        required: false
+      - path: ./provisioning-api/.env
+        required: false
 
   # 4. Ultra-Low Latency Video Streaming Server (MediaMTX)
   media-server:
@@ -62,8 +67,15 @@ services:
       - MTX_WEBRTCADDITIONALHOSTS=${VPS_PUBLIC_IP:-127.0.0.1}
       # RTSP nhận luồng từ Drone
       - MTX_RTSPADDRESS=${MTX_RTSP_ADDR:-:8554}
-      # WebRTC phát luồng cho Web Dashboard
-      - MTX_WEBRTCADDRESS=:8889
+      # Cổng 1: Bắt tay WebRTC WHEP qua TCP 10001
+      - MTX_WEBRTCADDRESS=${MTX_WEBRTC_ADDR:-:10001}
+      # (Tùy chọn tương lai khi VPS mở được cổng UDP): Mở cổng UDP để WebRTC đạt độ trễ siêu thấp < 150ms
+      # - MTX_WEBRTCICEUDPMUXADDRESS=:8189
+      # Cổng 2: Bơm hình ảnh WebRTC qua TCP 10005 (100% TCP, KHÔNG CẦN UDP)
+      - MTX_WEBRTCICETCPMUXADDRESS=:10005
       - MTX_HLSADDRESS=:8888
       - MTX_API=yes
       - MTX_APIADDRESS=127.0.0.1:9997
+    env_file:
+      - path: ./.env
+        required: false

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"log"
 	"os"
 	"strconv"
 
@@ -33,10 +32,16 @@ type Config struct {
 }
 
 // LoadConfig đọc cấu hình từ file .env và biến môi trường của hệ điều hành
+// Thứ tự ưu tiên:
+// 1. Biến môi trường hệ thống / Docker container (cao nhất)
+// 2. File .env nội bộ bên trong service (./.env)
+// 3. File .env tổng ở thư mục cha (../.env)
+// 4. Giá trị mặc định (fallback)
 func LoadConfig() *Config {
-	if err := godotenv.Load(); err != nil {
-		log.Println("[INFO] Không tìm thấy file .env, sử dụng biến môi trường hệ thống hoặc giá trị mặc định.")
-	}
+	// Nạp file .env nội bộ trước (ưu tiên)
+	_ = godotenv.Load(".env")
+	// Nạp file .env thư mục cha (chỉ bổ sung các biến chưa có, không ghi đè)
+	_ = godotenv.Load("../.env")
 
 	cfg := &Config{
 		// Lắng nghe tại 0.0.0.0:14551 - Drone gửi MAVLink thẳng tới cổng này

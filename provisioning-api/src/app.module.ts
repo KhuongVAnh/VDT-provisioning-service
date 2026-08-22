@@ -19,8 +19,11 @@ import { WebSshModule } from './web-ssh/web-ssh.module';
  */
 @Module({
   imports: [
-    // 1. Đọc file .env và nạp các biến môi trường toàn cục
-    ConfigModule.forRoot({ isGlobal: true }),
+    // 1. Đọc file .env: Ưu tiên .env nội bộ, fallback sang ../.env ở thư mục gốc
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../.env'],
+    }),
     // 2. Kết nối CSDL SQLite / LibSQL
     PrismaModule,
     // 3. Kết nối Redis Server (Hashes & Pub/Sub)

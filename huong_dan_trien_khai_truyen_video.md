@@ -31,7 +31,7 @@ Tài liệu được chia làm 2 phần lớn:
 │   │    - Cấp phát URL stream WebRTC an toàn theo Drone ID                    │   │
 │   └────────────────────────────────────┬─────────────────────────────────────┘   │
 └────────────────────────────────────────┼─────────────────────────────────────────┘
-                                         │ WebRTC WHEP (Port 8889)
+                                         │ WebRTC WHEP (Port 10001)
                                          ▼
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │ 3. Web Dashboard (Frontend React/Vue/HTML5)                                      │
@@ -74,18 +74,18 @@ services:
       # IP Public của VPS để WebRTC STUN/ICE thiết lập kết nối với Client ngoài Internet
       - MTX_WEBRTCADDITIONALHOSTS=${VPS_PUBLIC_IP:-127.0.0.1}
       # Cổng dịch vụ
-      - MTX_RTSPADDRESS=:8554
-      - MTX_WEBRTCADDRESS=:8889
+      - MTX_RTSPADDRESS=${MTX_RTSP_ADDR:-:8554}
+      - MTX_WEBRTCADDRESS=${MTX_WEBRTC_ADDR:-:10001}
       - MTX_HLSADDRESS=:8888
       - MTX_API=yes
-      - MTX_APIADDRESS=:9997
+      - MTX_APIADDRESS=127.0.0.1:9997
 ```
 
 ### Danh sách cổng hoạt động của Media Server:
 | Cổng | Giao thức | Mục đích | Đối tượng sử dụng |
 | :--- | :--- | :--- | :--- |
-| **8554** | RTSP (TCP/UDP) | Cổng tiếp nhận luồng video đẩy lên từ Drone | Drone đẩy stream |
-| **8889** | WebRTC / WHEP | Truyền video độ trễ thấp đến trình duyệt | Web Dashboard / Mobile Web |
+| **8554** | RTSP (TCP/UDP) | Cổng tiếp nhận luồng video đẩy lên từ Drone | Drone đẩy stream (Nội bộ VPN) |
+| **10001** | WebRTC / WHEP | Truyền video độ trễ thấp đến trình duyệt | Web Dashboard / Mobile Web (Public) |
 | **8888** | HLS | Video streaming dự phòng | Trình duyệt Safari iOS nếu WebRTC bị chặn |
 | **9997** | REST API | Kiểm tra danh sách drone đang live | NestJS Backend kiểm tra trạng thái |
 
@@ -107,8 +107,8 @@ async getStreamInfo(@Param('id') deviceId: string, @Req() req: Request) {
   const vpsHost = process.env.VPS_PUBLIC_IP || 'localhost';
   return {
     deviceId: deviceId,
-    webrtcUrl: `http://${vpsHost}:8889/live/${deviceId}`,
-    whepEndpoint: `http://${vpsHost}:8889/live/${deviceId}/whep`,
+    webrtcUrl: `http://${vpsHost}:10001/live/${deviceId}`,
+    whepEndpoint: `http://${vpsHost}:10001/live/${deviceId}/whep`,
     hlsUrl: `http://${vpsHost}:8888/live/${deviceId}/index.m3u8`
   };
 }
@@ -152,11 +152,11 @@ async function startWebRTC(whepUrl) {
 }
 
 // Bắt đầu phát luồng của Drone DRONE-001
-startWebRTC('http://<VPS_PUBLIC_IP>:8889/live/DRONE-001/whep');
+startWebRTC('http://<VPS_PUBLIC_IP>:10001/live/DRONE-001/whep');
 </script>
 ```
 
-> **Gợi ý nhúng nhanh:** MediaMTX có sẵn trình phát WebRTC tích hợp sẵn tại `http://<VPS_PUBLIC_IP>:8889/live/<DRONE_ID>`, bạn có thể nhúng trực tiếp bằng thẻ `<iframe>` vào Web Dashboard để kiểm tra nhanh.
+> **Gợi ý nhúng nhanh:** MediaMTX có sẵn trình phát WebRTC tích hợp sẵn tại `http://<VPS_PUBLIC_IP>:10001/live/<DRONE_ID>`, bạn có thể nhúng trực tiếp bằng thẻ `<iframe>` vào Web Dashboard để kiểm tra nhanh.
 
 ---
 
@@ -312,5 +312,5 @@ gst-launch-1.0 libcamerasrc ! video/x-raw,width=1280,height=720,framerate=30/1 !
    ./mock_drone_stream.sh
    ```
 3. **Kiểm tra luồng phát**:
-   - Truy cập `http://<IP_SERVER>:8889/live/DRONE-001` trên trình duyệt Chrome/Edge/Firefox để xem player WebRTC tích hợp.
+   - Truy cập `http://<IP_SERVER>:10001/live/DRONE-001` trên trình duyệt Chrome/Edge/Firefox để xem player WebRTC tích hợp.
    - Nhúng WHEP WebRTC client vào Web Dashboard và kiểm tra độ trễ hiển thị trực tiếp.

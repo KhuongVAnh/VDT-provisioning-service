@@ -24,7 +24,7 @@ Dự án phát triển tầng **Core Streaming & Ingestion** cho nền tảng qu
 * **Redis Server:** Port `6379` (Quản lý trạng thái tức thời `Hashes` và luồng sự kiện `Pub/Sub`).
 * **MediaMTX Video Gateway:**
   * Port Ingest (RTSP nội bộ VPN): TCP/UDP `10.13.37.1:8554`
-  * Port WebRTC WHEP (Egress ra trình duyệt Web): TCP `8889` (hoặc NAT qua port Gateway).
+  * Port WebRTC WHEP (Egress ra trình duyệt Web): TCP `10001` (hoặc NAT qua port Gateway).
 * **NestJS Business & API Gateway:** Lắng nghe tại TCP `10004` (Cung cấp REST API, WebSocket Gateway và Web-SSH Bridge).
 * **SSH Service trên Drone:** TCP `10.13.37.X:22` (Chỉ cho phép truy cập từ Gateway `10.13.37.1`).
 

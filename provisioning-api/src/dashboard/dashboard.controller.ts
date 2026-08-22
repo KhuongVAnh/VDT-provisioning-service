@@ -75,4 +75,16 @@ export class DashboardController {
   async createManualDevice(@Body() body: { deviceId: string; vpnIp: string; hardwareModel?: string; vpnPublicKey?: string }) {
     return this.dashboardService.createManualDevice(body);
   }
+
+  /**
+   * Lấy thông tin kết nối Live Video Stream của Drone
+   */
+  @Get('devices/:id/stream-info')
+  async getStreamInfo(@Param('id') deviceId: string) {
+    const streamInfo = await this.dashboardService.getStreamInfo(deviceId);
+    return {
+      status: 'success',
+      data: streamInfo,
+    };
+  }
 }

@@ -534,6 +534,140 @@
     .ip-cell.active-offline { background: rgba(245, 158, 11, 0.15); border-color: var(--warning); color: #fcd34d; }
     .ip-cell.available { opacity: 0.4; }
 
+    /* --- FPV LIVE VIDEO FLOATING PANEL --- */
+    .fpv-floating-panel {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      width: 440px;
+      background: rgba(10, 14, 23, 0.94);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 12px;
+      overflow: hidden;
+      z-index: 1000;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(14, 165, 233, 0.25);
+      display: none;
+      flex-direction: column;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .fpv-floating-panel.minimized {
+      width: 280px;
+      height: 44px;
+    }
+
+    .fpv-floating-panel.minimized .fpv-video-body {
+      display: none;
+    }
+
+    .fpv-video-header {
+      padding: 0.65rem 0.9rem;
+      background: rgba(17, 24, 39, 0.95);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+
+    .fpv-title-group {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .fpv-live-tag {
+      font-size: 0.68rem;
+      font-weight: 700;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid #ef4444;
+      color: #f87171;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      letter-spacing: 0.05em;
+    }
+
+    .fpv-drone-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--accent);
+    }
+
+    .fpv-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .fpv-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.45rem;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+
+    .fpv-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .fpv-video-body {
+      position: relative;
+      background: #000;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    #fpv-video-el {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .fpv-overlay-info {
+      position: absolute;
+      bottom: 6px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.9);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      padding: 0.3rem 0.2rem 0;
+    }
+
+    .fpv-loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(9, 13, 22, 0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      z-index: 5;
+    }
+
     /* --- RESPONSIVE --- */
     @media (max-width: 1024px) {
       .tactical-view-grid {
@@ -542,6 +676,13 @@
       }
       #tactical-map {
         height: 450px;
+      }
+      .fpv-floating-panel {
+        width: 100%;
+        position: relative;
+        top: auto;
+        right: auto;
+        margin-top: 1rem;
       }
     }
   </style>
@@ -621,7 +762,33 @@
       <div class="tactical-view-grid">
         
         <!-- MAP WRAPPER -->
-        <div class="map-wrapper">
+        <div class="map-wrapper" style="position: relative;">
+          <!-- FPV FLOATING LIVE VIDEO PANEL -->
+          <div id="fpv-video-panel" class="fpv-floating-panel">
+            <div class="fpv-video-header">
+              <div class="fpv-title-group">
+                <div class="fpv-live-tag"><span class="live-dot" style="background:#ef4444; width:6px; height:6px;"></span> LIVE FPV</div>
+                <div class="fpv-drone-label" id="fpv-current-drone-id">CHƯA CHỌN DRONE</div>
+              </div>
+              <div class="fpv-controls">
+                <button class="fpv-btn" onclick="toggleFpvMinimize()" title="Thu nhỏ / Mở rộng"><i class="fa-solid fa-window-minimize"></i></button>
+                <button class="fpv-btn" onclick="toggleFpvFullscreen()" title="Toàn màn hình"><i class="fa-solid fa-expand"></i></button>
+                <button class="fpv-btn" onclick="closeFpvVideo()" title="Đóng Video" style="color: #f87171;"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+            </div>
+            <div class="fpv-video-body">
+              <div id="fpv-loading-state" class="fpv-loading-overlay">
+                <i class="fa-solid fa-circle-notch fa-spin text-accent" style="font-size: 1.6rem;"></i>
+                <span id="fpv-loading-text">Đang kết nối luồng WebRTC...</span>
+              </div>
+              <video id="fpv-video-el" autoplay muted playsinline controls></video>
+              <div class="fpv-overlay-info">
+                <span id="fpv-stream-stats"><i class="fa-solid fa-bolt text-accent"></i> WebRTC WHEP • H.264</span>
+                <span id="fpv-latency-stat"><i class="fa-solid fa-clock"></i> &lt; 200ms</span>
+              </div>
+            </div>
+          </div>
+
           <div class="map-header">
             <div style="font-weight: 600; font-size: 0.9rem;"><i class="fa-solid fa-crosshairs text-accent"></i> BẢN ĐỒ VỊ TRÍ PHI ĐỘI THỜI GIAN THỰC</div>
             <div style="display: flex; gap: 0.5rem;">
@@ -682,8 +849,9 @@
               <span class="telemetry-val" id="hud-angles">0.0° / 0.0°</span>
             </div>
 
-            <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-              <button class="btn btn-primary" style="flex: 1;" onclick="openWebSshForSelectedDrone()"><i class="fa-solid fa-terminal"></i> Mở Web SSH</button>
+            <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+              <button class="btn btn-primary" id="btn-toggle-video" style="width: 100%; background: linear-gradient(135deg, #0284c7, #06b6d4); box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);" onclick="toggleFpvVideoFromHud()"><i class="fa-solid fa-video"></i> <span id="btn-video-label">Xem Live FPV Video</span></button>
+              <button class="btn btn-secondary" style="width: 100%;" onclick="openWebSshForSelectedDrone()"><i class="fa-solid fa-terminal"></i> Mở Web SSH Terminal</button>
             </div>
           </div>
         </div>
@@ -1106,6 +1274,7 @@
             <td>
               <div style="display: flex; gap: 0.35rem;">
                 <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="selectDroneForHud('${d.deviceId}')" title="Xem trên HUD/Bản đồ"><i class="fa-solid fa-crosshairs"></i></button>
+                <button class="btn btn-accent" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: linear-gradient(135deg, #0284c7, #06b6d4);" onclick="watchLiveVideoForDrone('${d.deviceId}')" title="Xem Live FPV Video"><i class="fa-solid fa-video"></i></button>
                 <button class="btn btn-primary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="openSshForDrone('${d.deviceId}')" title="Mở Web SSH"><i class="fa-solid fa-terminal"></i></button>
               </div>
             </td>
@@ -1128,6 +1297,165 @@
         }
         return `<div class="ip-cell ${cls}" title="${tooltip}">.${c.hostNumber}</div>`;
       }).join('');
+    }
+
+    // --- FPV LIVE VIDEO WEBRTC (WHEP) STREAMING ---
+    let fpvPeerConnection = null;
+    let activeFpvDroneId = null;
+    let isFpvMinimized = false;
+
+    function toggleFpvVideoFromHud() {
+      if (!activeDroneId || activeDroneId === 'all') {
+        const firstOnline = fleetDevices.find(d => isDroneOnline(d.telemetry));
+        if (firstOnline) {
+          activeDroneId = firstOnline.deviceId;
+        } else if (fleetDevices.length > 0) {
+          activeDroneId = fleetDevices[0].deviceId;
+        } else {
+          return alert('Chưa có Drone nào để xem video!');
+        }
+      }
+      toggleFpvVideo(activeDroneId);
+    }
+
+    function toggleFpvVideo(deviceId) {
+      const panel = document.getElementById('fpv-video-panel');
+      if (!panel) return;
+      if (panel.style.display === 'flex' && activeFpvDroneId === deviceId) {
+        closeFpvVideo();
+      } else {
+        startFpvVideoStream(deviceId);
+      }
+    }
+
+    function watchLiveVideoForDrone(deviceId) {
+      switchTab('tab-tactical');
+      focusDroneOnMap(deviceId);
+      startFpvVideoStream(deviceId);
+    }
+
+    async function startFpvVideoStream(deviceId) {
+      if (!deviceId || deviceId === 'all') return;
+      activeFpvDroneId = deviceId;
+
+      const panel = document.getElementById('fpv-video-panel');
+      const label = document.getElementById('fpv-current-drone-id');
+      const loadingState = document.getElementById('fpv-loading-state');
+      const loadingText = document.getElementById('fpv-loading-text');
+      const videoEl = document.getElementById('fpv-video-el');
+      const btnLabel = document.getElementById('btn-video-label');
+
+      if (panel) panel.style.display = 'flex';
+      if (label) label.innerText = deviceId;
+      if (btnLabel) btnLabel.innerText = 'Đóng Live Video';
+      if (loadingState) loadingState.style.display = 'flex';
+      if (loadingText) loadingText.innerText = `Đang kết nối luồng FPV cho ${deviceId}...`;
+
+      // Dọn dẹp kết nối cũ nếu có
+      if (fpvPeerConnection) {
+        fpvPeerConnection.close();
+        fpvPeerConnection = null;
+      }
+      if (videoEl) videoEl.srcObject = null;
+
+      try {
+        // 1. Lấy endpoint WHEP từ API Backend
+        const res = await fetch(`/api/v1/dashboard/devices/${encodeURIComponent(deviceId)}/stream-info`);
+        const json = await res.json();
+        if (json.status !== 'success' || !json.data) {
+          throw new Error('Không lấy được thông tin luồng stream từ server');
+        }
+
+        const whepEndpoint = json.data.whepEndpoint;
+        console.log(`[FPV] Bắt đầu kết nối WebRTC WHEP tới: ${whepEndpoint}`);
+
+        // 2. Khởi tạo RTCPeerConnection tiêu chuẩn
+        fpvPeerConnection = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        fpvPeerConnection.addTransceiver('video', { direction: 'recvonly' });
+
+        fpvPeerConnection.ontrack = (event) => {
+          console.log('[FPV] Đã nhận luồng Video Track từ MediaMTX!');
+          if (videoEl) {
+            videoEl.srcObject = event.streams[0];
+            videoEl.play().catch(e => console.warn('Tự động phát video bị chặn:', e));
+          }
+          if (loadingState) loadingState.style.display = 'none';
+        };
+
+        fpvPeerConnection.onconnectionstatechange = () => {
+          console.log(`[FPV] Trạng thái kết nối WebRTC: ${fpvPeerConnection.connectionState}`);
+          if (fpvPeerConnection.connectionState === 'disconnected' || fpvPeerConnection.connectionState === 'failed') {
+            if (loadingState) {
+              loadingState.style.display = 'flex';
+              if (loadingText) loadingText.innerText = '⚠️ Mất tín hiệu luồng FPV (Drone chưa bật camera hoặc rớt mạng)';
+            }
+          }
+        };
+
+        // 3. Tạo SDP Offer và gửi lên WHEP Endpoint
+        const offer = await fpvPeerConnection.createOffer();
+        await fpvPeerConnection.setLocalDescription(offer);
+
+        const sdpResponse = await fetch(whepEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/sdp' },
+          body: offer.sdp
+        });
+
+        if (!sdpResponse.ok) {
+          const errText = await sdpResponse.text();
+          throw new Error(`Media Server từ chối kết nối (HTTP ${sdpResponse.status}): ${errText || 'Drone chưa phát luồng'}`);
+        }
+
+        const answerSdp = await sdpResponse.text();
+        await fpvPeerConnection.setRemoteDescription(new RTCSessionDescription({
+          type: 'answer',
+          sdp: answerSdp
+        }));
+
+      } catch (err) {
+        console.error('[FPV] Lỗi kết nối WebRTC:', err);
+        if (loadingState) {
+          loadingState.style.display = 'flex';
+          if (loadingText) loadingText.innerHTML = `<span style="color:#f87171">⚠️ ${err.message}</span><br><span style="font-size:0.75rem; color:#94a3b8">Hãy đảm bảo Drone đang chạy script phát video RTSP.</span>`;
+        }
+      }
+    }
+
+    function closeFpvVideo() {
+      const panel = document.getElementById('fpv-video-panel');
+      const btnLabel = document.getElementById('btn-video-label');
+      const videoEl = document.getElementById('fpv-video-el');
+
+      if (panel) panel.style.display = 'none';
+      if (btnLabel) btnLabel.innerText = 'Xem Live FPV Video';
+
+      if (fpvPeerConnection) {
+        fpvPeerConnection.close();
+        fpvPeerConnection = null;
+      }
+      if (videoEl) videoEl.srcObject = null;
+      activeFpvDroneId = null;
+    }
+
+    function toggleFpvMinimize() {
+      const panel = document.getElementById('fpv-video-panel');
+      if (!panel) return;
+      isFpvMinimized = !isFpvMinimized;
+      panel.classList.toggle('minimized', isFpvMinimized);
+    }
+
+    function toggleFpvFullscreen() {
+      const videoEl = document.getElementById('fpv-video-el');
+      if (!videoEl) return;
+      if (!document.fullscreenElement) {
+        videoEl.requestFullscreen?.() || videoEl.webkitRequestFullscreen?.();
+      } else {
+        document.exitFullscreen?.();
+      }
     }
 
     function populateDroneDropdowns(devices) {

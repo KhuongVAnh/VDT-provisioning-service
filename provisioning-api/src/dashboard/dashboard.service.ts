@@ -237,4 +237,24 @@ export class DashboardService {
       subnetPrefix,
     };
   }
+
+  /**
+   * Cung cấp thông tin endpoint xem video stream trực tiếp cho Drone
+   */
+  async getStreamInfo(deviceId: string) {
+    const cleanId = deviceId.trim();
+    const vpsPublicIp = this.configService.get<string>('VPS_PUBLIC_IP') || '127.0.0.1';
+    const webrtcPort = this.configService.get<string>('MTX_WEBRTC_PORT') || '10001';
+    const rtspPort = this.configService.get<string>('MTX_RTSP_PORT') || '8554';
+    const hlsPort = this.configService.get<string>('MTX_HLS_PORT') || '8888';
+
+    return {
+      deviceId: cleanId,
+      streamPath: `live/${cleanId}`,
+      webrtcUrl: `http://${vpsPublicIp}:${webrtcPort}/live/${cleanId}`,
+      whepEndpoint: `http://${vpsPublicIp}:${webrtcPort}/live/${cleanId}/whep`,
+      rtspUrl: `rtsp://${vpsPublicIp}:${rtspPort}/live/${cleanId}`,
+      hlsUrl: `http://${vpsPublicIp}:${hlsPort}/live/${cleanId}/index.m3u8`,
+    };
+  }
 }
