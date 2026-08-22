@@ -23,7 +23,7 @@ func TestFullIngestionPipeline(t *testing.T) {
 	pc.Close()
 
 	// 1. Khởi tạo Ingestion Server Node
-	serverNode, err := gomavlib.NewNode(gomavlib.NodeConf{
+	serverNode := &gomavlib.Node{
 		Endpoints: []gomavlib.EndpointConf{
 			gomavlib.EndpointUDPServer{
 				Address: serverAddr,
@@ -32,8 +32,8 @@ func TestFullIngestionPipeline(t *testing.T) {
 		Dialect:     ardupilotmega.Dialect,
 		OutVersion:  gomavlib.V2,
 		OutSystemID: 250,
-	})
-	if err != nil {
+	}
+	if err := serverNode.Initialize(); err != nil {
 		t.Fatalf("Không thể tạo server node: %v", err)
 	}
 	defer serverNode.Close()
@@ -43,7 +43,7 @@ func TestFullIngestionPipeline(t *testing.T) {
 	redisPublisher := publisher.NewRedisPublisher(nil)
 
 	// 2. Khởi tạo Simulator Client Node
-	clientNode, err := gomavlib.NewNode(gomavlib.NodeConf{
+	clientNode := &gomavlib.Node{
 		Endpoints: []gomavlib.EndpointConf{
 			gomavlib.EndpointUDPClient{
 				Address: serverAddr,
@@ -52,8 +52,8 @@ func TestFullIngestionPipeline(t *testing.T) {
 		Dialect:     ardupilotmega.Dialect,
 		OutVersion:  gomavlib.V2,
 		OutSystemID: 1,
-	})
-	if err != nil {
+	}
+	if err := clientNode.Initialize(); err != nil {
 		t.Fatalf("Không thể tạo client node: %v", err)
 	}
 	defer clientNode.Close()

@@ -80,7 +80,7 @@ func main() {
 	// 4. Khởi tạo MAVLink Node đa Endpoint - thay thế hoàn toàn mavlink-routerd:
 	tcpGcsAddr := fmt.Sprintf("0.0.0.0:%s", cfg.TcpGcsPort)
 
-	node, err := gomavlib.NewNode(gomavlib.NodeConf{
+	node := &gomavlib.Node{
 		Endpoints: []gomavlib.EndpointConf{
 			// Endpoint 1: UDP Server lắng nghe trực tiếp từ Drone qua VPN (hoặc Local)
 			gomavlib.EndpointUDPServer{
@@ -94,8 +94,8 @@ func main() {
 		Dialect:     ardupilotmega.Dialect,
 		OutVersion:  gomavlib.V2,
 		OutSystemID: 250, // GCS System ID chuẩn
-	})
-	if err != nil {
+	}
+	if err := node.Initialize(); err != nil {
 		log.Fatalf("[FATAL] Không thể khởi tạo MAVLink Node: %v", err)
 	}
 	defer node.Close()

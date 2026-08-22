@@ -9,7 +9,13 @@ import (
 	"github.com/bluenviron/gomavlib/v3/pkg/message"
 )
 
-var dialectRW, _ = dialect.NewReadWriter(ardupilotmega.Dialect)
+var dialectRW = func() *dialect.ReadWriter {
+	rw := &dialect.ReadWriter{
+		Dialect: ardupilotmega.Dialect,
+	}
+	_ = rw.Initialize()
+	return rw
+}()
 
 // ArduCopterModeToString chuyển đổi mã Custom Mode của ArduPilot Copter sang tên hiển thị
 func ArduCopterModeToString(customMode uint32) string {

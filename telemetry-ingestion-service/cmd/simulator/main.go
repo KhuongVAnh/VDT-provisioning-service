@@ -79,8 +79,7 @@ func main() {
 			_ = rdb.HSet(ctx, "drone:sys_map", strconv.Itoa(int(sysID)), devID).Err()
 		}
 
-		// Khởi tạo gomavlib UDP Client gửi tới target
-		node, err := gomavlib.NewNode(gomavlib.NodeConf{
+		node := &gomavlib.Node{
 			Endpoints: []gomavlib.EndpointConf{
 				gomavlib.EndpointUDPClient{
 					Address: *targetAddr,
@@ -89,8 +88,8 @@ func main() {
 			Dialect:     ardupilotmega.Dialect,
 			OutVersion:  gomavlib.V2,
 			OutSystemID: sysID,
-		})
-		if err != nil {
+		}
+		if err := node.Initialize(); err != nil {
 			log.Fatalf("[SIMULATOR] Không thể khởi tạo UDP Client cho Drone %s: %v", devID, err)
 		}
 
