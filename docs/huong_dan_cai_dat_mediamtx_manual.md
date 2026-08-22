@@ -113,17 +113,20 @@ logDestinations: [stdout]
 #################################################################
 # 1. Giao thức RTSP (Nhận luồng Video trực tiếp từ Drone qua WireGuard)
 #################################################################
-# Lắng nghe tại IP nội bộ VPN 10.13.37.1 và localhost 127.0.0.1
-# Không mở ra 0.0.0.0 để tránh bị quét cổng từ Internet
 rtsp: yes
 rtspDisable: no
 protocols: [tcp, udp]
 encryption: "no"
+
+# Cổng 8554 (TCP/UDP): Bắt tay và điều khiển luồng RTSP từ Drone
 rtspAddress: 10.13.37.1:8554
-# Mở thêm localhost cho NestJS đọc luồng nội bộ
-rtspsAddress: :8322
+
+# Cổng 8000 (UDP): Tiếp nhận các khung hình Video H.264 thực tế (RTP Payload) khi Drone phát qua UDP
 rtpAddress: 10.13.37.1:8000
+
+# Cổng 8001 (UDP): Đo lường chất lượng mạng, độ trễ và tỷ lệ mất gói tin (RTCP)
 rtcpAddress: 10.13.37.1:8001
+
 
 #################################################################
 # 2. Giao thức RTMP (Tùy chọn)

@@ -53,7 +53,7 @@ Tài liệu được chia làm 2 phần lớn:
 - **Bảo mật tuyệt đối**: Chỉ lắng nghe trên VPN `10.13.37.1:8554` và Localhost `127.0.0.1`, không mở bất kỳ cổng thô nào (`10001`, `10005`) ra Internet.
 
 > 📖 **Xem hướng dẫn chi tiết từng bước cài đặt, cấu hình và hủy bỏ MediaMTX thủ công tại:**
-> **[`huong_dan_cai_dat_mediamtx_manual.md`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/huong_dan_cai_dat_mediamtx_manual.md)**
+> **[`huong_dan_cai_dat_mediamtx_manual.md`]**
 
 ---
 
@@ -70,7 +70,7 @@ Tài liệu được chia làm 2 phần lớn:
 
 ## 1.3. Tích hợp Gateway phân phối Video (NestJS Backend)
 
-Trong module [VideoModule](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/video/video.module.ts), NestJS cung cấp các endpoint trung tâm trên Port 10004:
+Trong module [VideoModule](provisioning_service/provisioning-api/src/video/video.module.ts), NestJS cung cấp các endpoint trung tâm trên Port 10004:
 
 ```typescript
 // GET /api/v1/video/:id/stream-info
@@ -85,174 +85,12 @@ postWhepOffer(@Param('id') deviceId: string, @Req() req, @Res() res) {
   this.videoService.proxyWhepRequest(deviceId, req, res);
 }
 ```
-```
-
----
-
-## 1.4. Hiển thị Video phía Web Dashboard qua WebRTC WHEP
-
-Sử dụng thẻ `<video>` HTML5 kết hợp JavaScript WHEP Client tiêu chuẩn để phát trực tiếp với độ trễ cực thấp (< 300ms):
-
-```html
-<video id="drone-video" autoplay muted playsinline controls style="width: 100%; max-width: 800px; border-radius: 8px;"></video>
-
-<script>
-async function startWebRTC(whepUrl) {
-  const videoEl = document.getElementById('drone-video');
-  const peerConnection = new RTCPeerConnection();
-
-  peerConnection.addTransceiver('video', { direction: 'recvonly' });
-
-  peerConnection.ontrack = (event) => {
-    videoEl.srcObject = event.streams[0];
-  };
-
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-
-  // Gửi SDP Offer lên MediaMTX qua WHEP endpoint
-  const response = await fetch(whepUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/sdp' },
-    body: offer.sdp
-  });
-
-  const answerSdp = await response.text();
-  await peerConnection.setRemoteDescription(new RTCSessionDescription({
-    type: 'answer',
-    sdp: answerSdp
-  }));
-}
-
-// Bắt đầu phát luồng của Drone DRONE-001
-startWebRTC('http://<VPS_PUBLIC_IP>:10001/live/DRONE-001/whep');
-</script>
-```
 
 > **Gợi ý nhúng nhanh:** MediaMTX có sẵn trình phát WebRTC tích hợp sẵn tại `http://<VPS_PUBLIC_IP>:10001/live/<DRONE_ID>`, bạn có thể nhúng trực tiếp bằng thẻ `<iframe>` vào Web Dashboard để kiểm tra nhanh.
 
----
-
-# PHẦN 2: HƯỚNG GIẢ LẬP TRUYỀN VIDEO TRÊN DRONE (MOCK STREAMING)
-
-Khi Drone phần cứng chưa gắn camera hoặc đang test giả lập, ta sử dụng **FFmpeg** để đọc file video MP4 có sẵn và đẩy stream lên Server với đúng thông số kỹ thuật như camera thật.
 
 ---
 
-## 2.1. Chuẩn bị file video mẫu
-- Tìm một file video flycam / drone quay góc nhìn từ trên cao (định dạng `.mp4`).
-- Tải về và đổi tên thành `drone_sample.mp4`.
-
----
-
-## 2.2. Lệnh FFmpeg giả lập Drone Live Stream tối ưu
-
-Chạy lệnh FFmpeg sau trên máy tính (hoặc trên mạch Raspberry Pi / Companion PC của Drone):
-
-```bash
-ffmpeg -re -stream_loop -1 -i drone_sample.mp4 \
-  -c:v libx264 \
-  -preset ultrafast \
-  -tune zerolatency \
-  -profile:v baseline \
-  -b:v 2000k \
-  -maxrate 2500k \
-  -bufsize 4000k \
-  -pix_fmt yuv420p \
-  -g 30 \
-  -an \
-  -f rtsp \
-  -rtsp_transport tcp \
-  rtsp://<VPS_PUBLIC_IP_HOAC_IP_WIREGUARD>:8554/live/DRONE-001
-```
-
-### Bảng giải thích chi tiết các tham số quan trọng:
-| Tham số | Ý nghĩa kỹ thuật | Vì sao cần cho Drone? |
-| :--- | :--- | :--- |
-| `-re` | Đọc file theo tốc độ thời gian thực (Realtime rate). | Ngăn FFmpeg đọc hết toàn bộ file trong vài giây; ép phát đúng 30fps như camera thật. |
-| `-stream_loop -1` | Lặp lại file vô tận. | Khi hết video, FFmpeg tự động quay lại đầu file để duy trì luồng Live 24/7. |
-| `-c:v libx264` | Sử dụng bộ mã hóa H.264 tiêu chuẩn. | Được 100% trình duyệt WebRTC hỗ trợ native mà không cần cài thêm plugin. |
-| `-preset ultrafast` | Tốc độ mã hóa nhanh nhất, giảm tải CPU. | Tối ưu cho vi xử lý nhúng (Raspberry Pi/Jetson) trên Drone. |
-| `-tune zerolatency` | Tắt buffer nội bộ, xuất frame ngay khi render. | Giảm thiểu độ trễ tối đa cho mục đích giám sát thời gian thực. |
-| `-g 30` | Chu kỳ khung hình chính (GOP / Keyframe) = 30 frames (1 giây nếu 30fps). | Giúp người dùng khi vừa mở Web lên là **nhìn thấy hình ảnh ngay trong 0.5s**, không bị đen màn hình chờ I-frame. |
-| `-b:v 2000k` | Giới hạn Bitrate trung bình 2 Mbps. | Tiết kiệm băng thông gói cước 4G/5G khi bay ngoài trời. |
-| `-an` | Loại bỏ âm thanh (Audio). | Drone thường chỉ cần hình ảnh, bỏ audio giúp giảm thêm 10-15% băng thông. |
-| `-rtsp_transport tcp` | Đẩy luồng RTSP qua giao thức TCP. | Chống hiện tượng vỡ hạt/mất gói hình ảnh khi sóng 4G chập chờn. |
-
----
-
-## 2.3. Tạo Script tự động hóa giả lập (Mock Stream Service)
-
-Để không phải gõ lại lệnh FFmpeg mỗi lần test, tạo script chạy tự động kèm tính năng tự kết nối lại nếu bị đứt mạng.
-
-### Tạo file `mock_drone_stream.sh` (Linux / Raspberry Pi / macOS):
-```bash
-#!/bin/bash
-
-# Cấu hình
-SERVER_IP="10.13.37.1" # IP VPN WireGuard hoặc IP Public Server
-DRONE_ID="DRONE-001"
-VIDEO_FILE="./drone_sample.mp4"
-
-echo "=== BẮT ĐẦU GIẢ LẬP TRUYỀN VIDEO CHO $DRONE_ID ==="
-
-while true; do
-    echo "[$(date)] Đang đẩy stream lên rtsp://$SERVER_IP:8554/live/$DRONE_ID ..."
-    ffmpeg -re -stream_loop -1 -i "$VIDEO_FILE" \
-      -c:v libx264 -preset ultrafast -tune zerolatency -profile:v baseline \
-      -b:v 2000k -maxrate 2500k -bufsize 4000k \
-      -pix_fmt yuv420p -g 30 -an \
-      -f rtsp -rtsp_transport tcp \
-      "rtsp://$SERVER_IP:8554/live/$DRONE_ID"
-    
-    echo "[$(date)] Mất kết nối! Thử kết nối lại sau 3 giây..."
-    sleep 3
-done
-```
-
-Cấp quyền thực thi và chạy:
-```bash
-chmod +x mock_drone_stream.sh
-./mock_drone_stream.sh
-```
-
----
-
-## 2.4. Đóng gói Drone Mock Streamer bằng Docker (Chạy 1 chạm)
-
-Nếu muốn test nhanh trên máy tính bất kỳ mà không cần cài FFmpeg, sử dụng Dockerfile sau:
-
-### Tạo file `Dockerfile.drone-mock`:
-```dockerfile
-FROM linuxserver/ffmpeg:latest
-
-WORKDIR /app
-COPY drone_sample.mp4 /app/drone_sample.mp4
-
-ENV SERVER_IP=127.0.0.1
-ENV DRONE_ID=DRONE-001
-
-CMD ffmpeg -re -stream_loop -1 -i /app/drone_sample.mp4 \
-    -c:v libx264 -preset ultrafast -tune zerolatency \
-    -b:v 2000k -maxrate 2500k -bufsize 4000k \
-    -pix_fmt yuv420p -g 30 -an \
-    -f rtsp -rtsp_transport tcp \
-    rtsp://${SERVER_IP}:8554/live/${DRONE_ID}
-```
-
-Chạy container giả lập:
-```bash
-# Build image
-docker build -f Dockerfile.drone-mock -t drone-video-mock .
-
-# Run mock stream
-docker run -d --name mock-drone-01 \
-  -e SERVER_IP="YOUR_SERVER_IP" \
-  -e DRONE_ID="DRONE-001" \
-  drone-video-mock
-```
-
----
 
 ## 2.5. Hướng nâng cấp khi Drone lắp Camera thật trong tương lai
 
