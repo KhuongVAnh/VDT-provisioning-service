@@ -38,7 +38,7 @@ func TestFullIngestionPipeline(t *testing.T) {
 	}
 	defer serverNode.Close()
 
-	ipResolver := resolver.NewIPResolver(nil)
+	ipResolver := resolver.NewIPResolver(nil, "10.13.37.")
 	stateAggregator := state.NewStateAggregator()
 	redisPublisher := publisher.NewRedisPublisher(nil)
 

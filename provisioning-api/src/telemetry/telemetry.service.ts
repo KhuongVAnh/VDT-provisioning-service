@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { TelemetryGateway } from './telemetry.gateway';
 import { DeviceService } from '../device/device.service';
@@ -23,12 +24,16 @@ export class TelemetryService implements OnModuleInit {
   private readonly logger = new Logger(TelemetryService.name);
   private readonly inMemoryCache = new Map<string, any>();
   private readonly autoDiscoveredDevices = new Set<string>();
+  private readonly subnet: string;
 
   constructor(
     private readonly redisService: RedisService,
     private readonly telemetryGateway: TelemetryGateway,
     private readonly deviceService: DeviceService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.subnet = this.configService.get<string>('VPN_SUBNET_PREFIX', '10.13.37.');
+  }
 
   async onModuleInit() {
     this.startRedisSubscription();
@@ -68,7 +73,7 @@ export class TelemetryService implements OnModuleInit {
             if (!this.autoDiscoveredDevices.has(telemetryData.deviceId)) {
               this.autoDiscoveredDevices.add(telemetryData.deviceId);
               const detectedIp = telemetryData.vpnIp || (telemetryData.deviceId.startsWith('DRONE-IP-') ? telemetryData.deviceId.replace('DRONE-IP-', '').replace(/-/g, '.') : '');
-              if (detectedIp && /^10\.13\.37\.\d+$/.test(detectedIp)) {
+              if (detectedIp && (detectedIp.startsWith(this.subnet) || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(detectedIp))) {
                 this.deviceService.findOrCreateManualDevice(
                   telemetryData.deviceId,
                   detectedIp,
@@ -150,7 +155,7 @@ export class TelemetryService implements OnModuleInit {
           id: mappedDevId,
           deviceId: mappedDevId,
           hardwareModel: 'Real-time Telemetry Stream',
-          vpnIp: detectedIp || '10.13.37.X',
+          vpnIp: detectedIp || `${this.subnet}X`,
           status: 'ACTIVE',
           lastSeen: new Date(),
           telemetry: telemetry || null,

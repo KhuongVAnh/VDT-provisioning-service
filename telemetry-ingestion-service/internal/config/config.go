@@ -29,6 +29,7 @@ type Config struct {
 	StateTtlSeconds    int    // Thời gian sống (TTL) của trạng thái tức thời trong Redis (giây)
 	PublishIntervalMs  int    // Tần suất đẩy dữ liệu tổng hợp ra Redis Pub/Sub (mili-giây)
 	DefaultMavlinkDial string // Phương ngữ MAVLink mặc định
+	VpnSubnetPrefix    string // Tiền tố dải mạng VPN (ví dụ: "10.13.37.")
 }
 
 // LoadConfig đọc cấu hình từ file .env và biến môi trường của hệ điều hành
@@ -39,7 +40,7 @@ func LoadConfig() *Config {
 
 	cfg := &Config{
 		// Lắng nghe tại 0.0.0.0:14551 - Drone gửi MAVLink thẳng tới cổng này
-		// Khi Drone kết nối qua WireGuard VPN, gói UDP mang đúng IP nguồn 10.13.37.X
+		// Khi Drone kết nối qua WireGuard VPN, gói UDP mang đúng IP nguồn VPN
 		UdpListenAddr:      getEnv("UDP_LISTEN_ADDR", "0.0.0.0:14551"),
 		// Cổng TCP cho QGroundControl / Mission Planner kết nối vào
 		TcpGcsPort:         getEnv("TCP_GCS_PORT", "10002"),
@@ -49,6 +50,7 @@ func LoadConfig() *Config {
 		StateTtlSeconds:    getEnvAsInt("STATE_TTL_SECONDS", 30),
 		PublishIntervalMs:  getEnvAsInt("PUBLISH_INTERVAL_MS", 100),
 		DefaultMavlinkDial: getEnv("MAVLINK_DIALECT", "ardupilotmega"),
+		VpnSubnetPrefix:    getEnv("VPN_SUBNET_PREFIX", "10.13.37."),
 	}
 
 	return cfg

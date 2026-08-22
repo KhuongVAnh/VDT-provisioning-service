@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { TelemetryService } from './telemetry.service';
 import { RedisService } from '../redis/redis.service';
 import { TelemetryGateway } from './telemetry.gateway';
@@ -64,6 +65,12 @@ describe('TelemetryService', () => {
         { provide: RedisService, useValue: mockRedisService },
         { provide: TelemetryGateway, useValue: mockTelemetryGateway },
         { provide: DeviceService, useValue: mockDeviceService },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((key: string, defaultValue: any) => defaultValue || '10.13.37.'),
+          },
+        },
       ],
     }).compile();
 

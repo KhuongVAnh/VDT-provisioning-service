@@ -1,5 +1,5 @@
 services:
-  # 1. Redis Cache & Pub/Sub Message Broker
+  # 1. Redis Cache & Pub/Sub Message Broker (Lắng nghe nội bộ 127.0.0.1)
   redis:
     image: redis:7.4-alpine
     container_name: drone-redis
@@ -7,12 +7,9 @@ services:
     network_mode: "host"
     volumes:
       - ./data/redis:/data
-    command: ["redis-server", "--appendonly", "yes", "--port", "6380"]
+    command: ["redis-server", "--appendonly", "yes", "--port", "6380", "--bind", "127.0.0.1"]
 
   # 2. Go MAVLink Ingestion Service - GCS Router Mode
-  # Thay thế hoàn toàn mavlink-routerd:
-  #   - Lắng nghe trực tiếp từ Drone tại 10.13.37.1:14550 (bảo toàn IP nguồn 10.13.37.X)
-  #   - Phục vụ QGroundControl / Mission Planner qua TCP 10002
   telemetry-ingestion:
     build:
       context: ./telemetry-ingestion-service
@@ -23,15 +20,15 @@ services:
     depends_on:
       - redis
     environment:
-      # Drone gửi MAVLink thẳng lên VPS_PUBLIC_IP:14551
-      # Vì qua WireGuard VPN, gói UDP mang đúng IP nguồn 10.13.37.X của Drone
-      - UDP_LISTEN_ADDR=0.0.0.0:14551
+      # Lắng nghe MAVLink UDP từ Drone (có thể bind cụ thể IP VPN WireGuard hoặc 0.0.0.0)
+      - UDP_LISTEN_ADDR=${UDP_LISTEN_ADDR:-0.0.0.0:14551}
       # Cổng TCP cho QGroundControl / Mission Planner kết nối vào
-      - TCP_GCS_PORT=10002
+      - TCP_GCS_PORT=${TCP_GCS_PORT:-10002}
       - REDIS_ADDR=127.0.0.1:6380
       - REDIS_DB=0
       - STATE_TTL_SECONDS=30
       - PUBLISH_INTERVAL_MS=100
+      - VPN_SUBNET_PREFIX=${VPN_SUBNET_PREFIX:-10.13.37.}
 
   # 3. NestJS API Gateway, Provisioning & Mission Control Dashboard
   provisioning-api:
@@ -52,3 +49,21 @@ services:
     # Đọc bảo mật toàn bộ Secret Token, Key từ file .env
     env_file:
       - ./provisioning-api/.env
+
+  # 4. Ultra-Low Latency Video Streaming Server (MediaMTX)
+  media-server:
+    image: bluenviron/mediamtx:latest
+    container_name: drone-media-server
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - MTX_PROTOCOLS=tcp,udp
+      # IP Public để WebRTC STUN/ICE kết nối tới trình duyệt Web
+      - MTX_WEBRTCADDITIONALHOSTS=${VPS_PUBLIC_IP:-127.0.0.1}
+      # RTSP nhận luồng từ Drone
+      - MTX_RTSPADDRESS=${MTX_RTSP_ADDR:-:8554}
+      # WebRTC phát luồng cho Web Dashboard
+      - MTX_WEBRTCADDRESS=:8889
+      - MTX_HLSADDRESS=:8888
+      - MTX_API=yes
+      - MTX_APIADDRESS=127.0.0.1:9997

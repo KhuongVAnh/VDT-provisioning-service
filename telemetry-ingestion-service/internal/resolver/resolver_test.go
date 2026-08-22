@@ -6,7 +6,7 @@ import (
 )
 
 func TestIPResolverFallback(t *testing.T) {
-	resolver := NewIPResolver(nil)
+	resolver := NewIPResolver(nil, "10.13.37.")
 	ctx := context.Background()
 
 	// 1. Kiểm tra fallback IP VPN

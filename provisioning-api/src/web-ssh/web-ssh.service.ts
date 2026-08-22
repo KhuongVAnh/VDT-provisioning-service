@@ -50,8 +50,8 @@ export class WebSshService {
     let vpnIp = '';
     const target = (options.deviceId || '').trim();
 
-    // 2.1. Nếu người dùng nhập trực tiếp IP dạng 10.13.37.X
-    if (/^10\.13\.37\.\d+$/.test(target)) {
+    // 2.1. Nếu người dùng nhập trực tiếp địa chỉ IPv4
+    if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(target)) {
       vpnIp = target;
     }
 

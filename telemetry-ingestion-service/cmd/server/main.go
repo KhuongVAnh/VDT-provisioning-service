@@ -72,10 +72,12 @@ func main() {
 	}
 
 	// 3. Khởi tạo các module nội bộ
-	ipResolver := resolver.NewIPResolver(redisClient)
+	ipResolver := resolver.NewIPResolver(redisClient, cfg.VpnSubnetPrefix)
 	stateAggregator := state.NewStateAggregator()
 	redisPublisher := publisher.NewRedisPublisher(redisClient)
 	defer redisPublisher.Close()
+
+	log.Printf("[INFO] ✅ IP Resolver đã kích hoạt (VPN Subnet Prefix: %s)", cfg.VpnSubnetPrefix)
 
 	// 4. Khởi tạo MAVLink Node đa Endpoint - thay thế hoàn toàn mavlink-routerd:
 	tcpGcsAddr := fmt.Sprintf("0.0.0.0:%s", cfg.TcpGcsPort)

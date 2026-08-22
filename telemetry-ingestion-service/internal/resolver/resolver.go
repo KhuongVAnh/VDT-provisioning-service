@@ -14,16 +14,21 @@ import (
 
 // IPResolver chịu trách nhiệm ánh xạ địa chỉ IP VPN hoặc SystemID sang DeviceID duy nhất của Drone
 type IPResolver struct {
-	redisClient *redis.Client
-	localCache  sync.Map // Bộ nhớ đệm cục bộ (in-memory)
-	cacheTTL    time.Duration
+	redisClient     *redis.Client
+	localCache      sync.Map // Bộ nhớ đệm cục bộ (in-memory)
+	cacheTTL        time.Duration
+	vpnSubnetPrefix string
 }
 
 // NewIPResolver khởi tạo bộ giải mã ánh xạ IP/SysID sang DeviceID
-func NewIPResolver(redisClient *redis.Client) *IPResolver {
+func NewIPResolver(redisClient *redis.Client, vpnSubnetPrefix string) *IPResolver {
+	if vpnSubnetPrefix == "" {
+		vpnSubnetPrefix = "10.13.37."
+	}
 	return &IPResolver{
-		redisClient: redisClient,
-		cacheTTL:    5 * time.Minute,
+		redisClient:     redisClient,
+		cacheTTL:        5 * time.Minute,
+		vpnSubnetPrefix: vpnSubnetPrefix,
 	}
 }
 
@@ -34,8 +39,8 @@ type cacheEntry struct {
 
 // Resolve tìm DeviceID dựa vào địa chỉ IP và SystemID của gói tin MAVLink
 func (r *IPResolver) Resolve(ctx context.Context, vpnIP string, sysID uint8) string {
-	// A. Trường hợp là IP VPN thực sự (10.13.37.X từ WireGuard)
-	if strings.HasPrefix(vpnIP, "10.13.37.") {
+	// A. Trường hợp là IP VPN thực sự (khớp với vpnSubnetPrefix được cấu hình)
+	if r.vpnSubnetPrefix != "" && strings.HasPrefix(vpnIP, r.vpnSubnetPrefix) {
 		if val, ok := r.localCache.Load(vpnIP); ok {
 			entry := val.(cacheEntry)
 			if time.Now().Before(entry.expiresAt) {

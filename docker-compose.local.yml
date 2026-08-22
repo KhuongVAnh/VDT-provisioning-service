@@ -29,6 +29,7 @@ services:
       - REDIS_DB=0
       - STATE_TTL_SECONDS=30
       - PUBLISH_INTERVAL_MS=100
+      - VPN_SUBNET_PREFIX=10.13.37.
 
   # 3. NestJS API Gateway & Mission Control Dashboard (Local Bridge Mode)
   provisioning-api:

@@ -42,11 +42,13 @@ func main() {
 	numDrones := flag.Int("drones", 3, "Số lượng Drone ảo cần mô phỏng đồng thời")
 	targetAddr := flag.String("target", "127.0.0.1:14551", "Địa chỉ UDP của Go Ingestion Service")
 	redisAddr := flag.String("redis", "127.0.0.1:6380", "Địa chỉ Redis Server để đồng bộ ánh xạ IP")
+	subnetPrefix := flag.String("subnet", "10.13.37.", "Tiền tố dải mạng VPN (ví dụ: 10.13.37.)")
 	flag.Parse()
 
 	log.Println("=============================================================")
 	log.Println("     DRONE FLEET MAVLINK REAL-TIME FLIGHT SIMULATOR          ")
 	log.Printf("     - Số Drone mô phỏng : %d phi cơ\n", *numDrones)
+	log.Printf("     - Dải mạng VPN      : %sX\n", *subnetPrefix)
 	log.Printf("     - Mục tiêu Ingest   : %s (UDP)\n", *targetAddr)
 	log.Printf("     - Redis Server      : %s\n", *redisAddr)
 	log.Println("=============================================================")
@@ -70,7 +72,7 @@ func main() {
 
 	for i := 1; i <= *numDrones; i++ {
 		devID := fmt.Sprintf("DRONE-SIM-%04d", i)
-		vpnIP := fmt.Sprintf("10.13.37.%d", i+1) // 10.13.37.2, 10.13.37.3...
+		vpnIP := fmt.Sprintf("%s%d", *subnetPrefix, i+1) // 10.13.37.2, 10.13.37.3...
 		sysID := uint8(i)
 
 		// Đăng ký ánh xạ vào Redis (cả IP và SystemID)
