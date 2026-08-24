@@ -191,30 +191,22 @@ async function startFpvVideoStream(deviceId) {
       }
     };
 
-    // Tạo bản tin SDP Offer của trình duyệt
+    // 1. Tạo bản tin SDP Offer của trình duyệt
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Chờ thu thập đầy đủ ICE Candidate từ STUN (Tối đa 1200ms)
-    await new Promise((resolve) => {
-      if (pc.iceGatheringState === 'complete') {
-        resolve();
-      } else {
-        const checkState = () => {
-          if (pc.iceGatheringState === 'complete') {
-            pc.removeEventListener('icegatheringstatechange', checkState);
-            resolve();
-          }
-        };
-        pc.addEventListener('icegatheringstatechange', checkState);
-        setTimeout(resolve, 1200);
-      }
-    });
+    // 2. LỌC BỎ TOÀN BỘ CANDIDATE KHỎI SDP OFFER:
+    // Điều này ngăn KHÔNG CHO MediaMTX trên VPS bắn bất kỳ gói UDP nào ra ngoài trước.
+    // MediaMTX sẽ chỉ gửi về địa chỉ của nó, và Trình duyệt sẽ là bên BẮN GÓI TIN ĐẦU TIÊN!
+    const clientFirstOfferSdp = pc.localDescription.sdp
+      .split(/\r?\n/)
+      .filter(line => !line.startsWith('a=candidate:'))
+      .join('\r\n');
 
-    // Gửi SDP Offer qua NestJS Gateway Token Guard (Port 10004)
+    // 3. Gửi SDP Offer qua NestJS Gateway Token Guard (Port 10004)
     const res = await fetch(`/api/v1/video/${encodeURIComponent(deviceId)}/whep`, {
       method: 'POST',
-      body: pc.localDescription.sdp,
+      body: clientFirstOfferSdp,
       headers: { 'Content-Type': 'application/sdp' }
     });
 
@@ -222,11 +214,13 @@ async function startFpvVideoStream(deviceId) {
       throw new Error(`Server WHEP trả về mã lỗi: ${res.status}`);
     }
 
-    // Nhận bản tin SDP Answer từ MediaMTX và chuẩn hóa IP Public
+    // 4. Nhận bản tin SDP Answer từ MediaMTX và chuẩn hóa IP Public
     const rawAnswerSdp = await res.text();
     const cleanAnswerSdp = sanitizeWhepAnswerSdp(rawAnswerSdp);
+    
+    // Đặt Remote Description: Ngay tại dòng này, Trình duyệt sẽ BẮN GÓI TIN UDP ĐẦU TIÊN vào 103.253.20.32:10005!
     await pc.setRemoteDescription({ type: 'answer', sdp: cleanAnswerSdp });
-    console.log(`[FPV WebRTC] Bắt tay WHEP hoàn tất cho ${deviceId}! Luồng video < 200ms.`);
+    console.log(`[FPV WebRTC] Bắt tay WHEP hoàn tất cho ${deviceId}! Trình duyệt đã bắn gói tin mở cổng trước.`);
 
     if (socket) socket.emit('video:subscribe', { deviceId });
 
