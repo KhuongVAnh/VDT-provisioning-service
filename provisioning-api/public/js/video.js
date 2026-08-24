@@ -321,6 +321,8 @@ async function startHlsFallbackStream(deviceId) {
 // --- BIẾN ĐO ĐẠC STATS VIDEO THỜI GIAN THỰC ---
 let lastRtpBytes = 0;
 let lastRtpTimestamp = 0;
+let lastJitterBufferDelay = 0;
+let lastJitterEmittedCount = 0;
 
 /**
  * Đóng luồng Video và dọn dẹp các tài nguyên mạng / bộ nhớ.
@@ -341,6 +343,8 @@ function closeFpvVideoStream(updateUiState = true) {
   // Reset biến đo đạc
   lastRtpBytes = 0;
   lastRtpTimestamp = 0;
+  lastJitterBufferDelay = 0;
+  lastJitterEmittedCount = 0;
 
   // Đưa các chỉ số OSD về mặc định
   if (DOM.osd.protocol) {
@@ -467,9 +471,22 @@ async function updateFpvStats() {
 
         // B. Đọc thông số luồng Video Inbound RTP (Jitter Buffer, Bytes, FPS, Resolution)
         if (report.type === 'inbound-rtp' && report.kind === 'video') {
-          if (report.jitterBufferDelay !== undefined && report.jitterBufferEmittedCount > 0) {
-            jitterDelayMs = Math.round((report.jitterBufferDelay / report.jitterBufferEmittedCount) * 1000);
+          // Tính Delta Jitter Buffer Delay tức thời trong đúng 1 giây vừa qua (Instantaneous Delta)
+          // Tránh lỗi cộng dồn tích lũy sai số khiến độ trễ tăng dần theo thời gian
+          if (report.jitterBufferDelay !== undefined && report.jitterBufferEmittedCount !== undefined) {
+            if (lastJitterEmittedCount > 0 && report.jitterBufferEmittedCount > lastJitterEmittedCount) {
+              const deltaDelay = report.jitterBufferDelay - lastJitterBufferDelay;
+              const deltaCount = report.jitterBufferEmittedCount - lastJitterEmittedCount;
+              if (deltaCount > 0 && deltaDelay >= 0) {
+                jitterDelayMs = Math.round((deltaDelay / deltaCount) * 1000);
+              }
+            } else if (report.jitterBufferEmittedCount > 0) {
+              jitterDelayMs = Math.round((report.jitterBufferDelay / report.jitterBufferEmittedCount) * 1000);
+            }
+            lastJitterBufferDelay = report.jitterBufferDelay;
+            lastJitterEmittedCount = report.jitterBufferEmittedCount;
           }
+
           if (report.framesPerSecond !== undefined) {
             rtpFps = Math.round(report.framesPerSecond);
           }
@@ -491,8 +508,10 @@ async function updateFpvStats() {
         DOM.osd.protocol.innerHTML = `<i class="fa-solid ${isUdp ? 'fa-bolt' : 'fa-network-wired'}"></i> WEBRTC (${transportProtocol})`;
       }
 
-      // 1. Tính độ trễ 1 chiều thực tế: (RTT / 2) + Jitter Buffer Delay + Decode/Render Time (~10ms)
-      const estimatedLatencyMs = Math.max(15, Math.round((rttMs ? rttMs / 2 : 20) + (jitterDelayMs || 25) + 10));
+      // 1. Tính độ trễ 1 chiều thực tế: (RTT / 2) + Instantaneous Jitter Delay + Decode/Render Time (~8ms)
+      const safeJitterMs = (jitterDelayMs > 0 && jitterDelayMs < 200) ? jitterDelayMs : 15;
+      const safeRttMs = rttMs > 0 ? rttMs : 20;
+      const estimatedLatencyMs = Math.max(15, Math.round((safeRttMs / 2) + safeJitterMs + 8));
 
       if (DOM.osd.latency) {
         let color = '#34d399'; // Xanh lá (< 150ms)
