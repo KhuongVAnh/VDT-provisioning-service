@@ -343,9 +343,13 @@ function closeFpvVideoStream(updateUiState = true) {
   lastRtpTimestamp = 0;
 
   // Đưa các chỉ số OSD về mặc định
+  if (DOM.osd.protocol) {
+    DOM.osd.protocol.style.color = '#64748b';
+    DOM.osd.protocol.innerHTML = '<i class="fa-solid fa-video-slash"></i> --';
+  }
   if (DOM.osd.latency) {
     DOM.osd.latency.style.color = '#64748b';
-    DOM.osd.latency.innerHTML = '<i class="fa-solid fa-bolt"></i> -- ms';
+    DOM.osd.latency.innerHTML = '<i class="fa-solid fa-clock"></i> -- ms';
   }
   if (DOM.osd.bitrate) {
     DOM.osd.bitrate.innerHTML = '<i class="fa-solid fa-gauge-high"></i> -- Mbps';
@@ -435,7 +439,7 @@ async function updateFpvStats() {
   if (!DOM.fpvVideoEl) return;
 
   // --- TRƯỜNG HỢP 1: WEBRTC WHEP KẾT NỐI TRỰC TIẾP ---
-  if (fpvPeerConnection && fpvPeerConnection.connectionState === 'connected') {
+  if (fpvPeerConnection && (fpvPeerConnection.connectionState === 'connected' || fpvPeerConnection.iceConnectionState === 'connected')) {
     try {
       const stats = await fpvPeerConnection.getStats();
       let rttMs = 0;
@@ -445,12 +449,19 @@ async function updateFpvStats() {
       let rtpFps = null;
       let rtpWidth = null;
       let rtpHeight = null;
+      let transportProtocol = 'UDP';
 
       stats.forEach(report => {
-        // A. Đọc thời gian khứ hồi mạng (Round Trip Time) từ cặp ứng viên ICE đang hoạt động
-        if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated)) {
+        // A. Đọc thời gian khứ hồi mạng (Round Trip Time) và giao thức vận chuyển (UDP / TCP)
+        if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated || report.selected)) {
           if (report.currentRoundTripTime !== undefined) {
             rttMs = Math.round(report.currentRoundTripTime * 1000);
+          }
+          if (report.remoteCandidateId) {
+            const remoteCand = stats.get(report.remoteCandidateId);
+            if (remoteCand && remoteCand.protocol) {
+              transportProtocol = remoteCand.protocol.toUpperCase();
+            }
           }
         }
 
@@ -472,6 +483,13 @@ async function updateFpvStats() {
           }
         }
       });
+
+      // 0. Cập nhật Badge Giao thức mạng (WEBRTC UDP / TCP)
+      if (DOM.osd.protocol) {
+        const isUdp = transportProtocol === 'UDP';
+        DOM.osd.protocol.style.color = isUdp ? '#10b981' : '#38bdf8';
+        DOM.osd.protocol.innerHTML = `<i class="fa-solid ${isUdp ? 'fa-bolt' : 'fa-network-wired'}"></i> WEBRTC (${transportProtocol})`;
+      }
 
       // 1. Tính độ trễ 1 chiều thực tế: (RTT / 2) + Jitter Buffer Delay + Decode/Render Time (~10ms)
       const estimatedLatencyMs = Math.max(15, Math.round((rttMs ? rttMs / 2 : 20) + (jitterDelayMs || 25) + 10));
@@ -518,6 +536,11 @@ async function updateFpvStats() {
 
   // --- TRƯỜNG HỢP 2: HLS FALLBACK ---
   else if (fpvHlsInstance) {
+    if (DOM.osd.protocol) {
+      DOM.osd.protocol.style.color = '#f59e0b';
+      DOM.osd.protocol.innerHTML = `<i class="fa-solid fa-layer-group"></i> HLS (HTTP)`;
+    }
+
     const hlsLatencySec = fpvHlsInstance.latency || (fpvHlsInstance.liveSyncPosition ? Math.max(0.5, Math.abs(DOM.fpvVideoEl.currentTime - fpvHlsInstance.liveSyncPosition)) : 1.2);
     
     if (DOM.osd.latency) {

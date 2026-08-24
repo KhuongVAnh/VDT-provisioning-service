@@ -85,6 +85,7 @@ const DOM = {
   // Lớp hiển thị buồng lái FPV OSD (Over-Screen Display)
   osd: {
     droneName: document.getElementById('hud-osd-drone-name'),
+    protocol: document.getElementById('osd-pill-protocol'),
     res: document.getElementById('osd-pill-res'),
     bitrate: document.getElementById('osd-pill-bitrate'),
     sat: document.getElementById('osd-pill-sat'),
