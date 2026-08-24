@@ -12,19 +12,31 @@
  */
 
 /**
+ * Kiểm tra xem luồng Live Video FPV có đang hoạt động (hoặc đang kết nối) hay không.
+ * 
+ * @returns {boolean} True nếu đang mở video
+ */
+function isFpvVideoActive() {
+  return !!(
+    activeFpvDroneId ||
+    fpvPeerConnection ||
+    fpvHlsInstance ||
+    (DOM.fpvVideoEl && DOM.fpvVideoEl.srcObject)
+  );
+}
+
+/**
  * Bật hoặc tắt luồng Video FPV từ nút bấm trên thanh công cụ HUD.
  */
 function toggleFpvVideoFromHud() {
-  if (!activeDroneId || activeDroneId === 'all') {
-    const firstOnline = fleetDevices.find(d => isDroneOnline(d.telemetry));
-    activeDroneId = firstOnline ? firstOnline.deviceId : (fleetDevices[0]?.deviceId || 'DRONE-001');
-  }
+  const selectedDropdownDrone = DOM.mapSelect?.value && DOM.mapSelect.value !== 'all' ? DOM.mapSelect.value : null;
+  const targetId = selectedDropdownDrone || (activeDroneId && activeDroneId !== 'all' ? activeDroneId : null) || fleetDevices.find(d => isDroneOnline(d.telemetry))?.deviceId || fleetDevices[0]?.deviceId || 'DRONE-001';
 
   // Nếu đang mở video thì bấm vào sẽ đóng lại
-  if (fpvPeerConnection || (DOM.fpvVideoEl && DOM.fpvVideoEl.srcObject) || fpvHlsInstance) {
+  if (isFpvVideoActive()) {
     closeFpvVideoStream();
   } else {
-    startFpvVideoStream(activeDroneId);
+    startFpvVideoStream(targetId);
   }
 }
 
@@ -54,7 +66,7 @@ function sanitizeWhepAnswerSdp(sdp) {
   let publicHost = null;
 
   for (const line of lines) {
-    const match = line.match(/^a=candidate:[^\s]+\s+\d+\s+udp\s+\d+\s+([^\s]+)\s+\d+/i);
+    const match = line.match(/^a=candidate:[^\s]+\s+\d+\s+(?:udp|tcp)\s+\d+\s+([^\s]+)\s+\d+/i);
     if (match) {
       const host = match[1];
       if (!isPrivateIp(host)) {
@@ -73,7 +85,7 @@ function sanitizeWhepAnswerSdp(sdp) {
   // 3. Tự động lọc bỏ các candidate thuộc dải Private (RFC 1918)
   const filteredLines = result.split(/\r?\n/).filter(line => {
     if (line.startsWith('a=candidate:')) {
-      const match = line.match(/^a=candidate:[^\s]+\s+\d+\s+udp\s+\d+\s+([^\s]+)\s+\d+/i);
+      const match = line.match(/^a=candidate:[^\s]+\s+\d+\s+(?:udp|tcp)\s+\d+\s+([^\s]+)\s+\d+/i);
       if (match && isPrivateIp(match[1])) {
         return false; // Tự động loại bỏ các IP nội bộ
       }

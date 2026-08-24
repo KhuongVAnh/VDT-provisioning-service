@@ -152,15 +152,30 @@ function populateDroneDropdowns(devices) {
 
 /**
  * Chọn Drone để hiển thị thông số chi tiết lên Cockpit HUD.
+ * Đồng thời tự động chuyển đổi luồng Camera FPV nếu đang mở xem.
  * 
  * @param {string} deviceId Mã Drone
  */
 function selectDroneForHud(deviceId) {
+  if (!deviceId) return;
+  const prevDroneId = activeDroneId;
   activeDroneId = deviceId;
-  if (DOM.mapSelect) DOM.mapSelect.value = deviceId;
+  if (DOM.mapSelect && DOM.mapSelect.value !== deviceId) {
+    DOM.mapSelect.value = deviceId;
+  }
+
   const drone = fleetDevices.find(d => d.deviceId === deviceId);
   if (drone && drone.telemetry) {
     updateHudDisplay(drone.telemetry);
+  }
+
+  // Nếu đang mở xem camera, tự động ngắt kết nối drone cũ và bật xem drone mới
+  const isVideoOpen = typeof isFpvVideoActive === 'function' ? isFpvVideoActive() : !!activeFpvDroneId;
+  if (isVideoOpen && deviceId !== 'all') {
+    if (activeFpvDroneId !== deviceId) {
+      console.log(`[FPV] Chuyển đổi camera: Ngắt luồng ${activeFpvDroneId || prevDroneId} -> Tự động bật xem ${deviceId}...`);
+      startFpvVideoStream(deviceId);
+    }
   }
 }
 
