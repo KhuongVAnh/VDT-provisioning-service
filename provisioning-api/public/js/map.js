@@ -64,6 +64,13 @@ function createDroneIcon(headingDeg, armed) {
  */
 function focusDroneOnMap(deviceId) {
   if (deviceId === 'all' || !deviceId) {
+    activeDroneId = 'all';
+
+    // Nếu đang mở xem camera mà chuyển sang "Theo dõi tất cả" -> Tự động đóng Video
+    if (typeof isFpvVideoActive === 'function' && isFpvVideoActive()) {
+      closeFpvVideoStream(true);
+    }
+
     // Nếu chọn 'all', tự động điều chỉnh khung nhìn vừa vặn với toàn bộ các Drone đang bay
     const markers = Object.values(droneMarkers);
     if (markers.length > 0 && map) {

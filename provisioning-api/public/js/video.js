@@ -29,15 +29,21 @@ function isFpvVideoActive() {
  * Bật hoặc tắt luồng Video FPV từ nút bấm trên thanh công cụ HUD.
  */
 function toggleFpvVideoFromHud() {
-  const selectedDropdownDrone = DOM.mapSelect?.value && DOM.mapSelect.value !== 'all' ? DOM.mapSelect.value : null;
-  const targetId = selectedDropdownDrone || (activeDroneId && activeDroneId !== 'all' ? activeDroneId : null) || fleetDevices.find(d => isDroneOnline(d.telemetry))?.deviceId || fleetDevices[0]?.deviceId || 'DRONE-001';
+  const selectedDropdownDrone = DOM.mapSelect?.value;
 
   // Nếu đang mở video thì bấm vào sẽ đóng lại
   if (isFpvVideoActive()) {
     closeFpvVideoStream();
-  } else {
-    startFpvVideoStream(targetId);
+    return;
   }
+
+  // Nếu đang chọn "Theo dõi tất cả" ('all') hoặc chưa chọn Drone -> Không cho bật xem video
+  if (!selectedDropdownDrone || selectedDropdownDrone === 'all') {
+    alert('⚠️ Vui lòng chọn 1 Drone cụ thể trong danh sách "Mục tiêu" để xem Camera Live!');
+    return;
+  }
+
+  startFpvVideoStream(selectedDropdownDrone);
 }
 
 /**
@@ -329,7 +335,7 @@ let lastRtpTimestamp = 0;
  */
 function closeFpvVideoStream(updateUiState = true) {
   if (updateUiState && DOM.btnVideoLabel) {
-    DOM.btnVideoLabel.innerText = 'Bật/Tắt Live FPV';
+    DOM.btnVideoLabel.innerText = 'Bật Live FPV';
   }
 
   // Dọn dẹp bộ đếm FPS/Stats
