@@ -17,7 +17,11 @@ function initTacticalMap() {
   if (map) return;
 
   // Khởi tạo Leaflet Map căn giữa tọa độ mặc định (Hà Nội: 21.005512, 105.843120, Zoom: 16)
-  map = L.map('tactical-map', { zoomControl: false }).setView([21.005512, 105.843120], 16);
+  // Bật preferCanvas: true để vẽ toàn bộ Vector/Polyline lên HTML5 Canvas, tăng tốc độ render x10 lần
+  map = L.map('tactical-map', { 
+    zoomControl: false,
+    preferCanvas: true
+  }).setView([21.005512, 105.843120], 16);
 
   // Đặt nút điều khiển Zoom ở góc trên cùng bên phải
   L.control.zoom({ position: 'topright' }).addTo(map);

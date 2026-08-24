@@ -32,9 +32,9 @@ function initWebSocket() {
     if (wsBadge) wsBadge.innerText = 'MẤT KẾT NỐI (RECONNECTING...)';
   });
 
-  // Khi nhận được gói tin cập nhật Telemetry từ Drone (Tần số ~ 10Hz)
+  // Khi nhận được gói tin cập nhật Telemetry từ Drone
   socket.on('telemetry:update', (data) => {
-    handleIncomingTelemetry(data);
+    queueTelemetryForRender(data);
   });
 
   // Nhận dữ liệu stream phản hồi từ phiên Web SSH
@@ -52,6 +52,33 @@ function initWebSocket() {
   });
 }
 
+// Hàng đợi lưu trữ Telemetry mới nhất chờ vẽ theo chu kỳ làm tươi màn hình (60 FPS)
+const telemetryRenderQueue = new Map();
+let isRenderFrameScheduled = false;
+
+/**
+ * Đưa gói tin Telemetry vào hàng đợi và kích hoạt requestAnimationFrame()
+ * Giúp tránh re-render DOM liên tục khi có hàng chục gói tin ùa về cùng lúc
+ */
+function queueTelemetryForRender(t) {
+  if (!t || !t.deviceId) return;
+  telemetryRenderQueue.set(t.deviceId, t);
+
+  if (!isRenderFrameScheduled) {
+    isRenderFrameScheduled = true;
+    requestAnimationFrame(() => {
+      isRenderFrameScheduled = false;
+      for (const [_, payload] of telemetryRenderQueue.entries()) {
+        processTelemetryUpdate(payload);
+      }
+      telemetryRenderQueue.clear();
+    });
+  }
+}
+
+// Giữ alias tương thích
+const handleIncomingTelemetry = queueTelemetryForRender;
+
 /**
  * Xử lý dữ liệu Telemetry thời gian thực nhận được từ Drone:
  *  1. Nếu Drone Online: Cập nhật vị trí Marker trên bản đồ Leaflet và xoay góc Heading.
@@ -61,7 +88,7 @@ function initWebSocket() {
  * 
  * @param {any} t Gói tin Telemetry
  */
-function handleIncomingTelemetry(t) {
+function processTelemetryUpdate(t) {
   if (!t || !t.deviceId) return;
 
   // Cập nhật trạng thái telemetry trong bộ nhớ fleetDevices
