@@ -1,37 +1,52 @@
-# HƯỚNG DẪN CÀI ĐẶT, VẬN HÀNH & HỦY BỎ MEDIAMTX THỦ CÔNG TRÊN UBUNTU VPS
-## (Native Systemd Service - Bảo mật & Tối ưu hiệu năng)
+# HƯỚNG DẪN CÀI ĐẶT, CẤU HÌNH WEBRTC WHEP & VẬN HÀNH MEDIAMTX THỦ CÔNG TRÊN UBUNTU VPS
+## (Native Systemd Service - Tối ưu Ultra-Low Latency < 30ms cho Drone BVLOS)
 
-Tài liệu này hướng dẫn chi tiết các bước **cài đặt trực tiếp MediaMTX bằng file nhị phân (Binary)** trên máy chủ Ubuntu VPS thay vì dùng Docker. Cách này giúp tối ưu hóa 100% tài nguyên phần cứng, giảm độ trễ tối đa và dễ dàng kiểm soát cổng mạng nội bộ.
-
-Cuối tài liệu là **Quy trình Tắt và Hủy sạch sẽ dịch vụ** để giải phóng toàn bộ tài nguyên (CPU, RAM, Port, Ổ đĩa) khi bạn muốn chuyển đổi sang VPS mới.
+Tài liệu này hướng dẫn chi tiết các bước **cài đặt và cấu hình trực tiếp MediaMTX bằng file nhị phân (Binary)** trên máy chủ Ubuntu VPS. Cách cài đặt Native Systemd này giúp:
+1. Tối ưu hóa 100% tài nguyên phần cứng (CPU, RAM), loại bỏ hoàn toàn độ trễ trung gian của Docker Bridge.
+2. Hỗ trợ chuẩn **WebRTC WHEP (WebRTC HTTP Egress Protocol)** truyền video thời gian thực siêu tốc (**`< 30ms`**) qua cổng **10005 (UDP/TCP)** với kỹ thuật **Client-First UDP Hole Punching**.
+3. Bảo mật tuyệt đối luồng dữ liệu thông qua **NestJS Video Gateway Token Guard (Cổng 10004)**.
+4. Cung cấp quy trình **Quản trị, Kiểm tra gói tin & Hủy bỏ sạch sẽ** khi chuyển đổi VPS.
 
 ---
 
+## 🏗️ SƠ ĐỒ KIẾN TRÚC TỔNG THỂ HỆ THỐNG TRUYỀN HÌNH ẢNH
+
 ```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                               UBUNTU VPS CLOUD                                   │
-│                                                                                  │
-│   [Drone qua WireGuard]                                                          │
-│        │                                                                         │
-│        │ RTSP (10.13.37.1:8554 - Kênh VPN nội bộ)                                │
-│        ▼                                                                         │
-│   ┌──────────────────────────────────────────────────────────────────────────┐   │
-│   │ MediaMTX Service (/usr/local/bin/mediamtx - Systemd)                     │   │
-│   │ • Lắng nghe RTSP nội bộ: 10.13.37.1:8554 & 127.0.0.1:8554               │   │
-│   │ • Lắng nghe HLS / WHEP nội bộ: 127.0.0.1:8888 / 127.0.0.1:8889           │   │
-│   │ • KHÔNG MỞ BẤT KỲ CỔNG NÀO RA INTERNET (Zero Public Ports)               │   │
-│   └────────────────────────────────────┬─────────────────────────────────────┘   │
-│                                        │ Stream nội bộ (127.0.0.1)               │
-│                                        ▼                                         │
-│   ┌──────────────────────────────────────────────────────────────────────────┐   │
-│   │ NestJS API & Video Gateway (Cổng duy nhất: 10004)                         │   │
-│   │ • WebSocket: ws://IP_VPS:10004/ws/video/:drone_id                        │   │
-│   │ • HTTP Stream Proxy: http://IP_VPS:10004/api/v1/video/:drone_id/*        │   │
-│   └────────────────────────────────────┬─────────────────────────────────────┘   │
-└────────────────────────────────────────┼─────────────────────────────────────────┘
-                                         │ Duy nhất Port 10004
-                                         ▼
-                             [Web Dashboard / Trình duyệt]
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                                     UBUNTU VPS CLOUD                                     │
+│                                                                                          │
+│   [Drone qua WireGuard VPN]                                                              │
+│        │                                                                                 │
+│        │ 1. RTSP Video H.264 (10.13.37.1:8554 - Kênh mã hóa nội bộ)                      │
+│        ▼                                                                                 │
+│   ┌──────────────────────────────────────────────────────────────────────────────────┐   │
+│   │ MediaMTX Service (/usr/local/bin/mediamtx - Native Systemd)                      │   │
+│   │ • RTSP Server nội bộ VPN: 10.13.37.1:8554 & 127.0.0.1:8554                      │   │
+│   │ • HLS / WHEP Signaling nội bộ: 127.0.0.1:8888 & 127.0.0.1:8889                   │   │
+│   │ • WebRTC Media Streaming: 0.0.0.0:10005 (UDP & TCP Multiplexing)                 │   │
+│   │ • Single Public Host: 103.253.20.32:10005 (Đã lọc sạch IP nội bộ rác)           │   │
+│   └──────────────────────┬───────────────────────────────────┬───────────────────────┘   │
+│                          │                                   │                           │
+│                          │ Bắt tay WHEP (127.0.0.1:8889)     │                           │
+│                          ▼                                   │                           │
+│   ┌──────────────────────────────────────────────────────┐   │                           │
+│   │ NestJS Provisioning API & Video Gateway (Cổng 10004) │   │                           │
+│   │ • Xác thực Token / Quyền phi công                    │   │                           │
+│   │ • WHEP Proxy: POST /api/v1/video/:drone_id/whep      │   │                           │
+│   │ • HLS Proxy:  GET  /api/v1/video/:drone_id/hls/*     │   │                           │
+│   └──────────────────────┬───────────────────────────────┘   │                           │
+└──────────────────────────┼───────────────────────────────────┼───────────────────────────┘
+                           │                                   │
+           [1. Bắt tay Signaling WHEP qua HTTP]                │ [2. Luồng Video WebRTC RTP]
+           http://IP_VPS:10004/api/v1/video/:id/whep           │ udp://IP_VPS:10005 (< 30ms)
+                           │                                   │
+                           ▼                                   ▼
+                ┌─────────────────────────────────────────────────────────┐
+                │          [Web Dashboard - Cockpit Mission FPV]          │
+                │ • Kỹ thuật Client-First UDP Hole Punching               │
+                │ • Đo RTT Latency, Bitrate, Resolution thời gian thực    │
+                │ • Tự động chuyển đổi camera khi chọn Drone trên bản đồ  │
+                └─────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -40,20 +55,7 @@ Cuối tài liệu là **Quy trình Tắt và Hủy sạch sẽ dịch vụ** đ
 
 ### Bước 1: Kiểm tra kiến trúc Chip và Tải MediaMTX
 
-Đăng nhập SSH vào VPS của bạn và thực hiện:
-
-#### Cách 1: Kiểm tra nhanh loại Chip (Kiến trúc CPU)
-Chạy lệnh sau trên terminal VPS:
-```bash
-uname -m
-```
-* Nếu kết quả in ra là **`x86_64`** $\rightarrow$ VPS dùng chip **Intel / AMD 64-bit** (Phổ biến nhất: AWS EC2, DigitalOcean, Linode, Viettel Cloud, VNPT...). Chọn gói **`linux_amd64`**.
-* Nếu kết quả in ra là **`aarch64`** hoặc **`arm64`** $\rightarrow$ VPS dùng chip **ARM 64-bit** (Oracle Cloud Always Free ARM Ampere, AWS Graviton...). Chọn gói **`linux_arm64v8`**.
-
----
-
-#### Cách 2: Chạy đoạn lệnh TỰ ĐỘNG nhận diện chip và cài đặt (Khuyên dùng)
-Đoạn script này sẽ tự động đọc kiến trúc chip của VPS để tải đúng bản MediaMTX tương ứng:
+Đăng nhập SSH vào VPS của bạn và chạy đoạn script tự động nhận diện kiến trúc CPU:
 
 ```bash
 # 1. Cập nhật hệ thống và cài đặt công cụ cần thiết
@@ -81,7 +83,7 @@ wget "https://github.com/bluenviron/mediamtx/releases/download/${VERSION}/mediam
 # 4. Giải nén
 tar -zxvf mediamtx_${VERSION}_${FILE_ARCH}.tar.gz
 
-# 5. Cài đặt vào /usr/local/bin
+# 5. Cài đặt file nhị phân vào /usr/local/bin
 sudo mv mediamtx /usr/local/bin/mediamtx
 sudo chmod +x /usr/local/bin/mediamtx
 
@@ -91,9 +93,11 @@ sudo chmod +x /usr/local/bin/mediamtx
 
 ---
 
-### Bước 2: Tạo file cấu hình bảo mật `mediamtx.yml`
+### Bước 2: Tạo file cấu hình chuẩn WebRTC WHEP `mediamtx.yml`
 
-Tạo thư mục cấu hình tại `/etc/mediamtx` và thiết lập các thông số chỉ cho phép truy cập nội bộ (bảo mật tuyệt đối, không lộ port ra ngoài):
+Tạo thư mục cấu hình tại `/etc/mediamtx` và thiết lập các thông số tối ưu cho đường truyền BVLOS:
+
+> ⚠️ **Lưu ý quan trọng:** Thay thế `IP_PUBLIC_CUA_VPS` ở dòng `webrtcAdditionalHosts` bằng IP Public thực tế của VPS bạn (ví dụ: `103.253.20.32`).
 
 ```bash
 # 1. Tạo thư mục chứa cấu hình
@@ -103,10 +107,9 @@ sudo mkdir -p /etc/mediamtx
 sudo tee /etc/mediamtx/mediamtx.yml > /dev/null << 'EOF'
 #################################################################
 # MEDIAMTX CONFIGURATION - DRONE FLEET INDUSTRIAL SYSTEM
-# Kiến trúc: Chỉ lắng nghe nội bộ VPN và Localhost (Zero Public Ports)
+# Kiến trúc: WebRTC WHEP Ultra-Low Latency + Single-Port Multiplexing
 #################################################################
 
-# Chế độ Log (debug, info, warn, error)
 logLevel: info
 logDestinations: [stdout]
 
@@ -118,23 +121,24 @@ rtspDisable: no
 protocols: [tcp, udp]
 encryption: "no"
 
-# Cổng 8554 (TCP/UDP): Bắt tay và điều khiển luồng RTSP từ Drone
+# Cổng 8554 (TCP/UDP): Bắt tay và điều khiển luồng RTSP từ Drone trên VPN
 rtspAddress: 10.13.37.1:8554
 
-# Cổng 8000 (UDP): Tiếp nhận các khung hình Video H.264 thực tế (RTP Payload) khi Drone phát qua UDP
+# Cổng 8000 (UDP): Tiếp nhận RTP Payload khung hình H.264
 rtpAddress: 10.13.37.1:8000
 
-# Cổng 8001 (UDP): Đo lường chất lượng mạng, độ trễ và tỷ lệ mất gói tin (RTCP)
+# Cổng 8001 (UDP): Đo lường chất lượng mạng và tỷ lệ mất gói RTCP
 rtcpAddress: 10.13.37.1:8001
 
 
 #################################################################
-# 2. Giao thức RTMP (Tùy chọn)
+# 2. Giao thức RTMP
 #################################################################
 rtmp: no
 
+
 #################################################################
-# 3. Giao thức HLS / LL-HLS (Cho NestJS HTTP Stream Proxy)
+# 3. Giao thức HLS (Kênh dự phòng Fallback khi client chặn UDP)
 #################################################################
 hls: yes
 hlsAddress: 127.0.0.1:8888
@@ -144,13 +148,33 @@ hlsSegmentCount: 7
 hlsSegmentDuration: 500ms
 hlsPartDuration: 100ms
 
+
 #################################################################
-# 4. Giao thức WebRTC / WHEP (Chỉ lắng nghe localhost cho Gateway)
+# 4. Giao thức WebRTC / WHEP (< 30ms cho Phi công BVLOS)
 #################################################################
 webrtc: yes
 webrtcAddress: 127.0.0.1:8889
 webrtcEncryption: no
-webrtcLocalUDPAddress: 127.0.0.1:8189
+
+# Cổng UDP chính để truyền nhận gói tin Video RTP thời gian thực
+webrtcLocalUDPAddress: :10005
+
+# Cổng TCP dự phòng (giúp giải cứu 100% kết nối khi người dùng ở mạng chặn UDP)
+webrtcLocalTCPAddress: :10005
+
+# 🛑 1. TẮT TỰ ĐỘNG QUÉT CÁC CARD MẠNG NỘI BỘ VÀ DOCKER TRÊN VPS:
+# Giúp loại bỏ 20 IP nội bộ rác (Docker, K8s, WireGuard) trong bản tin SDP
+webrtcIPsFromInterfaces: no
+
+# ✅ 2. KHAI BÁO IP PUBLIC VPS DUY NHẤT:
+# Thay IP_PUBLIC_CUA_VPS bằng địa chỉ IP Public thực tế của bạn (ví dụ: 103.253.20.32)
+webrtcAdditionalHosts: [ "IP_PUBLIC_CUA_VPS" ]
+
+# 🌟 3. CỤM STUN SERVER ĐA TẦNG HỖ TRỢ NAT TRAVERSAL:
+webrtcICEServers2:
+  - url: stun:stun.l.google.com:19302
+  - url: stun:stun.cloudflare.com:3478
+
 
 #################################################################
 # 5. API Điều khiển nội bộ
@@ -158,26 +182,41 @@ webrtcLocalUDPAddress: 127.0.0.1:8189
 api: yes
 apiAddress: 127.0.0.1:9997
 
+
 #################################################################
 # 6. Cấu hình luồng (Paths)
 #################################################################
 paths:
-  # Cấu hình all_others cho phép mọi Drone tự động đẩy luồng động (ví dụ: live/<drone_id>)
+  # Cho phép mọi Drone tự động đẩy luồng động (ví dụ: live/<drone_id>)
   all_others:
-    # Tự động giải phóng bộ nhớ đệm sau 10 giây nếu Drone ngắt kết nối
     sourceOnDemandCloseAfter: 10s
     runOnReadyRestart: yes
 EOF
 ```
 
-> **Giải thích cấu hình:**
-> - `rtspAddress: 10.13.37.1:8554`: Drone gửi RTSP thẳng vào IP VPN của VPS.
-> - `hlsAddress: 127.0.0.1:8888` & `webrtcAddress: 127.0.0.1:8889`: Chỉ mở cho NestJS (`127.0.0.1`) lấy dữ liệu.
-> - `Zero Public Ports`: Không có cổng nào bị lộ ra Internet công cộng.
+---
+
+### Bước 3: Mở cổng Firewall trên VPS
+
+Cho phép cổng `10005` (UDP và TCP) đi qua tường lửa của Ubuntu VPS:
+
+```bash
+# 1. Mở cổng UDP 10005 (Kênh truyền video chính)
+sudo ufw allow 10005/udp
+
+# 2. Mở cổng TCP 10005 (Kênh dự phòng)
+sudo ufw allow 10005/tcp
+
+# 3. Tải lại cấu hình tường lửa
+sudo ufw reload
+
+# 4. Kiểm tra trạng thái tường lửa
+sudo ufw status
+```
 
 ---
 
-### Bước 3: Tạo Systemd Service tự khởi động cùng VPS
+### Bước 4: Tạo Systemd Service tự khởi động cùng VPS
 
 Tạo file service quản trị tại `/etc/systemd/system/mediamtx.service`:
 
@@ -207,7 +246,7 @@ EOF
 
 ---
 
-### Bước 4: Khởi chạy và kích hoạt dịch vụ
+### Bước 5: Khởi chạy và kiểm tra dịch vụ
 
 ```bash
 # 1. Tải lại cấu hình systemd
@@ -217,87 +256,75 @@ sudo systemctl daemon-reload
 sudo systemctl enable mediamtx
 
 # 3. Bắt đầu chạy dịch vụ
-sudo systemctl start mediamtx
+sudo systemctl restart mediamtx
 
 # 4. Kiểm tra trạng thái đang chạy (Active: active (running))
 sudo systemctl status mediamtx --no-pager
 ```
 
----
-
-### Bước 5: Kiểm tra cổng mạng và xem log thời gian thực
-
+Kiểm tra các cổng mạng đang mở:
 ```bash
-# 1. Kiểm tra các cổng đang lắng nghe (đảm bảo chỉ nghe trên 10.13.37.1 và 127.0.0.1)
-sudo netstat -tulpn | grep mediamtx
-# Hoặc:
-sudo ss -tulpn | grep mediamtx
-
-# 2. Xem log hoạt động thời gian thực của MediaMTX
-sudo journalctl -u mediamtx -f
+sudo ss -ulpn | grep mediamtx
+# Kết quả chuẩn: 
+# *:10005 (UDP WebRTC)
+# 10.13.37.1:8554 (RTSP VPN)
+# 127.0.0.1:8889 (WHEP Localhost)
 ```
 
 ---
 
-## PHẦN II: HƯỚNG DẪN QUẢN TRỊ & BẢO TRÌ
+## PHẦN II: HƯỚNG DẪN QUẢN TRỊ, DEBUG & BẮT GÓI TIN
+
+### 1. Bảng lệnh quản trị nhanh
 
 | Thao tác | Câu lệnh thực thi |
 | :--- | :--- |
 | **Xem trạng thái** | `sudo systemctl status mediamtx` |
 | **Khởi động lại** | `sudo systemctl restart mediamtx` |
 | **Dừng tạm thời** | `sudo systemctl stop mediamtx` |
-| **Xem log 100 dòng cuối** | `sudo journalctl -u mediamtx -n 100 --no-pager` |
 | **Xem log realtime** | `sudo journalctl -u mediamtx -f` |
+| **Xem 50 dòng log cuối**| `sudo journalctl -u mediamtx -n 50 --no-pager` |
 | **Sửa file cấu hình** | `sudo nano /etc/mediamtx/mediamtx.yml && sudo systemctl restart mediamtx` |
 
 ---
 
-## PHẦN III: HƯỚNG DẪN TẮT VÀ HỦY SẠCH SẼ (DECOMMISSIONING GUIDE)
-*(Thực hiện khi muốn đổi sang VPS khác, giải phóng 100% tài nguyên CPU, RAM, Port, Ổ đĩa)*
+### 2. Kỹ thuật Debug bắt gói tin UDP bằng `tcpdump`
 
-Khi bạn chuyển dự án sang máy chủ VPS khác hoặc không còn nhu cầu sử dụng MediaMTX trên VPS hiện tại, hãy chạy tuần tự các bước sau để dọn dẹp sạch sẽ:
+Để kiểm tra trực tiếp xem gói tin WebRTC UDP giữa Drone, VPS và Máy tính phi công có thông suốt hay không:
 
-### Bước 1: Dừng dịch vụ và hủy tự khởi động
 ```bash
-# 1. Dừng tiến trình MediaMTX đang chạy
-sudo systemctl stop mediamtx
-
-# 2. Vô hiệu hóa tính năng tự khởi động cùng hệ điều hành
-sudo systemctl disable mediamtx
+# Theo dõi gói tin UDP trên cổng 10005
+sudo tcpdump -i ens192 -n "udp port 10005"
 ```
 
-### Bước 2: Xóa bỏ File Systemd Service và File cấu hình
-```bash
-# 1. Xóa file unit systemd
-sudo rm -f /etc/systemd/system/mediamtx.service
+**Dấu hiệu nhận biết kết nối thành công:**
+1. Thấy gói tin `112 byte` từ IP máy bạn gửi lên cổng `10005` (Trình duyệt bắn STUN Request trước).
+2. Thấy gói tin `64 byte` và `100 byte` từ VPS trả về đúng IP/Port máy bạn (MediaMTX phản hồi STUN Response & DTLS).
+3. Luồng gói tin video RTP liên tục được đẩy về máy bạn với tốc độ 30 FPS.
 
-# 2. Tải lại daemon của systemd để loại bỏ service khỏi danh sách quản lý
+---
+
+## PHẦN III: HƯỚNG DẪN TẮT VÀ HỦY SẠCH SẼ (DECOMMISSIONING GUIDE)
+*(Thực hiện khi muốn đổi sang VPS mới, giải phóng 100% CPU, RAM, Port, Ổ đĩa)*
+
+```bash
+# 1. Dừng và vô hiệu hóa dịch vụ
+sudo systemctl stop mediamtx
+sudo systemctl disable mediamtx
+
+# 2. Xóa file unit systemd và cấu hình
+sudo rm -f /etc/systemd/system/mediamtx.service
+sudo rm -rf /etc/mediamtx
 sudo systemctl daemon-reload
 sudo systemctl reset-failed
 
-# 3. Xóa thư mục chứa cấu hình mediamtx.yml
-sudo rm -rf /etc/mediamtx
-```
-
-### Bước 3: Xóa file thực thi nhị phân (Binary) và thư mục tạm
-```bash
-# 1. Xóa file binary MediaMTX khỏi /usr/local/bin
+# 3. Xóa file thực thi nhị phân
 sudo rm -f /usr/local/bin/mediamtx
-
-# 2. Dọn dẹp các file cài đặt tạm thời (nếu còn)
 sudo rm -rf /tmp/mediamtx*
-```
 
-### Bước 4: Kiểm tra xác nhận đã giải phóng 100% tài nguyên
-```bash
-# 1. Kiểm tra tiến trình (Không còn bất kỳ tiến trình mediamtx nào chạy ngầm)
+# 4. Xác nhận dọn dẹp sạch sẽ 100%
 ps aux | grep mediamtx | grep -v grep
-
-# 2. Kiểm tra các cổng mạng (Cổng 8554, 8888, 8889 đã được giải phóng hoàn toàn)
-sudo ss -tulpn | grep -E '8554|8888|8889|9997'
-
-# 3. Kiểm tra trạng thái dịch vụ (Hệ thống báo Unit mediamtx.service could not be found)
-sudo systemctl status mediamtx
+sudo ss -tulpn | grep -E '8554|8888|8889|10005'
 ```
 
-✅ **Kết quả:** VPS của bạn đã được dọn dẹp hoàn toàn sạch sẽ như ban đầu, không để lại bất kỳ file rác, tiến trình chạy ngầm hay cổng mạng nào bị chiếm dụng.
+✅ **Kết quả:** Máy chủ được giải phóng hoàn toàn sạch sẽ, không còn bất kỳ file rác hay tiến trình chạy ngầm nào! 🚀
