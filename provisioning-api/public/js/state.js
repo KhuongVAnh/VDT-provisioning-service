@@ -88,6 +88,7 @@ const DOM = {
     res: document.getElementById('osd-pill-res'),
     bitrate: document.getElementById('osd-pill-bitrate'),
     sat: document.getElementById('osd-pill-sat'),
+    latency: document.getElementById('osd-pill-latency'),
     hdg: document.getElementById('osd-hdg-val'),
     spd: document.getElementById('osd-spd-val'),
     alt: document.getElementById('osd-alt-val'),

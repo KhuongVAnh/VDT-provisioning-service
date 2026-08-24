@@ -205,6 +205,10 @@ async function startHlsFallbackStream(deviceId) {
   }
 }
 
+// --- BIẾN ĐO ĐẠC STATS VIDEO THỜI GIAN THỰC ---
+let lastRtpBytes = 0;
+let lastRtpTimestamp = 0;
+
 /**
  * Đóng luồng Video và dọn dẹp các tài nguyên mạng / bộ nhớ.
  * 
@@ -219,6 +223,22 @@ function closeFpvVideoStream(updateUiState = true) {
   if (fpvStatsInterval) {
     clearInterval(fpvStatsInterval);
     fpvStatsInterval = null;
+  }
+
+  // Reset biến đo đạc
+  lastRtpBytes = 0;
+  lastRtpTimestamp = 0;
+
+  // Đưa các chỉ số OSD về mặc định
+  if (DOM.osd.latency) {
+    DOM.osd.latency.style.color = '#64748b';
+    DOM.osd.latency.innerHTML = '<i class="fa-solid fa-bolt"></i> -- ms';
+  }
+  if (DOM.osd.bitrate) {
+    DOM.osd.bitrate.innerHTML = '<i class="fa-solid fa-gauge-high"></i> -- Mbps';
+  }
+  if (DOM.osd.res) {
+    DOM.osd.res.innerHTML = '<i class="fa-solid fa-video"></i> --x-- @ -- FPS';
   }
 
   // Hủy đăng ký trên Socket.IO
@@ -293,15 +313,118 @@ function toggleFpvFullscreen() {
 }
 
 /**
- * Cập nhật thông số độ phân giải và FPS lên lớp phủ HUD OSD.
+ * Tính toán và cập nhật các thông số Video thời gian thực (Real-time Stats):
+ *  1. Độ trễ thực tế (Latency): RTT + Jitter Buffer Delay qua API RTCPeerConnection.getStats().
+ *  2. Băng thông video thật (Real Bitrate Mbps).
+ *  3. Độ phân giải và Tốc độ khung hình (Resolution & FPS).
  */
-function updateFpvStats() {
+async function updateFpvStats() {
   if (!DOM.fpvVideoEl) return;
-  const width = DOM.fpvVideoEl.videoWidth || 768;
-  const height = DOM.fpvVideoEl.videoHeight || 432;
-  const fpsStr = DOM.fpvVideoEl.paused ? '-- FPS' : '30 FPS';
-  if (DOM.osd.res) {
-    DOM.osd.res.innerHTML = `<i class="fa-solid fa-video"></i> ${width}x${height} @ ${fpsStr}`;
+
+  // --- TRƯỜNG HỢP 1: WEBRTC WHEP KẾT NỐI TRỰC TIẾP ---
+  if (fpvPeerConnection && fpvPeerConnection.connectionState === 'connected') {
+    try {
+      const stats = await fpvPeerConnection.getStats();
+      let rttMs = 0;
+      let jitterDelayMs = 0;
+      let currentBytes = 0;
+      let currentTimestamp = 0;
+      let rtpFps = null;
+      let rtpWidth = null;
+      let rtpHeight = null;
+
+      stats.forEach(report => {
+        // A. Đọc thời gian khứ hồi mạng (Round Trip Time) từ cặp ứng viên ICE đang hoạt động
+        if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated)) {
+          if (report.currentRoundTripTime !== undefined) {
+            rttMs = Math.round(report.currentRoundTripTime * 1000);
+          }
+        }
+
+        // B. Đọc thông số luồng Video Inbound RTP (Jitter Buffer, Bytes, FPS, Resolution)
+        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+          if (report.jitterBufferDelay !== undefined && report.jitterBufferEmittedCount > 0) {
+            jitterDelayMs = Math.round((report.jitterBufferDelay / report.jitterBufferEmittedCount) * 1000);
+          }
+          if (report.framesPerSecond !== undefined) {
+            rtpFps = Math.round(report.framesPerSecond);
+          }
+          if (report.frameWidth !== undefined && report.frameHeight !== undefined) {
+            rtpWidth = report.frameWidth;
+            rtpHeight = report.frameHeight;
+          }
+          if (report.bytesReceived !== undefined) {
+            currentBytes = report.bytesReceived;
+            currentTimestamp = report.timestamp;
+          }
+        }
+      });
+
+      // 1. Tính độ trễ 1 chiều thực tế: (RTT / 2) + Jitter Buffer Delay + Decode/Render Time (~10ms)
+      const estimatedLatencyMs = Math.max(15, Math.round((rttMs ? rttMs / 2 : 20) + (jitterDelayMs || 25) + 10));
+
+      if (DOM.osd.latency) {
+        let color = '#34d399'; // Xanh lá (< 150ms)
+        let icon = 'fa-bolt';
+        if (estimatedLatencyMs > 250) {
+          color = '#ef4444'; // Đỏ (Mạng lag > 250ms)
+          icon = 'fa-triangle-exclamation';
+        } else if (estimatedLatencyMs > 150) {
+          color = '#f59e0b'; // Vàng cam (150 - 250ms)
+        }
+        DOM.osd.latency.style.color = color;
+        DOM.osd.latency.innerHTML = `<i class="fa-solid ${icon}"></i> ${estimatedLatencyMs}ms`;
+      }
+
+      // 2. Tính toán băng thông thực tế (Bitrate Mbps) từ lượng byte nhận được
+      if (lastRtpBytes > 0 && lastRtpTimestamp > 0 && currentBytes > lastRtpBytes) {
+        const timeDiffSec = (currentTimestamp - lastRtpTimestamp) / 1000;
+        if (timeDiffSec > 0) {
+          const bitRateBps = ((currentBytes - lastRtpBytes) * 8) / timeDiffSec;
+          const bitRateMbps = (bitRateBps / (1024 * 1024)).toFixed(2);
+          if (DOM.osd.bitrate) {
+            DOM.osd.bitrate.innerHTML = `<i class="fa-solid fa-gauge-high"></i> ${bitRateMbps} Mbps`;
+          }
+        }
+      }
+      lastRtpBytes = currentBytes;
+      lastRtpTimestamp = currentTimestamp;
+
+      // 3. Cập nhật độ phân giải & FPS
+      const width = rtpWidth || DOM.fpvVideoEl.videoWidth || 768;
+      const height = rtpHeight || DOM.fpvVideoEl.videoHeight || 432;
+      const fpsStr = (rtpFps !== null ? `${rtpFps} FPS` : (DOM.fpvVideoEl.paused ? '-- FPS' : '30 FPS'));
+      if (DOM.osd.res) {
+        DOM.osd.res.innerHTML = `<i class="fa-solid fa-video"></i> ${width}x${height} @ ${fpsStr}`;
+      }
+
+    } catch (e) {
+      console.warn('[FPV Stats] Lỗi đọc getStats WebRTC:', e);
+    }
+  }
+
+  // --- TRƯỜNG HỢP 2: HLS FALLBACK ---
+  else if (fpvHlsInstance) {
+    const hlsLatencySec = fpvHlsInstance.latency || (fpvHlsInstance.liveSyncPosition ? Math.max(0.5, Math.abs(DOM.fpvVideoEl.currentTime - fpvHlsInstance.liveSyncPosition)) : 1.2);
+    
+    if (DOM.osd.latency) {
+      DOM.osd.latency.style.color = '#f59e0b';
+      DOM.osd.latency.innerHTML = `<i class="fa-solid fa-clock"></i> ${hlsLatencySec.toFixed(1)}s (HLS)`;
+    }
+
+    if (fpvHlsInstance.bandwidthEstimate) {
+      const mbps = (fpvHlsInstance.bandwidthEstimate / (1024 * 1024)).toFixed(2);
+      if (DOM.osd.bitrate) {
+        DOM.osd.bitrate.innerHTML = `<i class="fa-solid fa-gauge-high"></i> ${mbps} Mbps`;
+      }
+    }
+
+    const width = DOM.fpvVideoEl.videoWidth || 768;
+    const height = DOM.fpvVideoEl.videoHeight || 432;
+    const fpsStr = DOM.fpvVideoEl.paused ? '-- FPS' : '30 FPS';
+    if (DOM.osd.res) {
+      DOM.osd.res.innerHTML = `<i class="fa-solid fa-video"></i> ${width}x${height} @ ${fpsStr}`;
+    }
   }
 }
 
