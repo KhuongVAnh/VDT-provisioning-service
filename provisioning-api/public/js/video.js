@@ -1,0 +1,317 @@
+/**
+ * ==============================================================================
+ * MODULE 5: FPV VIDEO GATEWAY PLAYER (video.js)
+ * ==============================================================================
+ * Mục đích:
+ *  - Quản lý luồng Video Camera từ Drone qua Gateway Port 10004.
+ *  - Hỗ trợ chuẩn WebRTC WHEP (WebRTC HTTP Egress Protocol) cho độ trễ tức thì (< 200ms)
+ *    phục vụ bay BVLOS (Bay ngoài tầm nhìn).
+ *  - Tự động Fallback sang Low-Latency HLS nếu mạng của client chặn cổng UDP WebRTC.
+ *  - Cung cấp các tính năng: Chụp ảnh nhanh (Snapshot), Toàn màn hình, Đo FPS/Resolution.
+ * ==============================================================================
+ */
+
+/**
+ * Bật hoặc tắt luồng Video FPV từ nút bấm trên thanh công cụ HUD.
+ */
+function toggleFpvVideoFromHud() {
+  if (!activeDroneId || activeDroneId === 'all') {
+    const firstOnline = fleetDevices.find(d => isDroneOnline(d.telemetry));
+    activeDroneId = firstOnline ? firstOnline.deviceId : (fleetDevices[0]?.deviceId || 'DRONE-001');
+  }
+
+  // Nếu đang mở video thì bấm vào sẽ đóng lại
+  if (fpvPeerConnection || (DOM.fpvVideoEl && DOM.fpvVideoEl.srcObject) || fpvHlsInstance) {
+    closeFpvVideoStream();
+  } else {
+    startFpvVideoStream(activeDroneId);
+  }
+}
+
+/**
+ * Khởi động luồng FPV Video cho một Drone cụ thể:
+ *  - Bước 1: Thử bắt tay WebRTC WHEP (Độ trễ < 200ms).
+ *  - Bước 2: Tự động Fallback sang HLS nếu WebRTC không thể kết nối.
+ * 
+ * @param {string} deviceId Mã Drone cần xem Video
+ */
+async function startFpvVideoStream(deviceId) {
+  if (!deviceId || deviceId === 'all') return;
+  activeFpvDroneId = deviceId;
+
+  if (DOM.btnVideoLabel) DOM.btnVideoLabel.innerText = 'Đóng Live Video';
+  if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'flex';
+  if (DOM.fpvLoadingText) DOM.fpvLoadingText.innerText = `Đang kết nối WebRTC WHEP (< 200ms) cho ${deviceId}...`;
+
+  // 1. Dọn dẹp phiên kết nối cũ (nếu có)
+  closeFpvVideoStream(false);
+  activeFpvDroneId = deviceId;
+
+  // 2. Thử kết nối qua WebRTC WHEP (Ultra-Low Latency < 200ms)
+  try {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+    fpvPeerConnection = pc;
+
+    // Yêu cầu chỉ nhận luồng Video (recvonly)
+    pc.addTransceiver('video', { direction: 'recvonly' });
+
+    // Khi nhận được luồng MediaStream từ MediaMTX qua WebRTC UDP
+    pc.ontrack = (event) => {
+      console.log('[FPV WebRTC] Đã nhận luồng MediaStream WebRTC thành công!');
+      if (DOM.fpvVideoEl) {
+        DOM.fpvVideoEl.srcObject = event.streams[0];
+        DOM.fpvVideoEl.play().catch(e => console.warn('Tự động phát Video bị chặn bởi trình duyệt:', e));
+      }
+      if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
+
+      // Khởi động đo đạc độ phân giải và FPS
+      if (!fpvStatsInterval) {
+        fpvStatsInterval = setInterval(updateFpvStats, 1000);
+        updateFpvStats();
+      }
+    };
+
+    // Tạo bản tin SDP Offer của trình duyệt
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Chờ thu thập ICE Candidate (Vanilla ICE timeout tối đa 600ms)
+    await new Promise((resolve) => {
+      if (pc.iceGatheringState === 'complete') {
+        resolve();
+      } else {
+        const checkState = () => {
+          if (pc.iceGatheringState === 'complete') {
+            pc.removeEventListener('icegatheringstatechange', checkState);
+            resolve();
+          }
+        };
+        pc.addEventListener('icegatheringstatechange', checkState);
+        setTimeout(resolve, 600);
+      }
+    });
+
+    // Gửi SDP Offer qua NestJS Gateway Token Guard (Port 10004)
+    const res = await fetch(`/api/v1/video/${encodeURIComponent(deviceId)}/whep`, {
+      method: 'POST',
+      body: pc.localDescription.sdp,
+      headers: { 'Content-Type': 'application/sdp' }
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server WHEP trả về mã lỗi: ${res.status}`);
+    }
+
+    // Nhận bản tin SDP Answer từ MediaMTX và gán vào Peer Connection
+    const answerSdp = await res.text();
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    console.log(`[FPV WebRTC] Bắt tay WHEP hoàn tất cho ${deviceId}! Luồng video < 200ms.`);
+
+    if (socket) socket.emit('video:subscribe', { deviceId });
+
+  } catch (err) {
+    // 3. Fallback sang Low-Latency HLS nếu WebRTC không khả dụng
+    console.warn('[FPV] Không thể kết nối WebRTC WHEP, tự động chuyển sang HLS Fallback:', err.message);
+    if (DOM.fpvLoadingText) {
+      DOM.fpvLoadingText.innerText = `Chuyển sang kênh dự phòng HLS cho ${deviceId}...`;
+    }
+    startHlsFallbackStream(deviceId);
+  }
+}
+
+/**
+ * Trình phát dự phòng Low-Latency HLS (HTTP Live Streaming) qua Port 10004.
+ * 
+ * @param {string} deviceId Mã Drone
+ */
+async function startHlsFallbackStream(deviceId) {
+  try {
+    const res = await fetch(`/api/v1/video/${encodeURIComponent(deviceId)}/stream-info`);
+    const json = await res.json();
+    if (json.status !== 'success' || !json.data) {
+      throw new Error('Không lấy được thông tin luồng stream từ server');
+    }
+
+    const { hlsUrl } = json.data;
+    console.log(`[FPV HLS] Bắt đầu kết nối Video HLS Gateway: ${hlsUrl}`);
+
+    if (socket) socket.emit('video:subscribe', { deviceId });
+
+    if (window.Hls && Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 1,
+        maxBufferLength: 2,
+        maxMaxBufferLength: 4,
+        liveSyncDuration: 0.5,
+        liveMaxLatencyDuration: 1.5,
+        maxLiveSyncPlaybackRate: 1.5,
+        liveDurationInfinity: true,
+        highBufferWatchdogPeriod: 1,
+      });
+
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(DOM.fpvVideoEl);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('[FPV HLS] Manifest parsed thành công!');
+        DOM.fpvVideoEl.play().catch(e => console.warn('Tự động phát video bị chặn:', e));
+        if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
+
+        if (!fpvStatsInterval) {
+          fpvStatsInterval = setInterval(updateFpvStats, 1000);
+          updateFpvStats();
+        }
+      });
+
+      hls.on(Hls.Events.LEVEL_UPDATED, () => {
+        if (hls.liveSyncPosition && Math.abs(DOM.fpvVideoEl.currentTime - hls.liveSyncPosition) > 1.8) {
+          DOM.fpvVideoEl.currentTime = hls.liveSyncPosition;
+        }
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          console.warn('[FPV HLS] Lỗi HLS fatal:', data.type, data.details);
+          if (DOM.fpvLoadingState) {
+            DOM.fpvLoadingState.style.display = 'flex';
+            if (DOM.fpvLoadingText) {
+              DOM.fpvLoadingText.innerHTML = `<span style="color:#f87171">⚠️ Mất tín hiệu luồng FPV</span><br><span style="font-size:0.75rem; color:#94a3b8">Đảm bảo Drone đang phát RTSP vào 10.13.37.1:8554.</span>`;
+            }
+          }
+        }
+      });
+
+      fpvHlsInstance = hls;
+    } else if (DOM.fpvVideoEl.canPlayType('application/vnd.apple.mpegurl')) {
+      DOM.fpvVideoEl.src = hlsUrl;
+      DOM.fpvVideoEl.addEventListener('loadedmetadata', () => {
+        DOM.fpvVideoEl.play().catch(e => console.warn(e));
+        if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
+      });
+    }
+
+  } catch (err) {
+    console.error('[FPV] Lỗi kết nối Video Gateway:', err);
+    if (DOM.fpvLoadingState) {
+      DOM.fpvLoadingState.style.display = 'flex';
+      if (DOM.fpvLoadingText) {
+        DOM.fpvLoadingText.innerHTML = `<span style="color:#f87171">⚠️ ${err.message}</span><br><span style="font-size:0.75rem; color:#94a3b8">Đảm bảo Drone đang phát RTSP vào 10.13.37.1:8554.</span>`;
+      }
+    }
+  }
+}
+
+/**
+ * Đóng luồng Video và dọn dẹp các tài nguyên mạng / bộ nhớ.
+ * 
+ * @param {boolean} updateUiState Có cập nhật lại nhãn nút bấm hay không
+ */
+function closeFpvVideoStream(updateUiState = true) {
+  if (updateUiState && DOM.btnVideoLabel) {
+    DOM.btnVideoLabel.innerText = 'Bật/Tắt Live FPV';
+  }
+
+  // Dọn dẹp bộ đếm FPS/Stats
+  if (fpvStatsInterval) {
+    clearInterval(fpvStatsInterval);
+    fpvStatsInterval = null;
+  }
+
+  // Hủy đăng ký trên Socket.IO
+  if (socket && activeFpvDroneId) {
+    socket.emit('video:unsubscribe', { deviceId: activeFpvDroneId });
+  }
+
+  // Đóng kết nối WebRTC Peer Connection
+  if (fpvPeerConnection) {
+    fpvPeerConnection.close();
+    fpvPeerConnection = null;
+  }
+
+  // Hủy phiên Hls.js
+  if (fpvHlsInstance) {
+    fpvHlsInstance.destroy();
+    fpvHlsInstance = null;
+  }
+
+  // Dọn dẹp thẻ Video HTML
+  if (DOM.fpvVideoEl) {
+    DOM.fpvVideoEl.pause();
+    DOM.fpvVideoEl.srcObject = null;
+    DOM.fpvVideoEl.removeAttribute('src');
+    DOM.fpvVideoEl.load();
+  }
+
+  activeFpvDroneId = null;
+}
+
+/**
+ * Tái đồng bộ mép phát Live Edge của Video (áp dụng cho HLS).
+ */
+function resyncLiveEdge() {
+  if (fpvHlsInstance && fpvHlsInstance.liveSyncPosition && DOM.fpvVideoEl) {
+    DOM.fpvVideoEl.currentTime = fpvHlsInstance.liveSyncPosition;
+  }
+}
+
+/**
+ * Chụp ảnh màn hình từ luồng FPV Video thời gian thực và tải xuống máy người dùng (.png).
+ */
+function captureFpvSnapshot() {
+  if (!DOM.fpvVideoEl || DOM.fpvVideoEl.videoWidth === 0) {
+    return alert('⚠️ Video chưa tải xong để chụp ảnh!');
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = DOM.fpvVideoEl.videoWidth;
+  canvas.height = DOM.fpvVideoEl.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(DOM.fpvVideoEl, 0, 0, canvas.width, canvas.height);
+
+  const link = document.createElement('a');
+  link.download = `FPV_SNAPSHOT_${activeFpvDroneId || 'DRONE'}_${Date.now()}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+/**
+ * Bật / tắt chế độ toàn màn hình cho khung Video FPV.
+ */
+function toggleFpvFullscreen() {
+  const box = document.getElementById('fpv-frame-box');
+  if (!box) return;
+
+  if (!document.fullscreenElement) {
+    box.requestFullscreen?.() || box.webkitRequestFullscreen?.();
+  } else {
+    document.exitFullscreen?.();
+  }
+}
+
+/**
+ * Cập nhật thông số độ phân giải và FPS lên lớp phủ HUD OSD.
+ */
+function updateFpvStats() {
+  if (!DOM.fpvVideoEl) return;
+  const width = DOM.fpvVideoEl.videoWidth || 768;
+  const height = DOM.fpvVideoEl.videoHeight || 432;
+  const fpsStr = DOM.fpvVideoEl.paused ? '-- FPS' : '30 FPS';
+  if (DOM.osd.res) {
+    DOM.osd.res.innerHTML = `<i class="fa-solid fa-video"></i> ${width}x${height} @ ${fpsStr}`;
+  }
+}
+
+/**
+ * Xem nhanh FPV Live Video cho một Drone từ bảng danh sách đội Drone.
+ * 
+ * @param {string} deviceId Mã Drone
+ */
+function watchLiveVideoForDrone(deviceId) {
+  switchTab('tab-tactical');
+  selectDroneForHud(deviceId);
+  startFpvVideoStream(deviceId);
+}

@@ -38,3 +38,10 @@ Thumbs.db
 .claude/
 .windsurf/
 skills-lock.json
+
+# C++ Build & Tooling
+build/
+**/build/
+compile_commands.json
+
+/pilot-bridge

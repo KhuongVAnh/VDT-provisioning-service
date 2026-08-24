@@ -1,0 +1,456 @@
+/**
+ * ==============================================================================
+ * DRONE MISSION CONTROL & COCKPIT - MAIN STYLESHEET
+ * ==============================================================================
+ * Bao gồm:
+ *  1. Thiết lập biến màu hệ thống (CSS Custom Properties) & Dark Theme.
+ *  2. Khung viền kính mờ hiện đại (Glassmorphism) & Hiệu ứng ánh sáng (Glow).
+ *  3. Header Bar, Thanh điều hướng (Nav Tabs) & Huy hiệu Live Badge.
+ *  4. Thẻ chỉ số tổng quan (KPI Summary Cards).
+ *  5. Bảng quản trị phi đội (Fleet Management Table) & Badges trạng thái.
+ *  6. Ma trận dải IP WireGuard Subnet (254 Hosts Matrix).
+ *  7. Nút bấm (Buttons), Hộp nhập liệu (Inputs) & Cửa sổ Modal.
+ * ==============================================================================
+ */
+
+/* -------------------------------------------------------------------------- */
+/* 1. BẢNG MÀU & BIẾN HỆ THỐNG (CYBERPUNK / AEROSPACE DARK THEME)              */
+/* -------------------------------------------------------------------------- */
+:root {
+  /* Màu nền & Bề mặt (Deep Space Dark) */
+  --bg-base: #060911;
+  --bg-surface: #0c1220;
+  --bg-surface-elevated: #131b2e;
+  --bg-card: rgba(15, 23, 42, 0.85);
+  --bg-glass: rgba(12, 18, 32, 0.82);
+
+  /* Đường viền & Hiệu ứng hover */
+  --border-color: rgba(255, 255, 255, 0.09);
+  --border-accent: rgba(56, 189, 248, 0.35);
+  --border-hover: rgba(56, 189, 248, 0.6);
+
+  /* Màu chủ đạo (Primary & Cyber Accent) */
+  --primary: #0284c7;
+  --primary-glow: rgba(14, 165, 233, 0.4);
+  --accent: #38bdf8;
+  --accent-cyber: #00f0ff;
+  --accent-glow: rgba(0, 240, 255, 0.35);
+
+  /* Màu trạng thái hệ thống */
+  --success: #10b981;
+  --success-glow: rgba(16, 185, 129, 0.3);
+  --warning: #f59e0b;
+  --warning-glow: rgba(245, 158, 11, 0.3);
+  --danger: #ef4444;
+  --danger-glow: rgba(239, 68, 68, 0.35);
+
+  /* Màu chữ */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  /* Màu hiển thị Artificial Horizon Cockpit */
+  --hud-sky: #0284c7;
+  --hud-ground: #78350f;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 2. THIẾT LẬP CƠ BẢN (RESET & GLOBAL STYLES)                                 */
+/* -------------------------------------------------------------------------- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  /* Họa tiết lưới tọa độ quân sự (Tactical Grid Pattern) */
+  background-image: 
+    radial-gradient(circle at 10% 10%, rgba(14, 165, 233, 0.07) 0%, transparent 45%),
+    radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 45%),
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 3. HEADER & THANH ĐIỀU HƯỚNG CHÍNH (NAVIGATION)                             */
+/* -------------------------------------------------------------------------- */
+header {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 0.65rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Logo & Tên trung tâm chỉ huy */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #0284c7, #00f0ff);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  color: white;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.brand-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(to right, #ffffff, #7dd3fc, #38bdf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brand-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+}
+
+.brand-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* Nhóm nút chuyển đổi Tabs */
+.nav-tabs {
+  display: flex;
+  gap: 0.35rem;
+  background: rgba(10, 15, 28, 0.7);
+  padding: 0.3rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.nav-tab {
+  padding: 0.5rem 1.1rem;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-tab:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-tab.active {
+  color: white;
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  box-shadow: 0 0 16px var(--primary-glow);
+}
+
+/* Chỉ báo trạng thái kết nối Gateway thời gian thực */
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.live-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 0.3rem 0.75rem;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: var(--success);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse-dot 1.8s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.4; }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 4. KHUNG CHỨA NỘI DUNG CHÍNH (MAIN & TAB PANELS)                            */
+/* -------------------------------------------------------------------------- */
+main {
+  flex: 1;
+  padding: 1.25rem 1.5rem;
+  max-width: 1800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.tab-content {
+  display: none;
+  animation: fadeIn 0.2s ease forwards;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 5. THẺ CHỈ SỐ TỔNG QUAN (KPI GRID & CARDS)                                  */
+/* -------------------------------------------------------------------------- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.kpi-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.kpi-card:hover {
+  border-color: var(--border-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.kpi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kpi-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+
+.kpi-value {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 0.3rem 0;
+  letter-spacing: -0.03em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.kpi-subtext {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 6. BẢNG DỮ LIỆU ĐỘI DRONE (FLEET MANAGEMENT TABLE)                          */
+/* -------------------------------------------------------------------------- */
+.table-responsive {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+th {
+  background: rgba(10, 15, 28, 0.95);
+  color: var(--text-muted);
+  font-weight: 700;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  letter-spacing: 0.05em;
+}
+
+td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-main);
+}
+
+tr:hover td {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* Huy hiệu trạng thái Drone (Active / Revoked / Pending) */
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.badge-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
+.badge-revoked { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); }
+.badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+
+/* -------------------------------------------------------------------------- */
+/* 7. MA TRẬN CẤP PHÁT IP WIREGUARD (IP MATRIX 254 HOSTS)                      */
+/* -------------------------------------------------------------------------- */
+.ip-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+  margin-top: 1rem;
+}
+
+.ip-cell {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.5rem 0.2rem;
+  text-align: center;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ip-cell:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  border-color: var(--accent);
+}
+
+.ip-cell.gateway { background: rgba(56, 189, 248, 0.2); border-color: var(--accent); color: var(--accent); }
+.ip-cell.active-online { background: rgba(16, 185, 129, 0.25); border-color: var(--success); color: #6ee7b7; box-shadow: 0 0 8px rgba(16,185,129,0.3); }
+.ip-cell.active-offline { background: rgba(245, 158, 11, 0.15); border-color: var(--warning); color: #fcd34d; }
+.ip-cell.available { opacity: 0.4; }
+
+/* -------------------------------------------------------------------------- */
+/* 8. FORM CONTROLS & NÚT BẤM (BUTTONS & INPUTS)                               */
+/* -------------------------------------------------------------------------- */
+select, input {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  color: white;
+  padding: 0.45rem 0.8rem;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  outline: none;
+  transition: all 0.15s;
+}
+
+select:focus, input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+}
+
+.btn {
+  padding: 0.45rem 1rem;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transition: all 0.15s;
+}
+
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: #0369a1; box-shadow: 0 0 12px var(--primary-glow); }
+
+.btn-success { background: var(--success); color: white; }
+.btn-danger { background: var(--danger); color: white; }
+
+.btn-secondary { background: #1e293b; color: white; border: 1px solid var(--border-color); }
+.btn-secondary:hover { background: #334155; }
+
+/* -------------------------------------------------------------------------- */
+/* 9. THIẾT KẾ ĐÁP ỨNG TRÊN MÀN HÌNH NHỎ (RESPONSIVE MEDIA QUERIES)             */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 1200px) {
+  .tactical-viewport-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .tactical-viewport-grid.mode-split .viewport-center {
+    grid-template-columns: 1fr;
+    height: 800px;
+  }
+  .viewport-center {
+    height: 550px;
+  }
+}

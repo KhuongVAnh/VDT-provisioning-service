@@ -10,998 +10,21 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <!-- Leaflet Map CSS -->
+  <!-- CSS Thư viện bên ngoài (Leaflet Map, Xterm.js, FontAwesome) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-  
-  <!-- Xterm.js CSS cho Web SSH Terminal -->
   <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
-
-  <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
-  <!-- HLS.js cho Low-Latency Video Streaming qua Port 10004 -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
-
-  <style>
-    :root {
-      --bg-base: #060911;
-      --bg-surface: #0c1220;
-      --bg-surface-elevated: #131b2e;
-      --bg-card: rgba(15, 23, 42, 0.85);
-      --bg-glass: rgba(12, 18, 32, 0.82);
-      --border-color: rgba(255, 255, 255, 0.09);
-      --border-accent: rgba(56, 189, 248, 0.35);
-      --border-hover: rgba(56, 189, 248, 0.6);
-      
-      --primary: #0284c7;
-      --primary-glow: rgba(14, 165, 233, 0.4);
-      --accent: #38bdf8;
-      --accent-cyber: #00f0ff;
-      --accent-glow: rgba(0, 240, 255, 0.35);
-      
-      --success: #10b981;
-      --success-glow: rgba(16, 185, 129, 0.3);
-      --warning: #f59e0b;
-      --warning-glow: rgba(245, 158, 11, 0.3);
-      --danger: #ef4444;
-      --danger-glow: rgba(239, 68, 68, 0.35);
-      
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --text-dim: #64748b;
-      --hud-sky: #0284c7;
-      --hud-ground: #78350f;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background-color: var(--bg-base);
-      color: var(--text-main);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow-x: hidden;
-      background-image: 
-        radial-gradient(circle at 10% 10%, rgba(14, 165, 233, 0.07) 0%, transparent 45%),
-        radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 45%),
-        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-      background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
-    }
-
-    /* --- HEADER BAR --- */
-    header {
-      background: var(--bg-glass);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-bottom: 1px solid var(--border-color);
-      position: sticky;
-      top: 0;
-      z-index: 1000;
-      padding: 0.65rem 1.5rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 0.85rem;
-    }
-
-    .brand-logo {
-      width: 40px;
-      height: 40px;
-      background: linear-gradient(135deg, #0284c7, #00f0ff);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.35rem;
-      color: white;
-      box-shadow: 0 0 20px var(--accent-glow);
-    }
-
-    .brand-title {
-      font-size: 1.15rem;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      background: linear-gradient(to right, #ffffff, #7dd3fc, #38bdf8);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .brand-badge {
-      font-size: 0.62rem;
-      font-weight: 700;
-      padding: 0.15rem 0.45rem;
-      border-radius: 4px;
-      background: rgba(56, 189, 248, 0.15);
-      border: 1px solid rgba(56, 189, 248, 0.4);
-      color: #38bdf8;
-      letter-spacing: 0.05em;
-    }
-
-    .brand-subtitle {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      letter-spacing: 0.04em;
-    }
-
-    .nav-tabs {
-      display: flex;
-      gap: 0.35rem;
-      background: rgba(10, 15, 28, 0.7);
-      padding: 0.3rem;
-      border-radius: 10px;
-      border: 1px solid var(--border-color);
-    }
-
-    .nav-tab {
-      padding: 0.5rem 1.1rem;
-      border-radius: 7px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 0.55rem;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .nav-tab:hover {
-      color: var(--text-main);
-      background: rgba(255, 255, 255, 0.05);
-    }
-
-    .nav-tab.active {
-      color: white;
-      background: linear-gradient(135deg, #0284c7, #0369a1);
-      box-shadow: 0 0 16px var(--primary-glow);
-    }
-
-    .header-status {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    .live-badge {
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-      font-size: 0.75rem;
-      font-weight: 700;
-      font-family: 'JetBrains Mono', monospace;
-      padding: 0.3rem 0.75rem;
-      border-radius: 9999px;
-      background: rgba(16, 185, 129, 0.12);
-      border: 1px solid rgba(16, 185, 129, 0.35);
-      color: var(--success);
-      box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
-    }
-
-    .live-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--success);
-      box-shadow: 0 0 8px var(--success);
-      animation: pulse-dot 1.8s infinite;
-    }
-
-    @keyframes pulse-dot {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.4); opacity: 0.4; }
-    }
-
-    /* --- MAIN CONTENT CONTAINER --- */
-    main {
-      flex: 1;
-      padding: 1.25rem 1.5rem;
-      max-width: 1800px;
-      margin: 0 auto;
-      width: 100%;
-    }
-
-    .tab-content {
-      display: none;
-      animation: fadeIn 0.2s ease forwards;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* --- KPI CARDS GRID --- */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.25rem;
-    }
-
-    .kpi-card {
-      background: var(--bg-card);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 1.1rem 1.25rem;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      position: relative;
-      overflow: hidden;
-      transition: all 0.2s ease;
-    }
-
-    .kpi-card:hover {
-      border-color: var(--border-accent);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    }
-
-    .kpi-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      color: var(--text-muted);
-      font-size: 0.78rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .kpi-icon {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.95rem;
-    }
-
-    .kpi-value {
-      font-size: 1.9rem;
-      font-weight: 800;
-      color: var(--text-main);
-      margin: 0.3rem 0;
-      letter-spacing: -0.03em;
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    .kpi-subtext {
-      font-size: 0.74rem;
-      color: var(--text-dim);
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    /* --- TACTICAL MISSION VIEW (3-WAY LAYOUT ENGINE) --- */
-    .tactical-mission-container {
-      display: flex;
-      flex-direction: column;
-      gap: 0.85rem;
-    }
-
-    /* --- LAYOUT CONTROL BAR --- */
-    .tactical-control-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      padding: 0.6rem 1rem;
-      gap: 1rem;
-      flex-wrap: wrap;
-    }
-
-    .control-group {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .layout-switch-btn-group {
-      display: flex;
-      background: rgba(10, 15, 28, 0.8);
-      padding: 3px;
-      border-radius: 8px;
-      border: 1px solid var(--border-color);
-      gap: 3px;
-    }
-
-    .layout-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      padding: 0.4rem 0.85rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      border-radius: 6px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      transition: all 0.15s;
-    }
-
-    .layout-btn:hover {
-      color: white;
-      background: rgba(255, 255, 255, 0.06);
-    }
-
-    .layout-btn.active {
-      background: var(--primary);
-      color: white;
-      box-shadow: 0 0 10px var(--primary-glow);
-    }
-
-    /* --- TACTICAL MAIN VIEWPORT --- */
-    .tactical-viewport-grid {
-      display: grid;
-      grid-template-columns: 1fr 380px;
-      gap: 1rem;
-      height: calc(100vh - 230px);
-      min-height: 620px;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    /* CHẾ ĐỘ 1: BẢN ĐỒ CHÍNH (Map Dominant) */
-    .tactical-viewport-grid.mode-map .viewport-center {
-      display: grid;
-      grid-template-columns: 1fr;
-      position: relative;
-    }
-    .tactical-viewport-grid.mode-map .map-frame {
-      display: flex;
-      width: 100%;
-      height: 100%;
-    }
-    .tactical-viewport-grid.mode-map .fpv-frame {
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
-      width: 380px;
-      height: 220px;
-      z-index: 500;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--accent-glow);
-    }
-
-    /* CHẾ ĐỘ 2: CHIA ĐÔI 50/50 (Split View) */
-    .tactical-viewport-grid.mode-split .viewport-center {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-    .tactical-viewport-grid.mode-split .map-frame {
-      display: flex;
-      width: 100%;
-      height: 100%;
-    }
-    .tactical-viewport-grid.mode-split .fpv-frame {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      bottom: auto;
-      right: auto;
-      z-index: 10;
-    }
-
-    /* CHẾ ĐỘ 3: BUỒNG LÁI FPV (Cockpit View) */
-    .tactical-viewport-grid.mode-cockpit .viewport-center {
-      display: grid;
-      grid-template-columns: 1fr;
-      position: relative;
-    }
-    .tactical-viewport-grid.mode-cockpit .fpv-frame {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      bottom: auto;
-      right: auto;
-      z-index: 10;
-    }
-    .tactical-viewport-grid.mode-cockpit .map-frame {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      width: 320px;
-      height: 200px;
-      z-index: 500;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--primary-glow);
-    }
-
-    /* VIEWPORT PANELS */
-    .viewport-center {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 14px;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .map-frame {
-      background: #090d16;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid var(--border-color);
-      flex-direction: column;
-      position: relative;
-    }
-
-    #tactical-map {
-      width: 100%;
-      height: 100%;
-      background: #090d16;
-    }
-
-    /* --- FPV COCKPIT VIDEO FRAME --- */
-    .fpv-frame {
-      background: #000;
-      border: 1px solid var(--border-accent);
-      border-radius: 12px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      position: relative;
-    }
-
-    .fpv-video-wrapper {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #fpv-video-el {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-
-    /* --- AEROSPACE HUD OSD OVERLAY (LỚP HIỂN THỊ BUỒNG LÁI TINH GỌN) --- */
-    .hud-osd-overlay {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 20;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 0.75rem;
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* HUD TOP BAR */
-    .hud-top-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .hud-drone-badge {
-      background: rgba(10, 15, 28, 0.75);
-      backdrop-filter: blur(8px);
-      border: 1px solid var(--border-accent);
-      border-radius: 6px;
-      padding: 0.3rem 0.65rem;
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: var(--accent-cyber);
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    }
-
-    .hud-top-metrics {
-      display: flex;
-      gap: 0.4rem;
-    }
-
-    .hud-metric-pill {
-      background: rgba(10, 15, 28, 0.75);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 6px;
-      padding: 0.25rem 0.5rem;
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: #f8fafc;
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-      text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
-    }
-
-    /* COMPASS TAPE (LA BÀN Ở TRÊN CÙNG) */
-    .hud-compass-bar {
-      align-self: center;
-      background: rgba(10, 15, 28, 0.7);
-      backdrop-filter: blur(8px);
-      border: 1px solid var(--border-accent);
-      border-radius: 4px;
-      padding: 0.15rem 0.9rem;
-      font-size: 0.72rem;
-      font-weight: 800;
-      color: var(--accent);
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      margin-top: 0.2rem;
-    }
-
-    /* HUD CENTER FLIGHT INSTRUMENT */
-    .hud-center-instruments {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 180px;
-      height: 180px;
-      pointer-events: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    /* CROSSHAIR RETICLE */
-    .hud-crosshair {
-      position: absolute;
-      width: 32px;
-      height: 32px;
-      border: 1.5px solid rgba(0, 240, 255, 0.7);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
-    }
-    .hud-crosshair::before {
-      content: '';
-      position: absolute;
-      width: 4px;
-      height: 4px;
-      background: #00f0ff;
-      border-radius: 50%;
-    }
-    .hud-crosshair-wing-l { position: absolute; left: -20px; top: 14px; width: 16px; height: 1.5px; background: #00f0ff; }
-    .hud-crosshair-wing-r { position: absolute; right: -20px; top: 14px; width: 16px; height: 1.5px; background: #00f0ff; }
-
-    /* PITCH LADDER */
-    .hud-pitch-ladder {
-      position: absolute;
-      width: 110px;
-      height: 110px;
-      border-top: 1px dashed rgba(255, 255, 255, 0.35);
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.35);
-      transition: transform 0.08s linear;
-    }
-
-    /* SPEED & ALTITUDE TAPES (2 BÊN CÁNH) */
-    .hud-left-tape {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(10, 15, 28, 0.75);
-      backdrop-filter: blur(8px);
-      border: 1px solid var(--border-accent);
-      border-radius: 6px;
-      padding: 0.3rem 0.5rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .hud-right-tape {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(10, 15, 28, 0.75);
-      backdrop-filter: blur(8px);
-      border: 1px solid var(--border-accent);
-      border-radius: 6px;
-      padding: 0.3rem 0.5rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .hud-tape-label { font-size: 0.58rem; color: var(--text-muted); font-weight: 600; }
-    .hud-tape-value { font-size: 0.95rem; font-weight: 800; color: #00f0ff; }
-
-    /* HUD BOTTOM BAR */
-    .hud-bottom-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      gap: 0.75rem;
-    }
-
-    .hud-mode-pill {
-      background: rgba(10, 15, 28, 0.75);
-      backdrop-filter: blur(8px);
-      border: 1px solid var(--border-accent);
-      border-radius: 6px;
-      padding: 0.3rem 0.65rem;
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: var(--warning);
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    .hud-quick-actions {
-      display: flex;
-      gap: 0.35rem;
-      pointer-events: auto;
-    }
-
-    .hud-btn {
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      color: var(--text-main);
-      padding: 0.35rem 0.55rem;
-      border-radius: 6px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-      transition: all 0.15s;
-    }
-
-    .hud-btn:hover {
-      background: var(--primary);
-      border-color: var(--accent);
-      box-shadow: 0 0 10px var(--primary-glow);
-    }
-
-    /* --- TỰ ĐỘNG TINH GỌN KHI Ở CHẾ ĐỘ MINI PIP (mode-map) --- */
-    .tactical-viewport-grid.mode-map .hud-center-instruments,
-    .tactical-viewport-grid.mode-map .hud-compass-bar,
-    .tactical-viewport-grid.mode-map .hud-left-tape,
-    .tactical-viewport-grid.mode-map .hud-right-tape,
-    .tactical-viewport-grid.mode-map #osd-pill-sat,
-    .tactical-viewport-grid.mode-map #osd-pill-bitrate,
-    .tactical-viewport-grid.mode-map .hud-quick-actions {
-      display: none !important;
-    }
-
-    .tactical-viewport-grid.mode-map .hud-top-bar {
-      width: 100%;
-    }
-
-    .tactical-viewport-grid.mode-map .hud-pip-expand-btn {
-      display: inline-flex !important;
-      pointer-events: auto;
-    }
-
-    .hud-pip-expand-btn {
-      display: none;
-    }
-
-    .hud-btn {
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      color: var(--text-main);
-      padding: 0.4rem 0.65rem;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      transition: all 0.15s;
-    }
-
-    .hud-btn:hover {
-      background: var(--primary);
-      border-color: var(--accent);
-      box-shadow: 0 0 10px var(--primary-glow);
-    }
-
-    /* LOADING & ERROR OVERLAY */
-    .fpv-loading-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(6, 9, 17, 0.94);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0.75rem;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      z-index: 30;
-    }
-
-    /* --- TELEMETRY SIDEBAR --- */
-    .telemetry-sidebar {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-      overflow-y: auto;
-    }
-
-    .sidebar-card {
-      background: var(--bg-card);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 1.1rem;
-    }
-
-    .sidebar-title {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--accent);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.8rem;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    /* --- ARTIFICIAL HORIZON (ATTITUDE HUD) --- */
-    .horizon-container {
-      width: 170px;
-      height: 170px;
-      border-radius: 50%;
-      border: 3px solid #334155;
-      position: relative;
-      overflow: hidden;
-      margin: 0 auto 0.8rem;
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(0,0,0,0.8);
-      background: #000;
-    }
-
-    .horizon-sphere {
-      width: 340px;
-      height: 340px;
-      position: absolute;
-      left: -85px;
-      top: -85px;
-      background: linear-gradient(to bottom, var(--hud-sky) 50%, #ffffff 50%, #ffffff 50.5%, var(--hud-ground) 50.5%);
-      transform-origin: center center;
-      transition: transform 0.08s linear;
-    }
-
-    .horizon-crosshair {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      width: 60px;
-      height: 60px;
-      pointer-events: none;
-      z-index: 10;
-    }
-    .crosshair-center {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      border: 2px solid #f59e0b;
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-    }
-    .crosshair-h-left { position: absolute; left: 0; top: 50%; width: 18px; height: 3px; background: #f59e0b; transform: translateY(-50%); }
-    .crosshair-h-right { position: absolute; right: 0; top: 50%; width: 18px; height: 3px; background: #f59e0b; transform: translateY(-50%); }
-
-    .telemetry-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.35rem 0;
-      font-size: 0.82rem;
-      border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
-    }
-    .telemetry-label { color: var(--text-muted); }
-    .telemetry-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--text-main); }
-
-    /* --- TERMINAL TAB --- */
-    .terminal-container {
-      background: #060911;
-      border: 1px solid var(--border-color);
-      border-radius: 14px;
-      padding: 1rem;
-      height: calc(100vh - 220px);
-      min-height: 550px;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .terminal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding-bottom: 0.75rem;
-      border-bottom: 1px solid var(--border-color);
-      margin-bottom: 0.75rem;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-
-    .terminal-box {
-      flex: 1;
-      border-radius: 8px;
-      overflow: hidden;
-      background: #000;
-      padding: 0.5rem;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    /* --- FORM CONTROLS & BUTTONS --- */
-    select, input {
-      background: #0f172a;
-      border: 1px solid var(--border-color);
-      color: white;
-      padding: 0.45rem 0.8rem;
-      border-radius: 7px;
-      font-size: 0.85rem;
-      outline: none;
-      transition: all 0.15s;
-    }
-    select:focus, input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
-    }
-
-    .btn {
-      padding: 0.45rem 1rem;
-      border-radius: 7px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.45rem;
-      transition: all 0.15s;
-    }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-primary:hover { background: #0369a1; box-shadow: 0 0 12px var(--primary-glow); }
-    .btn-success { background: var(--success); color: white; }
-    .btn-danger { background: var(--danger); color: white; }
-    .btn-secondary { background: #1e293b; color: white; border: 1px solid var(--border-color); }
-    .btn-secondary:hover { background: #334155; }
-
-    /* --- FLEET TABLE --- */
-    .table-responsive {
-      overflow-x: auto;
-      border-radius: 12px;
-      border: 1px solid var(--border-color);
-      background: var(--bg-card);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-      font-size: 0.85rem;
-    }
-
-    th {
-      background: rgba(10, 15, 28, 0.95);
-      color: var(--text-muted);
-      font-weight: 700;
-      padding: 0.9rem 1rem;
-      border-bottom: 1px solid var(--border-color);
-      text-transform: uppercase;
-      font-size: 0.74rem;
-      letter-spacing: 0.05em;
-    }
-
-    td {
-      padding: 0.85rem 1rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      color: var(--text-main);
-    }
-
-    tr:hover td {
-      background: rgba(255, 255, 255, 0.025);
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 0.2rem 0.55rem;
-      border-radius: 5px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-    .badge-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
-    .badge-revoked { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); }
-    .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
-
-    /* --- IP MATRIX GRID --- */
-    .ip-matrix-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
-      gap: 6px;
-      margin-top: 1rem;
-    }
-
-    .ip-cell {
-      background: #0f172a;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 0.5rem 0.2rem;
-      text-align: center;
-      font-size: 0.72rem;
-      font-family: 'JetBrains Mono', monospace;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .ip-cell:hover {
-      transform: scale(1.1);
-      z-index: 10;
-      border-color: var(--accent);
-    }
-    .ip-cell.gateway { background: rgba(56, 189, 248, 0.2); border-color: var(--accent); color: var(--accent); }
-    .ip-cell.active-online { background: rgba(16, 185, 129, 0.25); border-color: var(--success); color: #6ee7b7; box-shadow: 0 0 8px rgba(16,185,129,0.3); }
-    .ip-cell.active-offline { background: rgba(245, 158, 11, 0.15); border-color: var(--warning); color: #fcd34d; }
-    .ip-cell.available { opacity: 0.4; }
-
-    /* --- RESPONSIVE --- */
-    @media (max-width: 1200px) {
-      .tactical-viewport-grid {
-        grid-template-columns: 1fr;
-        height: auto;
-      }
-      .tactical-viewport-grid.mode-split .viewport-center {
-        grid-template-columns: 1fr;
-        height: 800px;
-      }
-      .viewport-center {
-        height: 550px;
-      }
-    }
-  </style>
+  <!-- CSS Module của Dự án -->
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/hud.css">
+  <link rel="stylesheet" href="/css/terminal.css">
 </head>
 <body>
 
-  <!-- HEADER -->
+  <!-- ======================================================================== -->
+  <!-- 1. THANH TIÊU ĐỀ & ĐIỀU HƯỚNG CHÍNH (HEADER)                              -->
+  <!-- ======================================================================== -->
   <header>
     <div class="brand">
       <div class="brand-logo"><i class="fa-solid fa-jet-fighter"></i></div>
@@ -1016,10 +39,18 @@
 
     <!-- NAV TABS -->
     <div class="nav-tabs">
-      <button class="nav-tab active" onclick="switchTab('tab-tactical')"><i class="fa-solid fa-satellite-dish"></i> Tác Chiến & FPV</button>
-      <button class="nav-tab" onclick="switchTab('tab-fleet')"><i class="fa-solid fa-drone"></i> Đội Drone</button>
-      <button class="nav-tab" onclick="switchTab('tab-terminal')"><i class="fa-solid fa-terminal"></i> Web SSH</button>
-      <button class="nav-tab" onclick="switchTab('tab-ip-pool')"><i class="fa-solid fa-network-wired"></i> IP Matrix</button>
+      <button class="nav-tab active" onclick="switchTab('tab-tactical')">
+        <i class="fa-solid fa-satellite-dish"></i> Tác Chiến & FPV
+      </button>
+      <button class="nav-tab" onclick="switchTab('tab-fleet')">
+        <i class="fa-solid fa-drone"></i> Đội Drone
+      </button>
+      <button class="nav-tab" onclick="switchTab('tab-terminal')">
+        <i class="fa-solid fa-terminal"></i> Web SSH
+      </button>
+      <button class="nav-tab" onclick="switchTab('tab-ip-pool')">
+        <i class="fa-solid fa-network-wired"></i> IP Matrix
+      </button>
     </div>
 
     <!-- STATUS INDICATORS -->
@@ -1028,11 +59,15 @@
         <div class="live-dot"></div>
         <span id="ws-status-text">GATEWAY 10004 LIVE</span>
       </div>
-      <button class="btn btn-secondary" onclick="refreshAllData()" title="Làm mới dữ liệu"><i class="fa-solid fa-arrows-rotate"></i></button>
+      <button class="btn btn-secondary" onclick="refreshAllData()" title="Làm mới dữ liệu">
+        <i class="fa-solid fa-arrows-rotate"></i>
+      </button>
     </div>
   </header>
 
-  <!-- MAIN -->
+  <!-- ======================================================================== -->
+  <!-- 2. NỘI DUNG CHÍNH (MAIN CONTAINER)                                       -->
+  <!-- ======================================================================== -->
   <main>
     
     <!-- KPI SUMMARY BAR -->
@@ -1040,7 +75,9 @@
       <div class="kpi-card">
         <div class="kpi-header">
           <span>Tổng Phi Đội</span>
-          <div class="kpi-icon" style="background: rgba(56, 189, 248, 0.15); color: var(--accent);"><i class="fa-solid fa-plane"></i></div>
+          <div class="kpi-icon" style="background: rgba(56, 189, 248, 0.15); color: var(--accent);">
+            <i class="fa-solid fa-plane"></i>
+          </div>
         </div>
         <div class="kpi-value" id="kpi-total-devices">0</div>
         <div class="kpi-subtext" id="kpi-active-pending">0 Active • 0 Pending</div>
@@ -1049,7 +86,9 @@
       <div class="kpi-card">
         <div class="kpi-header">
           <span>Đang Bay (Online)</span>
-          <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.15); color: var(--success);"><i class="fa-solid fa-satellite-dish"></i></div>
+          <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.15); color: var(--success);">
+            <i class="fa-solid fa-satellite-dish"></i>
+          </div>
         </div>
         <div class="kpi-value" style="color: #34d399;" id="kpi-online-count">0</div>
         <div class="kpi-subtext">Telemetry Stream 10Hz</div>
@@ -1058,7 +97,9 @@
       <div class="kpi-card">
         <div class="kpi-header">
           <span>Dải IP WireGuard</span>
-          <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.15); color: var(--warning);"><i class="fa-solid fa-network-wired"></i></div>
+          <div class="kpi-icon" style="background: rgba(245, 158, 11, 0.15); color: var(--warning);">
+            <i class="fa-solid fa-network-wired"></i>
+          </div>
         </div>
         <div class="kpi-value" id="kpi-ip-usage">0%</div>
         <div class="kpi-subtext" id="kpi-ip-counts">0 / 253 IP Đã Cấp</div>
@@ -1067,14 +108,18 @@
       <div class="kpi-card">
         <div class="kpi-header">
           <span>Single Gateway Port</span>
-          <div class="kpi-icon" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;"><i class="fa-solid fa-shield-halved"></i></div>
+          <div class="kpi-icon" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
         </div>
         <div class="kpi-value" style="font-size: 1.5rem; color: #c084fc;">TCP :10004</div>
         <div class="kpi-subtext">MAVLink + Video + WebSSH</div>
       </div>
     </div>
 
-    <!-- TAB 1: TACTICAL MISSION VIEW (BẢN ĐỒ TÁC CHIẾN & COCKPIT FPV) -->
+    <!-- ---------------------------------------------------------------------- -->
+    <!-- TAB 1: TACTICAL MISSION VIEW (BẢN ĐỒ TÁC CHIẾN & COCKPIT FPV)           -->
+    <!-- ---------------------------------------------------------------------- -->
     <div id="tab-tactical" class="tab-content active">
       <div class="tactical-mission-container">
         
@@ -1082,7 +127,9 @@
         <div class="tactical-control-bar">
           <!-- BỘ CHỌN DRONE -->
           <div class="control-group">
-            <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);"><i class="fa-solid fa-crosshairs"></i> Mục tiêu:</span>
+            <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">
+              <i class="fa-solid fa-crosshairs"></i> Mục tiêu:
+            </span>
             <select id="select-drone-map" onchange="focusDroneOnMap(this.value)" style="min-width: 260px;">
               <option value="all">-- Toàn bộ Phi Đội --</option>
             </select>
@@ -1090,7 +137,9 @@
 
           <!-- BỘ CHUYỂN ĐỔI BỐ CỤC (LAYOUT ENGINE) -->
           <div class="control-group">
-            <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);"><i class="fa-solid fa-table-columns"></i> Bố cục:</span>
+            <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted);">
+              <i class="fa-solid fa-table-columns"></i> Bố cục:
+            </span>
             <div class="layout-switch-btn-group">
               <button class="layout-btn active" id="btn-mode-map" onclick="setLayoutMode('mode-map')">
                 <i class="fa-solid fa-map-location-dot"></i> Bản Đồ Lớn
@@ -1145,10 +194,12 @@
                       <div class="hud-metric-pill" id="osd-pill-res"><i class="fa-solid fa-video"></i> 768x432 @ 30 FPS</div>
                       <div class="hud-metric-pill" id="osd-pill-bitrate"><i class="fa-solid fa-gauge-high"></i> 1.8 Mbps</div>
                       <div class="hud-metric-pill" id="osd-pill-sat"><i class="fa-solid fa-satellite"></i> 3D FIX (14 SAT)</div>
-                      <div class="hud-metric-pill" style="color: #38bdf8;"><i class="fa-solid fa-clock"></i> &lt; 0.5s</div>
+                      <div class="hud-metric-pill" style="color: #38bdf8;"><i class="fa-solid fa-clock"></i> &lt; 200ms</div>
                     </div>
 
-                    <button class="hud-btn hud-pip-expand-btn" onclick="setLayoutMode('mode-cockpit')" title="Phóng to Buồng Lái FPV"><i class="fa-solid fa-expand"></i> Mở Buồng Lái</button>
+                    <button class="hud-btn hud-pip-expand-btn" onclick="setLayoutMode('mode-cockpit')" title="Phóng to Buồng Lái FPV">
+                      <i class="fa-solid fa-expand"></i> Mở Buồng Lái
+                    </button>
                   </div>
 
                   <!-- LA BÀN COMPASS TAPE -->
@@ -1192,9 +243,15 @@
 
                     <!-- HUD QUICK ACTIONS -->
                     <div class="hud-quick-actions">
-                      <button class="hud-btn" onclick="captureFpvSnapshot()" title="Chụp ảnh màn hình FPV"><i class="fa-solid fa-camera"></i> Snapshot</button>
-                      <button class="hud-btn" onclick="resyncLiveEdge()" title="Tái đồng bộ mép Live Edge (< 0.5s)"><i class="fa-solid fa-bolt"></i> Live Sync</button>
-                      <button class="hud-btn" onclick="toggleFpvFullscreen()" title="Xem toàn màn hình"><i class="fa-solid fa-expand"></i></button>
+                      <button class="hud-btn" onclick="captureFpvSnapshot()" title="Chụp ảnh màn hình FPV">
+                        <i class="fa-solid fa-camera"></i> Snapshot
+                      </button>
+                      <button class="hud-btn" onclick="resyncLiveEdge()" title="Tái đồng bộ mép Live Edge">
+                        <i class="fa-solid fa-bolt"></i> Live Sync
+                      </button>
+                      <button class="hud-btn" onclick="toggleFpvFullscreen()" title="Xem toàn màn hình">
+                        <i class="fa-solid fa-expand"></i>
+                      </button>
                     </div>
                   </div>
 
@@ -1291,7 +348,9 @@
       </div>
     </div>
 
-    <!-- TAB 2: FLEET MANAGEMENT (DANH SÁCH ĐỘI DRONE) -->
+    <!-- ---------------------------------------------------------------------- -->
+    <!-- TAB 2: FLEET MANAGEMENT (DANH SÁCH ĐỘI DRONE)                           -->
+    <!-- ---------------------------------------------------------------------- -->
     <div id="tab-fleet" class="tab-content">
       <div class="sidebar-card" style="margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
@@ -1330,7 +389,9 @@
       </div>
     </div>
 
-    <!-- TAB 3: WEB SSH TERMINAL -->
+    <!-- ---------------------------------------------------------------------- -->
+    <!-- TAB 3: WEB SSH TERMINAL                                                -->
+    <!-- ---------------------------------------------------------------------- -->
     <div id="tab-terminal" class="tab-content">
       <div class="terminal-container">
         <div class="terminal-header">
@@ -1353,7 +414,9 @@
       </div>
     </div>
 
-    <!-- TAB 4: IP MATRIX (MA TRẬN IP 254 Ô) -->
+    <!-- ---------------------------------------------------------------------- -->
+    <!-- TAB 4: IP MATRIX (MA TRẬN IP 254 Ô)                                    -->
+    <!-- ---------------------------------------------------------------------- -->
     <div id="tab-ip-pool" class="tab-content">
       <div class="sidebar-card">
         <div class="sidebar-title"><i class="fa-solid fa-network-wired"></i> Ma Trận Cấp Phát Địa Chỉ IP Subnet (10.13.37.0/24)</div>
@@ -1374,7 +437,9 @@
 
   </main>
 
-  <!-- MODAL GHI DANH THỦ CÔNG DRONE -->
+  <!-- ======================================================================== -->
+  <!-- 3. MODAL GHI DANH THỦ CÔNG DRONE                                         -->
+  <!-- ======================================================================== -->
   <div id="modal-manual-register" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); z-index:2000; align-items:center; justify-content:center;">
     <div style="background:var(--bg-surface-elevated); border:1px solid var(--border-accent); border-radius:14px; padding:1.5rem; width:450px; box-shadow:0 20px 50px rgba(0,0,0,0.8);">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
@@ -1403,717 +468,26 @@
     </div>
   </div>
 
-  <!-- SCRIPTS -->
+  <!-- ======================================================================== -->
+  <!-- 4. THƯ VIỆN JAVASCRIPT BÊN NGOÀI                                         -->
+  <!-- ======================================================================== -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script src="/socket.io/socket.io.js"></script>
 
-  <script>
-    // --- GLOBAL STATE ---
-    let socket = null;
-    let map = null;
-    let droneMarkers = {};
-    let droneFlightTrails = {};
-    let fleetDevices = [];
-    let activeDroneId = 'all';
-    let activeFpvDroneId = null;
-    let currentLayoutMode = 'mode-map';
-    let fpvHlsInstance = null;
-    let fpvStatsInterval = null;
-    let term = null;
-    let fitAddon = null;
+  <!-- ======================================================================== -->
+  <!-- 5. CÁC MODULE JAVASCRIPT CỦA DỰ ÁN                                       -->
+  <!-- ======================================================================== -->
+  <script src="/js/state.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/hud.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/video.js"></script>
+  <script src="/js/terminal.js"></script>
+  <script src="/js/socket.js"></script>
+  <script src="/js/app.js"></script>
 
-    // --- DOM REFERENCES ---
-    const DOM = {
-      mapSelect: document.getElementById('select-drone-map'),
-      viewportGrid: document.getElementById('tactical-grid-viewport'),
-      fpvVideoEl: document.getElementById('fpv-video-el'),
-      fpvLoadingState: document.getElementById('fpv-loading-state'),
-      fpvLoadingText: document.getElementById('fpv-loading-text'),
-      btnVideoLabel: document.getElementById('btn-video-label'),
-      kpiTotal: document.getElementById('kpi-total-devices'),
-      kpiActivePending: document.getElementById('kpi-active-pending'),
-      kpiOnline: document.getElementById('kpi-online-count'),
-      kpiIpUsage: document.getElementById('kpi-ip-usage'),
-      kpiIpCounts: document.getElementById('kpi-ip-counts'),
-      fleetTable: document.getElementById('fleet-table-body'),
-      ipMatrix: document.getElementById('ip-matrix-container'),
-      sshSelect: document.getElementById('terminal-select-drone'),
-      sshIp: document.getElementById('terminal-input-ip'),
-      sshUser: document.getElementById('terminal-input-user'),
-      sshPass: document.getElementById('terminal-input-pass'),
-      sshStatus: document.getElementById('terminal-status-text'),
-      osd: {
-        droneName: document.getElementById('hud-osd-drone-name'),
-        res: document.getElementById('osd-pill-res'),
-        bitrate: document.getElementById('osd-pill-bitrate'),
-        sat: document.getElementById('osd-pill-sat'),
-        hdg: document.getElementById('osd-hdg-val'),
-        spd: document.getElementById('osd-spd-val'),
-        alt: document.getElementById('osd-alt-val'),
-        modeText: document.getElementById('osd-mode-text'),
-        modePill: document.getElementById('osd-mode-pill'),
-        batText: document.getElementById('osd-bat-text'),
-        batPill: document.getElementById('osd-bat-pill'),
-        pitchLadder: document.getElementById('hud-pitch-ladder'),
-      },
-      hud: {
-        deviceId: document.getElementById('hud-val-device'),
-        flightMode: document.getElementById('hud-val-mode'),
-        armed: document.getElementById('hud-val-armed'),
-        battery: document.getElementById('hud-val-battery'),
-        altitude: document.getElementById('hud-val-alt'),
-        speed: document.getElementById('hud-val-speed'),
-        heading: document.getElementById('hud-val-heading'),
-        angles: document.getElementById('hud-val-angles'),
-        horizon: document.getElementById('hud-horizon-sphere'),
-        lat: document.getElementById('hud-val-lat'),
-        lon: document.getElementById('hud-val-lon'),
-        sats: document.getElementById('hud-val-sats'),
-      }
-    };
-
-    // --- TAB SWITCHING ---
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-
-      const targetTab = document.getElementById(tabId);
-      if (targetTab) targetTab.classList.add('active');
-
-      const activeBtn = Array.from(document.querySelectorAll('.nav-tab')).find(b => b.getAttribute('onclick')?.includes(tabId));
-      if (activeBtn) activeBtn.classList.add('active');
-
-      if (tabId === 'tab-tactical' && map) {
-        setTimeout(() => map.invalidateSize(), 150);
-      }
-      if (tabId === 'tab-terminal' && fitAddon) {
-        setTimeout(() => fitAddon.fit(), 150);
-      }
-    }
-
-    // --- 3-WAY LAYOUT ENGINE (BẢN ĐỒ / CHIA ĐÔI / BUỒNG LÁI FPV) ---
-    function setLayoutMode(mode) {
-      currentLayoutMode = mode;
-      DOM.viewportGrid.className = `tactical-viewport-grid ${mode}`;
-
-      document.querySelectorAll('.layout-btn').forEach(btn => btn.classList.remove('active'));
-      const activeBtn = document.getElementById(`btn-${mode}`);
-      if (activeBtn) activeBtn.classList.add('active');
-
-      if (map) {
-        setTimeout(() => map.invalidateSize(), 250);
-      }
-    }
-
-    // --- LEAFLET MAP INITIALIZATION ---
-    function initTacticalMap() {
-      if (map) return;
-      map = L.map('tactical-map', { zoomControl: false }).setView([21.005512, 105.843120], 16);
-
-      L.control.zoom({ position: 'topright' }).addTo(map);
-
-      // Dark Tactical Tile Layer (CartoDB DarkMatter)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; CartoDB &copy; OpenStreetMap contributors',
-        subdomains: 'abcd',
-        maxZoom: 20
-      }).addTo(map);
-    }
-
-    function createDroneIcon(headingDeg, armed) {
-      const color = armed ? '#10b981' : '#38bdf8';
-      const glow = armed ? 'rgba(16,185,129,0.5)' : 'rgba(56,189,248,0.5)';
-
-      return L.divIcon({
-        className: 'custom-drone-icon',
-        html: `
-          <div style="transform: rotate(${headingDeg || 0}deg); transition: transform 0.1s linear; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="${color}" style="filter: drop-shadow(0 0 8px ${glow});">
-              <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z"/>
-            </svg>
-          </div>
-        `,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18]
-      });
-    }
-
-    // --- WEBSOCKET CONNECTION & TELEMETRY STREAM ---
-    function initWebSocket() {
-      socket = io();
-
-      socket.on('connect', () => {
-        console.log('[WEBSOCKET] Đã kết nối Socket.IO thành công (ID:', socket.id, ')');
-        document.getElementById('ws-status-text').innerText = 'GATEWAY 10004 LIVE';
-        socket.emit('subscribe:all');
-      });
-
-      socket.on('disconnect', () => {
-        console.warn('[WEBSOCKET] Mất kết nối Socket.IO!');
-        document.getElementById('ws-status-text').innerText = 'MẤT KẾT NỐI (RECONNECTING...)';
-      });
-
-      socket.on('telemetry:update', (data) => {
-        handleIncomingTelemetry(data);
-      });
-
-      socket.on('ssh:data', (payload) => {
-        if (term && payload?.data) term.write(payload.data);
-      });
-
-      socket.on('ssh:status', (payload) => {
-        if (DOM.sshStatus) DOM.sshStatus.innerText = `Trạng thái: ${payload.message || payload.status}`;
-      });
-    }
-
-    function handleIncomingTelemetry(t) {
-      if (!t || !t.deviceId) return;
-
-      const lat = t.gps?.lat;
-      const lon = t.gps?.lon;
-      const heading = t.gps?.headingDeg || 0;
-
-      if (lat && lon && lat !== 0 && lon !== 0 && map) {
-        if (!droneMarkers[t.deviceId]) {
-          const marker = L.marker([lat, lon], {
-            icon: createDroneIcon(heading, t.armed)
-          }).addTo(map);
-
-          marker.bindTooltip(`<b>${t.deviceId}</b><br>IP: ${t.vpnIp || '10.13.37.X'}<br>Mode: ${t.flightMode || 'ONLINE'}`, {
-            permanent: false,
-            direction: 'top'
-          });
-
-          marker.on('click', () => selectDroneForHud(t.deviceId));
-          droneMarkers[t.deviceId] = marker;
-          droneFlightTrails[t.deviceId] = L.polyline([[lat, lon]], { color: '#00f0ff', weight: 2, opacity: 0.65 }).addTo(map);
-          populateDroneDropdowns(fleetDevices);
-
-          if (Object.keys(droneMarkers).length === 1) {
-            map.setView([lat, lon], 16);
-          }
-        } else {
-          droneMarkers[t.deviceId].setLatLng([lat, lon]);
-          droneMarkers[t.deviceId].setIcon(createDroneIcon(heading, t.armed));
-
-          const trail = droneFlightTrails[t.deviceId];
-          if (trail) {
-            const points = trail.getLatLngs();
-            points.push([lat, lon]);
-            if (points.length > 150) points.shift();
-            trail.setLatLngs(points);
-          }
-        }
-      }
-
-      if (!activeDroneId || activeDroneId === t.deviceId || activeDroneId === 'all') {
-        if (!activeDroneId || activeDroneId === 'all') activeDroneId = t.deviceId;
-        updateHudDisplay(t);
-      }
-    }
-
-    function updateHudDisplay(t) {
-      if (!t) return resetHudDisplay();
-      const isOnline = t.connected !== false;
-      const devId = t.deviceId || 'CHƯA CHỌN';
-
-      // Sidebar HUD
-      if (DOM.hud.deviceId) DOM.hud.deviceId.innerText = devId;
-      if (DOM.hud.flightMode) {
-        DOM.hud.flightMode.innerText = (t.flightMode && t.flightMode !== 'UNKNOWN') ? t.flightMode : (isOnline ? 'ONLINE' : 'OFFLINE');
-        DOM.hud.flightMode.style.color = isOnline ? '#f59e0b' : '#64748b';
-      }
-      if (DOM.hud.armed) {
-        DOM.hud.armed.innerText = t.armed ? 'ARMED' : 'DISARMED';
-        DOM.hud.armed.style.color = t.armed ? '#10b981' : '#94a3b8';
-      }
-      const batPct = Math.min(100, Math.max(0, Math.round(t.battery?.percentage ?? 0)));
-      if (DOM.hud.battery) DOM.hud.battery.innerText = `${batPct}%`;
-      const alt = t.gps?.altRelativeM || t.gps?.altMslM || 0;
-      const spd = t.gps?.groundSpeedMs || 0;
-      const hdg = Math.round(t.gps?.headingDeg || 0);
-
-      if (DOM.hud.altitude) DOM.hud.altitude.innerText = `${alt.toFixed(1)} m`;
-      if (DOM.hud.speed) DOM.hud.speed.innerText = `${spd.toFixed(1)} m/s`;
-      if (DOM.hud.heading) DOM.hud.heading.innerText = `${hdg.toString().padStart(3, '0')}°`;
-
-      const roll = t.attitude?.rollDeg || 0;
-      const pitch = t.attitude?.pitchDeg || 0;
-      if (DOM.hud.angles) DOM.hud.angles.innerText = `${roll.toFixed(1)}° / ${pitch.toFixed(1)}°`;
-      if (DOM.hud.horizon) DOM.hud.horizon.style.transform = `rotate(${-roll}deg) translateY(${pitch * 1.5}px)`;
-
-      if (DOM.hud.lat) DOM.hud.lat.innerText = (t.gps?.lat || 0).toFixed(6);
-      if (DOM.hud.lon) DOM.hud.lon.innerText = (t.gps?.lon || 0).toFixed(6);
-      if (DOM.hud.sats) DOM.hud.sats.innerText = `${t.gps?.satellites || 14} SAT`;
-
-      // COCKPIT FPV OSD OVERLAY
-      if (DOM.osd.droneName) DOM.osd.droneName.innerText = devId;
-      if (DOM.osd.spd) DOM.osd.spd.innerText = spd.toFixed(1);
-      if (DOM.osd.alt) DOM.osd.alt.innerText = alt.toFixed(1);
-      if (DOM.osd.hdg) DOM.osd.hdg.innerText = `${hdg}° (${getCompassDirection(hdg)})`;
-      if (DOM.osd.pitchLadder) DOM.osd.pitchLadder.style.transform = `rotate(${-roll}deg) translateY(${pitch * 2}px)`;
-
-      if (DOM.osd.modeText) {
-        DOM.osd.modeText.innerText = `${t.armed ? 'ARMED' : 'DISARMED'} • ${t.flightMode || 'GUIDED'}`;
-        DOM.osd.modePill.style.color = t.armed ? '#10b981' : '#f59e0b';
-      }
-      if (DOM.osd.batText) {
-        const volt = (t.battery?.voltageMv ? (t.battery.voltageMv / 1000).toFixed(1) : '15.8');
-        DOM.osd.batText.innerText = `${batPct}% (${volt}V)`;
-      }
-    }
-
-    function getCompassDirection(deg) {
-      const directions = ['BẮC', 'ĐÔNG BẮC', 'ĐÔNG', 'ĐÔNG NAM', 'NAM', 'TÂY NAM', 'TÂY', 'TÂY BẮC'];
-      const index = Math.round(((deg %= 360) < 0 ? deg + 360 : deg) / 45) % 8;
-      return directions[index];
-    }
-
-    function resetHudDisplay() {
-      if (DOM.hud.deviceId) DOM.hud.deviceId.innerText = 'CHƯA CHỌN';
-      if (DOM.hud.flightMode) { DOM.hud.flightMode.innerText = '--'; DOM.hud.flightMode.style.color = '#64748b'; }
-      if (DOM.hud.armed) { DOM.hud.armed.innerText = 'DISARMED'; DOM.hud.armed.style.color = '#94a3b8'; }
-      if (DOM.hud.battery) DOM.hud.battery.innerText = '--%';
-      if (DOM.hud.altitude) DOM.hud.altitude.innerText = '0.0 m';
-      if (DOM.hud.speed) DOM.hud.speed.innerText = '0.0 m/s';
-      if (DOM.hud.heading) DOM.hud.heading.innerText = '000°';
-      if (DOM.hud.angles) DOM.hud.angles.innerText = '0.0° / 0.0°';
-      if (DOM.hud.horizon) DOM.hud.horizon.style.transform = 'rotate(0deg) translateY(0px)';
-    }
-
-    // --- FPV LIVE VIDEO (PORT 10004 HLS / WHEP) ---
-    function toggleFpvVideoFromHud() {
-      if (!activeDroneId || activeDroneId === 'all') {
-        const firstOnline = fleetDevices.find(d => isDroneOnline(d.telemetry));
-        activeDroneId = firstOnline ? firstOnline.deviceId : (fleetDevices[0]?.deviceId || 'DRONE-001');
-      }
-
-      if (DOM.fpvVideoEl && DOM.fpvVideoEl.srcObject || fpvHlsInstance) {
-        closeFpvVideoStream();
-      } else {
-        startFpvVideoStream(activeDroneId);
-      }
-    }
-
-    async function startFpvVideoStream(deviceId) {
-      if (!deviceId || deviceId === 'all') return;
-      activeFpvDroneId = deviceId;
-
-      if (DOM.btnVideoLabel) DOM.btnVideoLabel.innerText = 'Đóng Live Video';
-      if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'flex';
-      if (DOM.fpvLoadingText) DOM.fpvLoadingText.innerText = `Đang kết nối luồng FPV cho ${deviceId}...`;
-
-      if (fpvHlsInstance) {
-        fpvHlsInstance.destroy();
-        fpvHlsInstance = null;
-      }
-      if (DOM.fpvVideoEl) {
-        DOM.fpvVideoEl.pause();
-        DOM.fpvVideoEl.removeAttribute('src');
-        DOM.fpvVideoEl.load();
-      }
-
-      try {
-        const res = await fetch(`/api/v1/video/${encodeURIComponent(deviceId)}/stream-info`);
-        const json = await res.json();
-        if (json.status !== 'success' || !json.data) {
-          throw new Error('Không lấy được thông tin luồng stream từ server');
-        }
-
-        const { hlsUrl } = json.data;
-        console.log(`[FPV] Bắt đầu kết nối Video Gateway (Port 10004): ${hlsUrl}`);
-
-        if (socket) socket.emit('video:subscribe', { deviceId });
-
-        if (window.Hls && Hls.isSupported()) {
-          const hls = new Hls({
-            enableWorker: true,
-            lowLatencyMode: true,
-            backBufferLength: 1,
-            maxBufferLength: 2,
-            maxMaxBufferLength: 4,
-            liveSyncDuration: 0.5,
-            liveMaxLatencyDuration: 1.5,
-            maxLiveSyncPlaybackRate: 1.5,
-            liveDurationInfinity: true,
-            highBufferWatchdogPeriod: 1,
-          });
-
-          hls.loadSource(hlsUrl);
-          hls.attachMedia(DOM.fpvVideoEl);
-
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            console.log('[FPV] HLS Manifest parsed thành công!');
-            DOM.fpvVideoEl.play().catch(e => console.warn('Tự động phát video bị chặn:', e));
-            if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
-
-            if (!fpvStatsInterval) {
-              fpvStatsInterval = setInterval(updateFpvStats, 1000);
-              updateFpvStats();
-            }
-          });
-
-          hls.on(Hls.Events.LEVEL_UPDATED, () => {
-            if (hls.liveSyncPosition && Math.abs(DOM.fpvVideoEl.currentTime - hls.liveSyncPosition) > 1.8) {
-              DOM.fpvVideoEl.currentTime = hls.liveSyncPosition;
-            }
-          });
-
-          hls.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-              console.warn('[FPV] Lỗi HLS fatal:', data.type, data.details);
-              if (DOM.fpvLoadingState) {
-                DOM.fpvLoadingState.style.display = 'flex';
-                if (DOM.fpvLoadingText) DOM.fpvLoadingText.innerHTML = `<span style="color:#f87171">⚠️ Mất tín hiệu luồng FPV</span><br><span style="font-size:0.75rem; color:#94a3b8">Đảm bảo Drone đang phát RTSP vào 10.13.37.1:8554.</span>`;
-              }
-            }
-          });
-
-          fpvHlsInstance = hls;
-        } else if (DOM.fpvVideoEl.canPlayType('application/vnd.apple.mpegurl')) {
-          DOM.fpvVideoEl.src = hlsUrl;
-          DOM.fpvVideoEl.addEventListener('loadedmetadata', () => {
-            DOM.fpvVideoEl.play().catch(e => console.warn(e));
-            if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
-          });
-        }
-
-      } catch (err) {
-        console.error('[FPV] Lỗi kết nối Video Gateway:', err);
-        if (DOM.fpvLoadingState) {
-          DOM.fpvLoadingState.style.display = 'flex';
-          if (DOM.fpvLoadingText) DOM.fpvLoadingText.innerHTML = `<span style="color:#f87171">⚠️ ${err.message}</span><br><span style="font-size:0.75rem; color:#94a3b8">Đảm bảo Drone đang phát RTSP vào 10.13.37.1:8554.</span>`;
-        }
-      }
-    }
-
-    function closeFpvVideoStream() {
-      if (DOM.btnVideoLabel) DOM.btnVideoLabel.innerText = 'Bật/Tắt Live FPV';
-
-      if (fpvStatsInterval) {
-        clearInterval(fpvStatsInterval);
-        fpvStatsInterval = null;
-      }
-      if (socket && activeFpvDroneId) {
-        socket.emit('video:unsubscribe', { deviceId: activeFpvDroneId });
-      }
-      if (fpvHlsInstance) {
-        fpvHlsInstance.destroy();
-        fpvHlsInstance = null;
-      }
-      if (DOM.fpvVideoEl) {
-        DOM.fpvVideoEl.pause();
-        DOM.fpvVideoEl.removeAttribute('src');
-        DOM.fpvVideoEl.load();
-      }
-      activeFpvDroneId = null;
-    }
-
-    function resyncLiveEdge() {
-      if (fpvHlsInstance && fpvHlsInstance.liveSyncPosition) {
-        DOM.fpvVideoEl.currentTime = fpvHlsInstance.liveSyncPosition;
-      }
-    }
-
-    function captureFpvSnapshot() {
-      if (!DOM.fpvVideoEl || DOM.fpvVideoEl.videoWidth === 0) return alert('Video chưa tải xong để chụp ảnh!');
-      const canvas = document.createElement('canvas');
-      canvas.width = DOM.fpvVideoEl.videoWidth;
-      canvas.height = DOM.fpvVideoEl.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(DOM.fpvVideoEl, 0, 0, canvas.width, canvas.height);
-      const link = document.createElement('a');
-      link.download = `FPV_SNAPSHOT_${activeFpvDroneId || 'DRONE'}_${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    }
-
-    function toggleFpvFullscreen() {
-      const box = document.getElementById('fpv-frame-box');
-      if (!box) return;
-      if (!document.fullscreenElement) {
-        box.requestFullscreen?.() || box.webkitRequestFullscreen?.();
-      } else {
-        document.exitFullscreen?.();
-      }
-    }
-
-    function updateFpvStats() {
-      if (!DOM.fpvVideoEl) return;
-      const width = DOM.fpvVideoEl.videoWidth || 768;
-      const height = DOM.fpvVideoEl.videoHeight || 432;
-      const fpsStr = DOM.fpvVideoEl.paused ? '-- FPS' : '30 FPS';
-      if (DOM.osd.res) DOM.osd.res.innerHTML = `<i class="fa-solid fa-video"></i> ${width}x${height} @ ${fpsStr}`;
-    }
-
-    // --- DATA FETCHING & RENDERING ---
-    async function refreshAllData() {
-      try {
-        const [statsRes, fleetRes, ipRes] = await Promise.all([
-          fetch('/api/v1/dashboard/stats').then(r => r.json()).catch(() => null),
-          fetch('/api/v1/telemetry/fleet/states').then(r => r.json()).catch(() => null),
-          fetch('/api/v1/dashboard/ip-pool').then(r => r.json()).catch(() => null),
-        ]);
-
-        if (fleetRes?.status === 'success') {
-          fleetDevices = fleetRes.data || [];
-          renderFleetTable(fleetDevices);
-          populateDroneDropdowns(fleetDevices);
-
-          fleetDevices.forEach(d => {
-            if (d.telemetry) handleIncomingTelemetry(d.telemetry);
-          });
-        }
-
-        if (statsRes?.status === 'success') {
-          const d = statsRes.data;
-          const totalDrones = fleetDevices.length || d.devices?.total || 0;
-          const onlineCount = fleetDevices.filter(dev => isDroneOnline(dev.telemetry)).length;
-
-          if (DOM.kpiTotal) DOM.kpiTotal.innerText = totalDrones;
-          if (DOM.kpiActivePending) DOM.kpiActivePending.innerText = `${d.devices?.active || totalDrones} Active • ${d.devices?.pending || 0} Pending`;
-          if (DOM.kpiOnline) DOM.kpiOnline.innerText = onlineCount;
-          if (DOM.kpiIpUsage) DOM.kpiIpUsage.innerText = `${d.ipPool?.utilizationPercentage || 0}%`;
-          if (DOM.kpiIpCounts) DOM.kpiIpCounts.innerText = `${d.ipPool?.usedCount || 0} / ${d.ipPool?.totalCapacity || 253} IP`;
-        }
-
-        if (ipRes?.status === 'success') {
-          renderIpMatrix(ipRes.data || []);
-        }
-      } catch (err) {
-        console.error('Lỗi tải dữ liệu:', err);
-      }
-    }
-
-    function isDroneOnline(t) {
-      if (!t || t.connected === false) return false;
-      if (t.timestamp && (Date.now() - t.timestamp > 10000)) return false;
-      return true;
-    }
-
-    function renderFleetTable(devices) {
-      if (!DOM.fleetTable) return;
-      if (!devices || devices.length === 0) {
-        DOM.fleetTable.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">Chưa có Drone nào trong hệ thống.</td></tr>';
-        return;
-      }
-
-      DOM.fleetTable.innerHTML = devices.map(d => {
-        const t = d.telemetry || {};
-        const isOnline = isDroneOnline(t);
-        const statusBadge = d.status === 'ACTIVE' 
-          ? '<span class="badge badge-active">ACTIVE</span>'
-          : (d.status === 'REVOKED' ? '<span class="badge badge-revoked">REVOKED</span>' : '<span class="badge badge-pending">PENDING</span>');
-
-        const modeText = (t.flightMode && t.flightMode !== 'UNKNOWN') ? t.flightMode : (isOnline ? 'ONLINE' : 'OFFLINE');
-        const liveBadge = isOnline
-          ? `<span style="color: #34d399; font-weight: 700;"><i class="fa-solid fa-circle-dot"></i> ${modeText}</span>`
-          : '<span style="color: #64748b;"><i class="fa-regular fa-circle"></i> OFFLINE</span>';
-
-        const rxMb = (d.transferRx ? (d.transferRx / (1024 * 1024)).toFixed(1) : '0.0') + ' MB';
-        const txMb = (d.transferTx ? (d.transferTx / (1024 * 1024)).toFixed(1) : '0.0') + ' MB';
-
-        return `
-          <tr>
-            <td><strong style="color: var(--accent);">${d.deviceId}</strong><br><span style="font-size:0.72rem; color:var(--text-dim);">${d.hardwareModel || 'Pi 4'}</span></td>
-            <td><code style="background:#1e293b; padding:2px 6px; border-radius:4px; color:#38bdf8;">${d.vpnIp || 'Chưa cấp'}</code></td>
-            <td>${statusBadge}</td>
-            <td>${liveBadge}</td>
-            <td>${(t.gps?.groundSpeedMs || 0).toFixed(1)} m/s • ${(t.gps?.altRelativeM || 0).toFixed(1)} m</td>
-            <td><span style="font-weight:700; color:${(t.battery?.percentage || 0) < 25 ? '#ef4444' : '#34d399'};">${t.battery?.percentage ?? '--'}%</span></td>
-            <td style="font-family:'JetBrains Mono'; font-size:0.75rem;">⬇️ ${rxMb} / ⬆️ ${txMb}</td>
-            <td>
-              <div style="display: flex; gap: 0.35rem;">
-                <button class="btn btn-primary" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="watchLiveVideoForDrone('${d.deviceId}')"><i class="fa-solid fa-video"></i> FPV</button>
-                <button class="btn btn-secondary" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="openSshForDrone('${d.deviceId}')"><i class="fa-solid fa-terminal"></i> SSH</button>
-                ${d.status === 'ACTIVE' 
-                  ? `<button class="btn btn-danger" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="apiAction('/api/v1/dashboard/devices/${d.id}/revoke', 'POST', null, 'Bạn có chắc chắn muốn KHÓA Drone này?')"><i class="fa-solid fa-ban"></i></button>`
-                  : `<button class="btn btn-success" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="apiAction('/api/v1/dashboard/devices/${d.id}/reactivate', 'POST', null, 'MỞ KHÓA lại Drone này?')"><i class="fa-solid fa-rotate-left"></i></button>`
-                }
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
-
-    function renderIpMatrix(cells) {
-      if (!DOM.ipMatrix) return;
-      DOM.ipMatrix.innerHTML = cells.map(c => {
-        let cls = 'available';
-        let tooltip = `IP: ${c.ip} (Trống)`;
-        if (c.status === 'gateway') {
-          cls = 'gateway';
-          tooltip = `IP: ${c.ip} (WireGuard Gateway 10.13.37.1)`;
-        } else if (c.status === 'active') {
-          cls = c.isOnline ? 'active-online' : 'active-offline';
-          tooltip = `IP: ${c.ip} (${c.deviceId || 'Active'}) - ${c.isOnline ? 'Online' : 'Offline'}`;
-        }
-        return `<div class="ip-cell ${cls}" title="${tooltip}">.${c.hostNumber}</div>`;
-      }).join('');
-    }
-
-    function populateDroneDropdowns(devices) {
-      if (!devices || devices.length === 0) return;
-      const currentMapVal = DOM.mapSelect ? DOM.mapSelect.value : 'all';
-
-      const mapOptions = `<option value="all">-- Theo dõi toàn bộ Phi Đội (${devices.length} Drone) --</option>` + 
-        devices.map(d => {
-          const isOnline = isDroneOnline(d.telemetry);
-          return `<option value="${d.deviceId}">${isOnline ? '🟢' : '⚪'} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
-        }).join('');
-
-      if (DOM.mapSelect) {
-        DOM.mapSelect.innerHTML = mapOptions;
-        if (currentMapVal && (currentMapVal === 'all' || devices.some(d => d.deviceId === currentMapVal))) {
-          DOM.mapSelect.value = currentMapVal;
-        }
-      }
-
-      if (DOM.sshSelect) {
-        DOM.sshSelect.innerHTML = '<option value="">-- Chọn Drone để SSH --</option>' + 
-          devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`).join('');
-      }
-    }
-
-    function selectDroneForHud(deviceId) {
-      activeDroneId = deviceId;
-      if (DOM.mapSelect) DOM.mapSelect.value = deviceId;
-      const drone = fleetDevices.find(d => d.deviceId === deviceId);
-      if (drone && drone.telemetry) updateHudDisplay(drone.telemetry);
-    }
-
-    function focusDroneOnMap(deviceId) {
-      if (deviceId === 'all' || !deviceId) {
-        const markers = Object.values(droneMarkers);
-        if (markers.length > 0 && map) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
-        return;
-      }
-      selectDroneForHud(deviceId);
-      const marker = droneMarkers[deviceId];
-      if (marker && map) map.setView(marker.getLatLng(), 17);
-    }
-
-    function watchLiveVideoForDrone(deviceId) {
-      switchTab('tab-tactical');
-      selectDroneForHud(deviceId);
-      startFpvVideoStream(deviceId);
-    }
-
-    function copyGpsCoordinates() {
-      const lat = DOM.hud.lat?.innerText || '0';
-      const lon = DOM.hud.lon?.innerText || '0';
-      navigator.clipboard.writeText(`${lat}, ${lon}`).then(() => alert(`Đã sao chép tọa độ: ${lat}, ${lon}`));
-    }
-
-    // --- WEB SSH TERMINAL ---
-    function initTerminal() {
-      if (term) return;
-      term = new Terminal({
-        cursorBlink: true,
-        fontSize: 13,
-        fontFamily: "'JetBrains Mono', monospace",
-        theme: { background: '#060911', foreground: '#f8fafc', cursor: '#00f0ff', selection: 'rgba(0, 240, 255, 0.3)' }
-      });
-      fitAddon = new FitAddon.FitAddon();
-      term.loadAddon(fitAddon);
-      term.open(document.getElementById('terminal-wrapper'));
-      fitAddon.fit();
-
-      term.onData(data => {
-        if (socket) socket.emit('ssh:input', { data });
-      });
-
-      window.addEventListener('resize', () => fitAddon?.fit());
-    }
-
-    function openSshForDrone(deviceId) {
-      if (DOM.sshSelect) DOM.sshSelect.value = deviceId;
-      if (DOM.sshIp) {
-        const d = fleetDevices.find(dev => dev.deviceId === deviceId);
-        DOM.sshIp.value = d?.vpnIp || '';
-      }
-      switchTab('tab-terminal');
-      connectWebSsh();
-    }
-
-    function openWebSshForSelectedDrone() {
-      openSshForDrone(activeDroneId && activeDroneId !== 'all' ? activeDroneId : (fleetDevices[0]?.deviceId || ''));
-    }
-
-    function onSshSelectChange(val) {
-      const d = fleetDevices.find(dev => dev.deviceId === val);
-      if (DOM.sshIp && d) DOM.sshIp.value = d.vpnIp || '';
-    }
-
-    function connectWebSsh() {
-      const target = DOM.sshIp?.value.trim() || DOM.sshSelect?.value;
-      const user = DOM.sshUser?.value.trim() || 'root';
-      const pass = DOM.sshPass?.value || '';
-
-      if (!target) return alert('Vui lòng chọn Drone hoặc nhập IP VPN!');
-
-      initTerminal();
-      term.clear();
-      term.writeln(`\x1b[36m>>> Đang mở phiên SSH tới ${target} (User: ${user})...\x1b[0m\r\n`);
-      if (DOM.sshStatus) DOM.sshStatus.innerText = `Trạng thái: Đang kết nối tới ${target}...`;
-
-      if (socket) {
-        socket.emit('ssh:connect', { deviceId: target, username: user, password: pass, cols: term.cols, rows: term.rows });
-      }
-    }
-
-    function disconnectWebSsh() {
-      if (socket) socket.emit('ssh:disconnect');
-      if (term) term.writeln('\r\n\x1b[31m>>> [SESSION CLOSED] Đã ngắt kết nối SSH.\x1b[0m\r\n');
-      if (DOM.sshStatus) DOM.sshStatus.innerText = 'Trạng thái: Đã ngắt kết nối';
-    }
-
-    // --- MODAL & ACTIONS ---
-    function toggleManualRegisterModal() {
-      const modal = document.getElementById('modal-manual-register');
-      if (modal) modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
-    }
-
-    async function submitManualRegister() {
-      const devId = document.getElementById('manual-dev-id')?.value.trim();
-      const vpnIp = document.getElementById('manual-vpn-ip')?.value.trim();
-      const hw = document.getElementById('manual-hardware')?.value.trim() || 'Manual Drone';
-
-      if (!devId || !vpnIp) return alert('Vui lòng nhập đầy đủ Mã Drone và IP VPN (10.13.37.X)!');
-
-      const res = await apiAction('/api/v1/dashboard/devices/manual', 'POST', { deviceId: devId, vpnIp, hardwareModel: hw }, null, `✅ ĐÃ GHI DANH: ${devId} (${vpnIp})`);
-      if (res) toggleManualRegisterModal();
-    }
-
-    async function apiAction(url, method, body, confirmMsg, successMsg) {
-      if (confirmMsg && !confirm(confirmMsg)) return;
-      try {
-        const options = { method, headers: { 'Content-Type': 'application/json' } };
-        if (body) options.body = JSON.stringify(body);
-        const res = await fetch(url, options);
-        const json = await res.json();
-        if (json.status === 'success') {
-          if (successMsg) alert(successMsg);
-          refreshAllData();
-          return json;
-        } else {
-          alert('Lỗi: ' + (json.message || 'Thao tác thất bại'));
-        }
-      } catch (err) {
-        alert('Lỗi kết nối: ' + err.message);
-      }
-    }
-
-    // --- INITIALIZATION ---
-    window.addEventListener('DOMContentLoaded', () => {
-      initTacticalMap();
-      initWebSocket();
-      refreshAllData();
-      setInterval(refreshAllData, 5000);
-    });
-  </script>
 </body>
 </html>
