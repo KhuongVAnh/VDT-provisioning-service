@@ -1,0 +1,174 @@
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  SubscribeMessage,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  OnGatewayInit,
+  MessageBody,
+  ConnectedSocket,
+} from '@nestjs/websockets';
+import { Logger, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Server, Socket } from 'socket.io';
+import * as dgram from 'dgram';
+import { RedisService } from '../redis/redis.service';
+import { DeviceService } from '../device/device.service';
+
+/**
+ * MavlinkRelayGateway chịu trách nhiệm làm cầu nối nhị phân 2 chiều (Binary MAVLink Relay):
+ * 1. Downlink (Drone -> QGC): Nhận byte MAVLink thô từ Redis `channel:drone:raw:<droneId>` và bắn xuống WebSocket.
+ * 2. Uplink (QGC -> Drone): Nhận byte điều khiển từ WebSocket và bắn UDP Socket xuống `10.13.37.X:14550`.
+ * 
+ * Endpoint: ws://<IP_VPS>:10004/mavlink?droneId=DRONE_ID
+ */
+@WebSocketGateway({
+  namespace: '/mavlink',
+  cors: {
+    origin: '*',
+  },
+})
+@Injectable()
+export class MavlinkRelayGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+  @WebSocketServer()
+  server: Server;
+
+  private readonly logger = new Logger(MavlinkRelayGateway.name);
+  private udpSocket: dgram.Socket;
+  private readonly uplinkPort: number;
+  // Lưu danh sách client đang theo dõi từng drone: droneId -> Set<Socket>
+  private droneClients = new Map<string, Set<Socket>>();
+
+  constructor(
+    private readonly redisService: RedisService,
+    private readonly deviceService: DeviceService,
+    private readonly configService: ConfigService,
+  ) {
+    this.uplinkPort = Number(this.configService.get<number>('DRONE_UPLINK_UDP_PORT', 14550));
+  }
+
+  afterInit() {
+    this.udpSocket = dgram.createSocket('udp4');
+    this.udpSocket.on('error', (err) => {
+      this.logger.error(`Lỗi UDP Uplink Socket: ${err.message}`);
+    });
+    this.logger.log(`✅ MAVLink Relay Gateway đã khởi tạo trên namespace /mavlink (Uplink Port: ${this.uplinkPort})`);
+
+    this.initRedisSubscription();
+  }
+
+  /**
+   * Lắng nghe kênh Redis Pub/Sub chứa luồng byte nhị phân MAVLink thô từ Go Ingestion Service
+   */
+  private initRedisSubscription() {
+    const subscriber = this.redisService.getSubscriber();
+    if (!subscriber) {
+      this.logger.warn('Redis Subscriber chưa sẵn sàng cho MAVLink Relay.');
+      return;
+    }
+
+    // Đăng ký pattern tất cả các kênh drone raw: channel:drone:raw:*
+    subscriber.psubscribe('channel:drone:raw:*', (err) => {
+      if (err) {
+        this.logger.error(`Lỗi psubscribe channel:drone:raw:*: ${err.message}`);
+      } else {
+        this.logger.log('✅ Đã đăng ký lắng nghe Redis Pattern: channel:drone:raw:*');
+      }
+    });
+
+    // Lắng nghe pmessageBuffer để giữ nguyên dạng nhị phân thô không bị lỗi chuỗi UTF-8
+    subscriber.on('pmessageBuffer', (patternBuf: Buffer, channelBuf: Buffer, messageBuf: Buffer) => {
+      const channel = channelBuf.toString();
+      const prefix = 'channel:drone:raw:';
+      if (channel.startsWith(prefix)) {
+        const droneId = channel.substring(prefix.length);
+        this.broadcastDownlink(droneId, messageBuf);
+      }
+    });
+  }
+
+  async handleConnection(client: Socket) {
+    // 1. Lấy droneId từ query params hoặc headers
+    const droneId = (client.handshake?.query?.droneId as string) || (client.handshake?.headers?.['x-drone-id'] as string);
+
+    if (!droneId) {
+      this.logger.warn(`Client ${client.id} bị từ chối kết nối do thiếu tham số droneId (?droneId=...)`);
+      client.emit('error', { message: 'Thiếu tham số droneId trong query params (?droneId=DRONE_ID)' });
+      client.disconnect(true);
+      return;
+    }
+
+    client.data = client.data || {};
+    client.data.droneId = droneId;
+
+    if (!this.droneClients.has(droneId)) {
+      this.droneClients.set(droneId, new Set());
+    }
+    this.droneClients.get(droneId)!.add(client);
+
+    this.logger.log(`🎮 Pilot Bridge [${client.id}] đã kết nối MAVLink Relay cho Drone: ${droneId}`);
+  }
+
+  handleDisconnect(client: Socket) {
+    const droneId = client.data?.droneId;
+    if (droneId && this.droneClients.has(droneId)) {
+      this.droneClients.get(droneId)!.delete(client);
+      if (this.droneClients.get(droneId)!.size === 0) {
+        this.droneClients.delete(droneId);
+      }
+    }
+    this.logger.log(`🔌 Pilot Bridge [${client.id}] đã ngắt kết nối MAVLink Relay (${droneId || 'unknown'})`);
+  }
+
+  /**
+   * [Downlink] Bắn byte nhị phân MAVLink từ Drone xuống tất cả Pilot Bridge đang theo dõi Drone này
+   */
+  broadcastDownlink(droneId: string, rawBuffer: Buffer) {
+    const clients = this.droneClients.get(droneId);
+    if (!clients || clients.size === 0) return;
+
+    for (const client of clients) {
+      if (client.connected) {
+        // Gửi qua sự kiện mavlink:downlink và binary packet
+        client.emit('mavlink:downlink', rawBuffer);
+        client.send(rawBuffer);
+      }
+    }
+  }
+
+  /**
+   * [Uplink] Nhận byte lệnh điều khiển từ Pilot Bridge (QGroundControl) -> Bắn UDP vào IP VPN của Drone
+   */
+  @SubscribeMessage('mavlink:uplink')
+  async handleMavlinkUplink(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
+    const droneId = client.data?.droneId;
+    if (!droneId || !data) return;
+
+    try {
+      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      if (buffer.length === 0) return;
+
+      const device = await this.deviceService.findByDeviceId(droneId);
+      if (device && device.vpnIp && this.udpSocket) {
+        this.udpSocket.send(buffer, this.uplinkPort, device.vpnIp, (err) => {
+          if (err) {
+            this.logger.warn(`Lỗi gửi MAVLink Uplink tới Drone ${droneId} (${device.vpnIp}:${this.uplinkPort}): ${err.message}`);
+          }
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Lỗi xử lý MAVLink Uplink từ client ${client.id}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Đóng socket khi module bị hủy
+   */
+  onModuleDestroy() {
+    if (this.udpSocket) {
+      try {
+        this.udpSocket.close();
+      } catch (e) {}
+    }
+  }
+}

@@ -19,9 +19,10 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 │                                     REDIS SERVER                                        │
 │   ┌────────────────────────────────────────┐  ┌─────────────────────────────────────┐   │
 │   │ 🗄️ HASHES (Bảng Tra Cứu & Trạng Thái)  │  │ 📢 PUB/SUB (Kênh Sự Kiện Realtime) │   │
-│   │ • drone:ip_map                         │  │ • channel:drone:telemetry:all       │   │
-│   │ • drone:sys_map                        │  │ • channel:drone:telemetry:<id>      │   │
-│   │ • drone:states                         │  │                                     │   │
+│   │ • drone:ip_map                         │  │ • channel:drone:telemetry:all (JSON)│   │
+│   │ • drone:sys_map                        │  │ • channel:drone:telemetry:<id>(JSON)│   │
+│   │ • drone:states                         │  │ • channel:drone:raw:<id> (Binary)   │   │
+│   │                                        │  │                                     │   │
 │   │                                        │  │ ⏱️ STRINGS WITH TTL (Snapshot Riêng)│   │
 │   │                                        │  │ • drone:state:<deviceId> (TTL 10s)  │   │
 │   └───────────────────┬────────────────────┘  └─────────────────┬───────────────────┘   │
@@ -32,6 +33,7 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 │                        NESTJS BACKEND (provisioning-api Gateway)                       │
 │                        • REST API: GET /api/v1/telemetry/fleet/states                  │
 │                        • WebSocket: TelemetryGateway (Socket.IO 'telemetry:update')    │
+│                        • WebSocket: MavlinkRelayGateway (Binary MAVLink cho Pilot)     │
 │                        • Web-SSH  : Tra cứu IP kết nối Terminal                        │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -131,7 +133,17 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 * **Kiểu dữ liệu:** `Pub/Sub Channel`
 * **Mục đích:** Kênh phát sóng sự kiện riêng biệt cho **từng Drone cụ thể**. Phục vụ các microservice hoặc AI worker chỉ muốn theo dõi 1 Drone duy nhất mà không bị quá tải bởi dữ liệu của các Drone khác.
 * **Các bên tương tác:**
-  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go#L49).
+  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](file:///home/kva_linux_os/project/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go#L49).
+
+---
+
+#### 📢 Channel 3: `channel:drone:raw:<deviceId>` *(Ví dụ: `channel:drone:raw:DRONE-001`)*
+* **Kiểu dữ liệu:** `Pub/Sub Channel (Raw Binary MAVLink v2 Buffer)`
+* **Mục đích:** Kênh vận chuyển **toàn bộ gói tin nhị phân thô MAVLink v2 (Raw Bytes)** nhận được từ Drone, không qua bước chuyển đổi JSON. Kênh này được **NestJS `MavlinkRelayGateway`** lắng nghe để chuyển tiếp tức thì xuống **Pilot Bridge / QGroundControl** qua WebSocket nhị phân (Cổng 10004).
+* **Payload tin nhắn:** Mảng byte nhị phân MAVLink (`[]byte` / `Buffer`).
+* **Các bên tương tác:**
+  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher.PublishRawFrame`](file:///home/kva_linux_os/project/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go).
+  * 👂 **Bên nhận (Subscriber):** NestJS [`MavlinkRelayGateway`](file:///home/kva_linux_os/project/provisioning_service/provisioning-api/src/telemetry/mavlink-relay.gateway.ts).
 
 ---
 
@@ -143,8 +155,9 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 | **`drone:sys_map`** | `Hash` | Vĩnh viễn | Go | Go / NestJS | Tra cứu: `MAVLink_SysID` $\rightarrow$ `deviceId` (Ví dụ `1` $\rightarrow$ `DRONE-001`). |
 | **`drone:states`** | `Hash` | Vĩnh viễn | Go Ingest | NestJS API | Lưu trữ Snapshot trạng thái toàn bộ phi đội (Field: `deviceId`, Value: JSON). |
 | **`drone:state:<id>`** | `String` | 10s | Go Ingest | Go / CLI | Snapshot trạng thái riêng của 1 Drone kèm thời gian sống (TTL Heartbeat). |
-| **`channel:drone:telemetry:all`** | `Pub/Sub` | - | Go Ingest | NestJS WS | Luồng sự kiện tổng phát cho toàn bộ Web Dashboard (Bản đồ Leaflet). |
-| **`channel:drone:telemetry:<id>`** | `Pub/Sub` | - | Go Ingest | Microservices | Luồng sự kiện riêng phát cho người theo dõi 1 Drone duy nhất. |
+| **`channel:drone:telemetry:all`** | `Pub/Sub` | - | Go Ingest | NestJS WS | Luồng sự kiện JSON tổng phát cho Web Dashboard (Bản đồ Leaflet). |
+| **`channel:drone:telemetry:<id>`** | `Pub/Sub` | - | Go Ingest | Microservices | Luồng sự kiện JSON riêng phát cho client theo dõi 1 Drone. |
+| **`channel:drone:raw:<id>`** | `Pub/Sub` | - | Go Ingest | NestJS Gateway | Luồng byte nhị phân thô MAVLink v2 cho Pilot Bridge / QGroundControl. |
 
 ---
 
@@ -162,9 +175,12 @@ HGET drone:states DRONE-001
 # 3. Lấy toàn bộ trạng thái của tất cả Drone đang hoạt động
 HGETALL drone:states
 
-# 4. Lắng nghe trực tiếp luồng telemetry realtime đang bắn qua Redis
+# 4. Lắng nghe trực tiếp luồng telemetry JSON đang bắn qua Redis
 redis-cli SUBSCRIBE channel:drone:telemetry:all
 
-# 5. Kiểm tra thời gian sống còn lại của DRONE-001
+# 5. Lắng nghe luồng byte nhị phân thô MAVLink của Drone DRONE-001
+redis-cli --raw SUBSCRIBE channel:drone:raw:DRONE-001
+
+# 6. Kiểm tra thời gian sống còn lại của DRONE-001
 TTL drone:state:DRONE-001
 ```

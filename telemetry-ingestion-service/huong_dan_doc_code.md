@@ -21,11 +21,14 @@ Tài liệu này hướng dẫn bạn đọc và hiểu toàn bộ mã nguồn c
 │      ├─ EndpointUDPServer (0.0.0.0:14551) ──► Nhận luồng từ Drone qua VPN     │
 │      └─ EndpointTCPServer (0.0.0.0:10002) ──► Phục vụ QGroundControl / MP     │
 │                                                                               │
-│  [2. Hai luồng xử lý song song]:                                              │
-│      ├─ Luồng A: Định tuyến 2 chiều (MAVLink Router)                          │
-│      │     node.WriteFrameExcept() ──► Bắn ngay sang TCP 10002 (cho GCS)      │
+│  [2. Ba luồng xử lý song song]:                                              │
+│      ├─ Luồng A: Định tuyến TCP truyền thống (GCS Router 10002)               │
+│      │     node.WriteFrameTo() ──► Bắn sang TCP 10002                         │
 │      │                                                                        │
-│      └─ Luồng B: Giải mã & Đồng bộ Telemetry (Cloud Ingestion)                │
+│      ├─ Luồng B: Xuất bản Byte nhị phân thô (Raw Binary Pub/Sub)              │
+│      │     PublishRawFrame()   ──► Bắn byte thô vào channel:drone:raw:<id>    │
+│      │                                                                        │
+│      └─ Luồng C: Giải mã & Đồng bộ Telemetry JSON (Cloud Ingestion)           │
 │            │                                                                  │
 │            ▼                                                                  │
 │     [extractIPFromChannel]   "Trích xuất IP nguồn 10.13.37.X"                 │
@@ -42,14 +45,14 @@ Tài liệu này hướng dẫn bạn đọc và hiểu toàn bộ mã nguồn c
                                          ▼
                 ┌──────────────────────────────────────────────────┐
                 │          [NestJS Business Gateway :10004]        │
-                │       (TelemetryService & TelemetryGateway)      │
+                │ • TelemetryGateway: JSON Telemetry cho Web HUD   │
+                │ • MavlinkRelayGateway: Binary MAVLink cho Pilot  │
                 └────────────────────────┬─────────────────────────┘
-                                         │ (WebSocket Socket.io)
-                                         ▼
-                ┌──────────────────────────────────────────────────┐
-                │        [Web Mission Control Dashboard]           │
-                │     Bản đồ GPS Leaflet + Quick HUD + Web SSH     │
-                └──────────────────────────────────────────────────┘
+                                         │ 
+                        ┌────────────────┴────────────────┐
+                        ▼                                 ▼
+         [Web Mission Control Dashboard]       [Pilot Bridge / QGroundControl]
+         (Bản đồ GPS Leaflet + Quick HUD)     (Điều khiển bay 2 chiều 127.0.0.1:5760)
 ```
 
 ---

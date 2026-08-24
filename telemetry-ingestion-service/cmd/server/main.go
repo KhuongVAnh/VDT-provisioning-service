@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -17,7 +18,9 @@ import (
 	"github.com/KhuongVAnh/telemetry-ingestion-service/internal/resolver"
 	"github.com/KhuongVAnh/telemetry-ingestion-service/internal/state"
 	"github.com/bluenviron/gomavlib/v3"
+	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
 	"github.com/bluenviron/gomavlib/v3/pkg/dialects/ardupilotmega"
+	"github.com/bluenviron/gomavlib/v3/pkg/frame"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -101,6 +104,20 @@ func main() {
 		log.Fatalf("[FATAL] Không thể khởi tạo MAVLink Node: %v", err)
 	}
 	defer node.Close()
+
+	// 4b. Khởi tạo MAVLink Frame Serializer (tuần tự hóa Frame thành raw bytes để bắn vào Redis)
+	dialectRW, err := dialect.NewReadWriter(ardupilotmega.Dialect)
+	if err != nil {
+		log.Fatalf("[FATAL] Không thể khởi tạo MAVLink Dialect ReadWriter: %v", err)
+	}
+	frameBuf := bytes.NewBuffer(make([]byte, 0, 512))
+	frameWriter, err := frame.NewWriter(frame.WriterConf{
+		Writer:    frameBuf,
+		DialectRW: dialectRW,
+	})
+	if err != nil {
+		log.Fatalf("[FATAL] Không thể khởi tạo MAVLink Frame Writer: %v", err)
+	}
 
 	log.Printf("[INFO] ✅ MAVLink Drone Receiver đang lắng nghe UDP tại: %s", cfg.UdpListenAddr)
 	log.Printf("[INFO] ✅ MAVLink GCS TCP Server đang chạy tại: %s", tcpGcsAddr)
@@ -222,6 +239,15 @@ func main() {
 
 			// 4. Tra cứu IP/SysID -> DeviceID (Bảo toàn IP nguồn 10.13.37.X qua WireGuard hoặc SystemID khi test qua Docker bridge/local)
 			deviceID := ipResolver.Resolve(ctx, remoteIP, e.SystemID())
+
+			// 4b. XUẤT BẢN BYTE MAVLINK NHỊ PHÂN THÔ (RAW BYTES) VÀO REDIS:
+			// Kênh `channel:drone:raw:<deviceID>` phục vụ NestJS WebSocket Gateway (Port 10004) chuyển tiếp xuống Pilot Bridge / QGroundControl
+			if deviceID != "" {
+				frameBuf.Reset()
+				if err := frameWriter.WriteFrame(e.Frame); err == nil {
+					_ = redisPublisher.PublishRawFrame(ctx, deviceID, frameBuf.Bytes())
+				}
+			}
 
 			// 5. Cập nhật và giải mã gói tin vào State Aggregator
 			snapshot, modified := stateAggregator.UpdateState(deviceID, e.SystemID(), remoteIP, e.Message())

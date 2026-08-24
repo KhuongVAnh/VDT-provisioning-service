@@ -59,6 +59,16 @@ func (p *RedisPublisher) PublishTelemetry(ctx context.Context, payload *models.T
 	return nil
 }
 
+// PublishRawFrame đẩy luồng byte nhị phân thô MAVLink v2 (Raw Bytes) vào kênh Redis Pub/Sub:
+// Kênh `channel:drone:raw:<deviceId>` để NestJS Binary WebSocket Gateway chuyển tiếp trực tiếp cho QGroundControl.
+func (p *RedisPublisher) PublishRawFrame(ctx context.Context, deviceID string, rawBytes []byte) error {
+	if p.client == nil || len(rawBytes) == 0 {
+		return nil
+	}
+	channel := fmt.Sprintf("channel:drone:raw:%s", deviceID)
+	return p.client.Publish(ctx, channel, rawBytes).Err()
+}
+
 // GetAllStates lấy toàn bộ trạng thái tức thời của các drone đang được lưu trong Redis
 func (p *RedisPublisher) GetAllStates(ctx context.Context) (map[string]*models.TelemetryPayload, error) {
 	if p.client == nil {

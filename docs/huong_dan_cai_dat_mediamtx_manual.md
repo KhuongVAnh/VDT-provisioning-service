@@ -170,10 +170,6 @@ webrtcIPsFromInterfaces: no
 # Thay IP_PUBLIC_CUA_VPS bằng địa chỉ IP Public thực tế của bạn (ví dụ: 103.253.20.32)
 webrtcAdditionalHosts: [ "IP_PUBLIC_CUA_VPS" ]
 
-# 🌟 3. CỤM STUN SERVER ĐA TẦNG HỖ TRỢ NAT TRAVERSAL:
-webrtcICEServers2:
-  - url: stun:stun.l.google.com:19302
-  - url: stun:stun.cloudflare.com:3478
 
 
 #################################################################
