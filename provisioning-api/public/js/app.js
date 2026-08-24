@@ -109,30 +109,44 @@ function renderIpMatrix(cells) {
 }
 
 /**
- * Đổ danh sách Drone vào các menu Dropdown chọn mục tiêu trên bản đồ và Web SSH.
+ * Đổ danh sách Drone vào các menu Dropdown:
+ *  - Dropdown Bản đồ Tác chiến: Chỉ lọc và hiển thị các Drone đang BAY (Online).
+ *  - Dropdown Web SSH: Hiển thị đầy đủ kèm biểu tượng trạng thái 🟢/⚪.
  * 
  * @param {Array<any>} devices Danh sách thiết bị
  */
 function populateDroneDropdowns(devices) {
-  if (!devices || devices.length === 0) return;
+  if (!devices) return;
   const currentMapVal = DOM.mapSelect ? DOM.mapSelect.value : 'all';
 
-  const mapOptions = `<option value="all">-- Theo dõi toàn bộ Phi Đội (${devices.length} Drone) --</option>` + 
-    devices.map(d => {
-      const isOnline = isDroneOnline(d.telemetry);
-      return `<option value="${d.deviceId}">${isOnline ? '🟢' : '⚪'} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
-    }).join('');
+  // Lọc chỉ lấy những Drone đang Online thời gian thực
+  const onlineDevices = devices.filter(d => isDroneOnline(d.telemetry));
+
+  let mapOptions = '';
+  if (onlineDevices.length === 0) {
+    mapOptions = '<option value="">-- Không có Drone nào đang bay --</option>';
+  } else {
+    mapOptions = `<option value="all">-- Theo dõi tất cả (${onlineDevices.length} Drone Đang Bay) --</option>` + 
+      onlineDevices.map(d => {
+        return `<option value="${d.deviceId}">🟢 ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
+      }).join('');
+  }
 
   if (DOM.mapSelect) {
     DOM.mapSelect.innerHTML = mapOptions;
-    if (currentMapVal && (currentMapVal === 'all' || devices.some(d => d.deviceId === currentMapVal))) {
+    if (currentMapVal && (currentMapVal === 'all' || onlineDevices.some(d => d.deviceId === currentMapVal))) {
       DOM.mapSelect.value = currentMapVal;
+    } else if (onlineDevices.length > 0) {
+      DOM.mapSelect.value = onlineDevices[0].deviceId;
     }
   }
 
   if (DOM.sshSelect) {
     DOM.sshSelect.innerHTML = '<option value="">-- Chọn Drone để SSH --</option>' + 
-      devices.map(d => `<option value="${d.deviceId}">${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`).join('');
+      devices.map(d => {
+        const isOnline = isDroneOnline(d.telemetry);
+        return `<option value="${d.deviceId}">${isOnline ? '🟢' : '⚪'} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
+      }).join('');
   }
 }
 

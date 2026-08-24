@@ -29,6 +29,62 @@ function toggleFpvVideoFromHud() {
 }
 
 /**
+ * Kiểm tra xem một IP có phải là IP nội bộ / private theo chuẩn RFC 1918 hay không.
+ * 
+ * @param {string} ip Địa chỉ IPv4
+ * @returns {boolean} True nếu là IP nội bộ (10.x, 172.16-31.x, 192.168.x, 127.x)
+ */
+function isPrivateIp(ip) {
+  return /^(10\.|192\.168\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(ip);
+}
+
+/**
+ * Chuẩn hóa bản tin SDP Answer hoàn toàn tự động (Dynamic 100%):
+ *  - Tự động trích xuất IP Public / Domain từ danh sách candidate do MediaMTX gửi về.
+ *  - Tự động loại bỏ toàn bộ các IP nội bộ Docker / LAN (RFC 1918) để trình duyệt kết nối thẳng vào Public IP.
+ * 
+ * @param {string} sdp Bản tin SDP Answer gốc từ MediaMTX
+ * @returns {string} Bản tin SDP Answer đã được tối ưu
+ */
+function sanitizeWhepAnswerSdp(sdp) {
+  if (!sdp) return sdp;
+
+  // 1. Quét tìm IP Public đầu tiên do MediaMTX gửi về (không thuộc dải Private)
+  const lines = sdp.split(/\r?\n/);
+  let publicHost = null;
+
+  for (const line of lines) {
+    const match = line.match(/^a=candidate:[^\s]+\s+\d+\s+udp\s+\d+\s+([^\s]+)\s+\d+/i);
+    if (match) {
+      const host = match[1];
+      if (!isPrivateIp(host)) {
+        publicHost = host;
+        break;
+      }
+    }
+  }
+
+  // 2. Nếu tìm thấy IP Public, cập nhật dòng c=IN IP4 thành IP Public đó
+  let result = sdp;
+  if (publicHost && /^\d+\.\d+\.\d+\.\d+$/.test(publicHost)) {
+    result = sdp.replace(/c=IN IP4 [0-9.]+/g, `c=IN IP4 ${publicHost}`);
+  }
+
+  // 3. Tự động lọc bỏ các candidate thuộc dải Private (RFC 1918)
+  const filteredLines = result.split(/\r?\n/).filter(line => {
+    if (line.startsWith('a=candidate:')) {
+      const match = line.match(/^a=candidate:[^\s]+\s+\d+\s+udp\s+\d+\s+([^\s]+)\s+\d+/i);
+      if (match && isPrivateIp(match[1])) {
+        return false; // Tự động loại bỏ các IP nội bộ
+      }
+    }
+    return true;
+  });
+
+  return filteredLines.join('\r\n');
+}
+
+/**
  * Khởi động luồng FPV Video cho một Drone cụ thể:
  *  - Bước 1: Thử bắt tay WebRTC WHEP (Độ trễ < 200ms).
  *  - Bước 2: Tự động Fallback sang HLS nếu WebRTC không thể kết nối.
@@ -50,19 +106,63 @@ async function startFpvVideoStream(deviceId) {
   // 2. Thử kết nối qua WebRTC WHEP (Ultra-Low Latency < 200ms)
   try {
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' }
+      ]
     });
     fpvPeerConnection = pc;
+
+    // Theo dõi trạng thái kết nối ICE chi tiết
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[FPV WebRTC] Trạng thái ICE: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      console.log(`[FPV WebRTC] Trạng thái Kết nối: ${pc.connectionState}`);
+    };
 
     // Yêu cầu chỉ nhận luồng Video (recvonly)
     pc.addTransceiver('video', { direction: 'recvonly' });
 
     // Khi nhận được luồng MediaStream từ MediaMTX qua WebRTC UDP
     pc.ontrack = (event) => {
-      console.log('[FPV WebRTC] Đã nhận luồng MediaStream WebRTC thành công!');
+      console.log('[FPV WebRTC] Đã nhận luồng MediaStream WebRTC thành công!', event.streams);
       if (DOM.fpvVideoEl) {
-        DOM.fpvVideoEl.srcObject = event.streams[0];
-        DOM.fpvVideoEl.play().catch(e => console.warn('Tự động phát Video bị chặn bởi trình duyệt:', e));
+        DOM.fpvVideoEl.muted = true;
+        DOM.fpvVideoEl.playsInline = true;
+        DOM.fpvVideoEl.autoplay = true;
+
+        if (event.streams && event.streams[0]) {
+          DOM.fpvVideoEl.srcObject = event.streams[0];
+        } else if (event.track) {
+          const inboundStream = new MediaStream([event.track]);
+          DOM.fpvVideoEl.srcObject = inboundStream;
+        }
+
+        const safePlay = () => {
+          const p = DOM.fpvVideoEl.play();
+          if (p !== undefined) {
+            p.catch(e => {
+              if (e.name !== 'AbortError') {
+                console.warn('Tự động phát Video bị chặn bởi trình duyệt:', e);
+              }
+            });
+          }
+        };
+
+        safePlay();
+
+        if (event.track) {
+          event.track.onunmute = () => {
+            console.log('[FPV WebRTC] Video Track unmuted, bắt đầu render khung hình!');
+            safePlay();
+            if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
+          };
+        }
       }
       if (DOM.fpvLoadingState) DOM.fpvLoadingState.style.display = 'none';
 
@@ -77,7 +177,7 @@ async function startFpvVideoStream(deviceId) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Chờ thu thập ICE Candidate (Vanilla ICE timeout tối đa 600ms)
+    // Chờ thu thập đầy đủ ICE Candidate từ STUN (Tối đa 1200ms)
     await new Promise((resolve) => {
       if (pc.iceGatheringState === 'complete') {
         resolve();
@@ -89,7 +189,7 @@ async function startFpvVideoStream(deviceId) {
           }
         };
         pc.addEventListener('icegatheringstatechange', checkState);
-        setTimeout(resolve, 600);
+        setTimeout(resolve, 1200);
       }
     });
 
@@ -104,9 +204,10 @@ async function startFpvVideoStream(deviceId) {
       throw new Error(`Server WHEP trả về mã lỗi: ${res.status}`);
     }
 
-    // Nhận bản tin SDP Answer từ MediaMTX và gán vào Peer Connection
-    const answerSdp = await res.text();
-    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    // Nhận bản tin SDP Answer từ MediaMTX và chuẩn hóa IP Public
+    const rawAnswerSdp = await res.text();
+    const cleanAnswerSdp = sanitizeWhepAnswerSdp(rawAnswerSdp);
+    await pc.setRemoteDescription({ type: 'answer', sdp: cleanAnswerSdp });
     console.log(`[FPV WebRTC] Bắt tay WHEP hoàn tất cho ${deviceId}! Luồng video < 200ms.`);
 
     if (socket) socket.emit('video:subscribe', { deviceId });
@@ -438,3 +539,15 @@ function watchLiveVideoForDrone(deviceId) {
   selectDroneForHud(deviceId);
   startFpvVideoStream(deviceId);
 }
+
+// Cho phép bấm trực tiếp vào khung hình Video để kích hoạt Play nếu trình duyệt tạm dừng
+document.addEventListener('DOMContentLoaded', () => {
+  const videoWrapper = document.querySelector('.fpv-video-wrapper');
+  if (videoWrapper) {
+    videoWrapper.addEventListener('click', () => {
+      if (DOM.fpvVideoEl && DOM.fpvVideoEl.paused) {
+        DOM.fpvVideoEl.play().catch(() => {});
+      }
+    });
+  }
+});

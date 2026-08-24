@@ -100,9 +100,22 @@ async function refreshAllData() {
       renderFleetTable(fleetDevices);
       populateDroneDropdowns(fleetDevices);
 
-      // Cập nhật vị trí và telemetry lên bản đồ
+      // Cập nhật vị trí lên bản đồ: Chỉ vẽ các Drone đang Online, gỡ bỏ Drone Offline
+      const onlineIds = new Set();
       fleetDevices.forEach(d => {
-        if (d.telemetry) handleIncomingTelemetry(d.telemetry);
+        if (d.telemetry && isDroneOnline(d.telemetry)) {
+          onlineIds.add(d.deviceId);
+          handleIncomingTelemetry(d.telemetry);
+        } else {
+          removeDroneFromMap(d.deviceId);
+        }
+      });
+
+      // Dọn dẹp các marker cũ không còn trong danh sách Online
+      Object.keys(droneMarkers).forEach(id => {
+        if (!onlineIds.has(id)) {
+          removeDroneFromMap(id);
+        }
       });
     }
 

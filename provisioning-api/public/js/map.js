@@ -81,3 +81,20 @@ function focusDroneOnMap(deviceId) {
     map.setView(marker.getLatLng(), 17);
   }
 }
+
+/**
+ * Gỡ bỏ Marker và đường bay lịch sử của Drone khỏi bản đồ khi Drone Offline.
+ * 
+ * @param {string} deviceId Mã Drone cần gỡ
+ */
+function removeDroneFromMap(deviceId) {
+  if (!deviceId) return;
+  if (droneMarkers[deviceId]) {
+    if (map) map.removeLayer(droneMarkers[deviceId]);
+    delete droneMarkers[deviceId];
+  }
+  if (droneFlightTrails[deviceId]) {
+    if (map) map.removeLayer(droneFlightTrails[deviceId]);
+    delete droneFlightTrails[deviceId];
+  }
+}

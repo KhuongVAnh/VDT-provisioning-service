@@ -54,14 +54,31 @@ function initWebSocket() {
 
 /**
  * Xử lý dữ liệu Telemetry thời gian thực nhận được từ Drone:
- *  1. Cập nhật vị trí Marker trên bản đồ Leaflet và xoay góc Heading.
+ *  1. Nếu Drone Online: Cập nhật vị trí Marker trên bản đồ Leaflet và xoay góc Heading.
  *  2. Vẽ đường bay lịch sử (Flight Trail Polyline).
- *  3. Cập nhật các chỉ số bay lên Cockpit HUD nếu Drone này đang được chọn.
+ *  3. Nếu Drone Offline: Tự động gỡ Marker và đường bay khỏi bản đồ tác chiến.
+ *  4. Cập nhật các chỉ số bay lên Cockpit HUD nếu Drone này đang được chọn.
  * 
  * @param {any} t Gói tin Telemetry
  */
 function handleIncomingTelemetry(t) {
   if (!t || !t.deviceId) return;
+
+  // Cập nhật trạng thái telemetry trong bộ nhớ fleetDevices
+  const existingDevice = fleetDevices.find(d => d.deviceId === t.deviceId);
+  if (existingDevice) {
+    existingDevice.telemetry = t;
+  }
+
+  // 1. Kiểm tra trạng thái Online
+  const online = isDroneOnline(t);
+
+  // Nếu Drone Offline -> Gỡ bỏ khỏi bản đồ tác chiến và cập nhật menu chọn
+  if (!online) {
+    removeDroneFromMap(t.deviceId);
+    populateDroneDropdowns(fleetDevices);
+    return;
+  }
 
   const lat = t.gps?.lat;
   const lon = t.gps?.lon;
