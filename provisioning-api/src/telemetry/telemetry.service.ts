@@ -91,12 +91,12 @@ export class TelemetryService implements OnModuleInit {
   }
 
   /**
-   * Lấy snapshot trạng thái tức thời của toàn bộ Drone trong hệ thống
-   * Kết hợp cả Drone trong Database và Drone đang truyền dữ liệu thời gian thực (Redis/Simulator)
+   * Lấy snapshot trạng thái toàn bộ phi đội Drone (Hỗ trợ lọc theo Pilot/Admin)
    */
-  async getAllFleetStates() {
-    // 1. Lấy danh sách thiết bị từ Database
-    const devices = await this.deviceService.findAllDevices();
+  async getAllFleetStates(user?: any): Promise<any[]> {
+    // 1. Lấy danh sách thiết bị từ Database (có lọc theo User)
+    const userId = user && user.role !== 'ADMIN' ? user.id : undefined;
+    const devices = await this.deviceService.findAllDevices(userId);
     const deviceMap = new Map<string, any>();
     const ipToDeviceMap = new Map<string, any>();
 
@@ -150,7 +150,8 @@ export class TelemetryService implements OnModuleInit {
       if (target) {
         target.telemetry = telemetry;
         if (!target.vpnIp && detectedIp) target.vpnIp = detectedIp;
-      } else {
+      } else if (!userId) {
+        // Chỉ Quản trị viên ADMIN (hoặc không lọc theo userId) mới bổ sung các Drone tự phát hiện vào danh sách
         deviceMap.set(mappedDevId, {
           id: mappedDevId,
           deviceId: mappedDevId,
@@ -167,7 +168,7 @@ export class TelemetryService implements OnModuleInit {
     return Array.from(deviceMap.values()).map((dev) => {
       if (!dev.telemetry) {
         dev.telemetry = { ...DEFAULT_TELEMETRY };
-      } else if (dev.telemetry.timestamp && Date.now() - dev.telemetry.timestamp > 10000) {
+      } else if (dev.telemetry.timestamp && Date.now() - dev.telemetry.timestamp > 15000) {
         dev.telemetry.connected = false;
       }
       return dev;

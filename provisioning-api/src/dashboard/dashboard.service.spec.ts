@@ -81,7 +81,7 @@ describe('DashboardService', () => {
         if (key === 'PROVISION_SECRET_TOKEN') return 'FACTORY_SECRET_2026';
         if (key === 'WG_SERVER_ENDPOINT') return '103.253.20.32:10006';
         if (key === 'MAVLINK_TARGET_HOST') return '10.13.37.1';
-        if (key === 'MAVLINK_TARGET_PORT') return 14550;
+        if (key === 'MAVLINK_TARGET_PORT') return 14551;
         return defaultValue;
       }),
     };

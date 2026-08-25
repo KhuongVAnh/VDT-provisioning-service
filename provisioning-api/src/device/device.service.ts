@@ -52,6 +52,118 @@ export class DeviceService implements OnModuleInit {
   }
 
   /**
+   * Đồng bộ một WireGuard peer thủ công từ Linux Kernel vào Database và IP Pool lúc khởi động.
+   * Tạo bản ghi Device tạm với ID theo IP (ví dụ: DRONE-IP-10-13-37-5) để khóa ô IP trong IP Pool.
+   */
+  async syncManualKernelPeer(
+    vpnIp: string,
+    vpnPublicKey: string,
+    latestHandshake?: number,
+  ): Promise<Device> {
+    const existingByIp = await this.findByVpnIp(vpnIp);
+    const lastSeenDate = latestHandshake && latestHandshake > 0 ? new Date(latestHandshake * 1000) : new Date();
+
+    if (existingByIp) {
+      // Nếu đã có bản ghi nhưng public key chưa được cập nhật hoặc là key tạm
+      if (vpnPublicKey && existingByIp.vpnPublicKey !== vpnPublicKey) {
+        return this.updateDevice(existingByIp.id, {
+          vpnPublicKey,
+          status: 'ACTIVE',
+          lastSeen: lastSeenDate,
+        });
+      }
+      return existingByIp;
+    }
+
+    // Đặt ID tạm thời theo IP
+    const tempDeviceId = `DRONE-IP-${vpnIp.replace(/\./g, '-')}`;
+
+    // Kiểm tra xem ID tạm này có bị trùng không
+    const existingById = await this.findByDeviceId(tempDeviceId);
+    if (existingById) {
+      return this.updateDevice(existingById.id, {
+        vpnIp,
+        vpnPublicKey,
+        status: 'ACTIVE',
+        lastSeen: lastSeenDate,
+      });
+    }
+
+    this.logger.log(`[KERNEL-SYNC] Tự động ghi danh & khóa IP cho WireGuard peer từ kernel: ${tempDeviceId} (IP: ${vpnIp})`);
+    return this.createDevice({
+      deviceId: tempDeviceId,
+      hardwareModel: 'Manual WireGuard Peer',
+      vpnIp,
+      vpnPublicKey,
+      status: 'ACTIVE',
+    });
+  }
+
+  /**
+   * Liên kết hoặc cập nhật định danh thật của Drone khi nhận được gói tin Telemetry.
+   * Nếu có bản ghi tạm (ví dụ: DRONE-IP-10-13-37-5) đang giữ IP này, tự động cập nhật đổi deviceId thành mã thật.
+   */
+  async bindOrUpdateDeviceIdentity(
+    realDeviceId: string,
+    vpnIp: string,
+    hardwareModel: string = 'Real-time Telemetry Drone',
+  ): Promise<Device> {
+    const cleanId = realDeviceId.trim();
+    if (!cleanId) return null as any;
+
+    // 1. Kiểm tra xem Drone đã tồn tại với mã định danh thật chưa
+    const existingById = await this.findByDeviceId(cleanId);
+    if (existingById) {
+      if (vpnIp && existingById.vpnIp !== vpnIp) {
+        // Kiểm tra xem IP có đang bị giữ bởi bản ghi tạm nào không
+        const conflictDevice = await this.findByVpnIp(vpnIp);
+        if (conflictDevice && conflictDevice.id !== existingById.id) {
+          // Xóa bản ghi tạm giữ IP để nhường IP cho thiết bị thật
+          await this.prisma.device.delete({ where: { id: conflictDevice.id } });
+        }
+        return this.updateDevice(existingById.id, { vpnIp, status: 'ACTIVE', lastSeen: new Date() });
+      }
+      return existingById;
+    }
+
+    // 2. Nếu chưa có mã thật, kiểm tra xem có bản ghi nào (ví dụ bản ghi tạm DRONE-IP-...) đang giữ IP này không
+    if (vpnIp) {
+      const existingByIp = await this.findByVpnIp(vpnIp);
+      if (existingByIp) {
+        this.logger.log(`[IDENTITY-UPGRADE] Cập nhật định danh Drone: "${existingByIp.deviceId}" ➔ "${cleanId}" (IP: ${vpnIp})`);
+
+        // Cập nhật đổi deviceId sang mã thật trong DB
+        const updated = await this.prisma.device.update({
+          where: { id: existingByIp.id },
+          data: {
+            deviceId: cleanId,
+            hardwareModel: hardwareModel || existingByIp.hardwareModel,
+            status: 'ACTIVE',
+            lastSeen: new Date(),
+          },
+        });
+
+        // Cập nhật lại Redis mapping
+        if (this.redisService) {
+          await this.redisService.mapIpToDevice(vpnIp, cleanId);
+        }
+
+        return updated;
+      }
+    }
+
+    // 3. Nếu chưa tồn tại cả theo ID lẫn theo IP -> Tạo mới
+    this.logger.log(`[AUTO-DISCOVERY] Tự động tạo bản ghi cho Drone mới: ${cleanId} (IP: ${vpnIp || 'N/A'})`);
+    return this.createDevice({
+      deviceId: cleanId,
+      hardwareModel,
+      vpnIp: vpnIp || null,
+      vpnPublicKey: 'MANUAL_TELEMETRY',
+      status: 'ACTIVE',
+    });
+  }
+
+  /**
    * Tự động ghi danh hoặc tìm kiếm thiết bị được cấu hình thủ công qua VPN / Telemetry stream
    */
   async findOrCreateManualDevice(
@@ -60,30 +172,7 @@ export class DeviceService implements OnModuleInit {
     vpnPublicKey: string = 'MANUAL_VPN',
     hardwareModel: string = 'Manual WireGuard Drone',
   ): Promise<Device> {
-    const existing = await this.findByDeviceId(deviceId);
-    if (existing) {
-      if (!existing.vpnIp && vpnIp) {
-        return this.updateDevice(existing.id, { vpnIp, status: 'ACTIVE', lastSeen: new Date() });
-      }
-      return existing;
-    }
-
-    // Kiểm tra xem IP này đã bị gán cho thiết bị nào khác chưa để tránh lỗi Unique constraint
-    const existingByIp = await this.prisma.device.findUnique({
-      where: { vpnIp },
-    });
-    if (existingByIp) {
-      return existingByIp;
-    }
-
-    this.logger.log(`[AUTO-DISCOVERY] Tự động ghi danh Drone cấu hình thủ công: ${deviceId} (IP: ${vpnIp})`);
-    return this.createDevice({
-      deviceId,
-      hardwareModel,
-      vpnIp,
-      vpnPublicKey,
-      status: 'ACTIVE',
-    });
+    return this.bindOrUpdateDeviceIdentity(deviceId, vpnIp, hardwareModel);
   }
 
   /**
@@ -96,12 +185,38 @@ export class DeviceService implements OnModuleInit {
   }
 
   /**
-   * Lấy toàn bộ danh sách thiết bị phục vụ hiển thị trên Dashboard
+   * Tìm kiếm thiết bị theo địa chỉ IP VPN (10.13.37.X)
    */
-  async findAllDevices(): Promise<Device[]> {
+  async findByVpnIp(vpnIp: string): Promise<Device | null> {
+    return this.prisma.device.findFirst({
+      where: { vpnIp },
+    });
+  }
+
+  /**
+   * Lấy toàn bộ danh sách thiết bị phục vụ hiển thị trên Dashboard (Hỗ trợ lọc theo User sở hữu)
+   */
+  async findAllDevices(userId?: string): Promise<Device[]> {
+    const where = userId ? { userId } : {};
     return this.prisma.device.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * Đếm số lượng thiết bị theo từng trạng thái (Hỗ trợ lọc theo User sở hữu)
+   */
+  async countStats(userId?: string) {
+    const baseWhere = userId ? { userId } : {};
+    const [total, active, revoked, pending] = await Promise.all([
+      this.prisma.device.count({ where: baseWhere }),
+      this.prisma.device.count({ where: { ...baseWhere, status: 'ACTIVE' } }),
+      this.prisma.device.count({ where: { ...baseWhere, status: 'REVOKED' } }),
+      this.prisma.device.count({ where: { ...baseWhere, status: 'PENDING' } }),
+    ]);
+
+    return { total, active, revoked, pending };
   }
 
   /**
@@ -138,20 +253,6 @@ export class DeviceService implements OnModuleInit {
         vpnIp: { not: null },
       },
     });
-  }
-
-  /**
-   * Đếm tổng số thiết bị theo trạng thái phục vụ KPI Dashboard
-   */
-  async countStats(): Promise<{ total: number; active: number; revoked: number; pending: number }> {
-    const [total, active, revoked, pending] = await Promise.all([
-      this.prisma.device.count(),
-      this.prisma.device.count({ where: { status: 'ACTIVE' } }),
-      this.prisma.device.count({ where: { status: 'REVOKED' } }),
-      this.prisma.device.count({ where: { status: 'PENDING' } }),
-    ]);
-
-    return { total, active, revoked, pending };
   }
 
   /**

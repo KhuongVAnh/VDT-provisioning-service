@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 describe('DashboardController', () => {
   let controller: DashboardController;
@@ -29,7 +30,17 @@ describe('DashboardController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DashboardController],
-      providers: [{ provide: DashboardService, useValue: mockDashboardService }],
+      providers: [
+        { provide: DashboardService, useValue: mockDashboardService },
+        {
+          provide: PrismaService,
+          useValue: {
+            device: {
+              findUnique: jest.fn().mockResolvedValue({ id: '1', deviceId: 'DRONE-1', userId: 'usr-1' }),
+            },
+          },
+        },
+      ],
     }).compile();
 
     controller = module.get<DashboardController>(DashboardController);
@@ -41,13 +52,15 @@ describe('DashboardController', () => {
   });
 
   it('should get overview stats', async () => {
-    const res = await controller.getOverviewStats();
+    const mockUser = { id: 'usr-1', role: 'ADMIN' };
+    const res = await controller.getOverviewStats(mockUser);
     expect(res.status).toBe('success');
     expect(res.data.devices.total).toBe(1);
   });
 
   it('should get fleet devices', async () => {
-    const res = await controller.getFleet();
+    const mockUser = { id: 'usr-1', role: 'ADMIN' };
+    const res = await controller.getFleet(mockUser);
     expect(res.status).toBe('success');
     expect(res.data).toHaveLength(1);
   });

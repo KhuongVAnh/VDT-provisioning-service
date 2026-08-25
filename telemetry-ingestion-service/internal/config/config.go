@@ -50,7 +50,7 @@ func LoadConfig() *Config {
 		UdpListenAddr: getEnv("UDP_LISTEN_ADDR", "0.0.0.0:14551"),
 		// Cổng TCP cho QGroundControl / Mission Planner kết nối vào
 		TcpGcsPort:               getEnv("TCP_GCS_PORT", "10002"),
-		RedisAddr:                getEnv("REDIS_ADDR", "127.0.0.1:6380"),
+		RedisAddr:                getRedisAddr(),
 		RedisPassword:            getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                  getEnvAsInt("REDIS_DB", 0),
 		StateTtlSeconds:          getEnvAsInt("STATE_TTL_SECONDS", 30),
@@ -76,4 +76,13 @@ func getEnvAsInt(key string, fallback int) int {
 		return val
 	}
 	return fallback
+}
+
+func getRedisAddr() string {
+	if addr, ok := os.LookupEnv("REDIS_ADDR"); ok && addr != "" {
+		return addr
+	}
+	host := getEnv("REDIS_HOST", "127.0.0.1")
+	port := getEnv("REDIS_PORT", "6380")
+	return host + ":" + port
 }

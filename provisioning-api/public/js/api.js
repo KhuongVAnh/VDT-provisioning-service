@@ -4,29 +4,26 @@
  * ==============================================================================
  * Mục đích:
  *  - Xử lý các yêu cầu gọi REST API tới NestJS Gateway (Port 10004).
- *  - Đồng bộ và làm mới dữ liệu toàn hệ thống (KPIs, Đội Drone, Ma trận IP).
- *  - Cung cấp các hàm tiện ích tính toán la bàn, kiểm tra online, sao chép tọa độ.
+ *  - Đồng bộ dữ liệu định kỳ (KPIs, Đội Drone, Ma trận IP) mà KHÔNG làm gián đoạn
+ *    luồng Telemetry thời gian thực hoặc xóa đường bay (Flight Trails) của Drone.
  * ==============================================================================
  */
 
 /**
  * Kiểm tra xem một Drone có đang Online thời gian thực hay không.
- * Điều kiện: Có kết nối và gói tin Telemetry nhận được cách đây không quá 10 giây.
- * 
- * @param {any} t Dữ liệu Telemetry của Drone
- * @returns {boolean} True nếu Drone đang trực tuyến
+ * Điều kiện: Gói tin Telemetry nhận được cách đây không quá 15 giây hoặc có luồng Socket live.
  */
 function isDroneOnline(t) {
-  if (!t || t.connected === false) return false;
-  if (t.timestamp && (Date.now() - t.timestamp > 10000)) return false;
-  return true;
+  if (!t) return false;
+  if (t.connected === false && !t.lastReceivedAt) return false;
+  if (t.lastReceivedAt && (Date.now() - t.lastReceivedAt < 15000)) return true;
+  if (t.timestamp && (Date.now() - t.timestamp < 15000)) return true;
+  if (t.flightMode && t.flightMode !== 'UNKNOWN' && t.connected !== false) return true;
+  return !!t.connected;
 }
 
 /**
  * Chuyển đổi góc Heading (0° - 360°) thành tên hướng tiếng Việt 8 phương vị.
- * 
- * @param {number} deg Góc phương vị la bàn (0 - 360)
- * @returns {string} Tên hướng (BẮC, ĐÔNG BẮC, ĐÔNG, ...)
  */
 function getCompassDirection(deg) {
   const directions = ['BẮC', 'ĐÔNG BẮC', 'ĐÔNG', 'ĐÔNG NAM', 'NAM', 'TÂY NAM', 'TÂY', 'TÂY BẮC'];
@@ -47,13 +44,6 @@ function copyGpsCoordinates() {
 
 /**
  * Hàm gọi API chung (Wrapper) hỗ trợ hiển thị hộp thoại xác nhận, xử lý lỗi và làm mới dữ liệu.
- * 
- * @param {string} url Đường dẫn API
- * @param {string} method Phương thức HTTP (GET, POST, PUT, DELETE, ...)
- * @param {any} body Dữ liệu gửi kèm (Body JSON)
- * @param {string|null} confirmMsg Thông báo hỏi xác nhận người dùng trước khi gọi
- * @param {string|null} successMsg Thông báo khi thực thi thành công
- * @returns {Promise<any>} Dữ liệu JSON trả về từ Server
  */
 async function apiAction(url, method, body, confirmMsg, successMsg) {
   if (confirmMsg && !confirm(confirmMsg)) return;
@@ -65,7 +55,7 @@ async function apiAction(url, method, body, confirmMsg, successMsg) {
     };
     if (body) options.body = JSON.stringify(body);
 
-    const res = await fetch(url, options);
+    const res = await authFetch(url, options);
     const json = await res.json();
 
     if (json.status === 'success') {
@@ -81,47 +71,45 @@ async function apiAction(url, method, body, confirmMsg, successMsg) {
 }
 
 /**
- * Tải và làm mới toàn bộ dữ liệu từ Gateway bằng cách gọi song song 3 API:
- *  1. /api/v1/dashboard/stats: Thống kê tổng số thiết bị, mức sử dụng IP VPN.
- *  2. /api/v1/telemetry/fleet/states: Trạng thái bay và telemetry mới nhất của từng Drone.
- *  3. /api/v1/dashboard/ip-pool: Ma trận 254 địa chỉ IP WireGuard.
+ * Tải và cập nhật danh sách đội Drone từ Gateway (Hợp nhất telemetry realtime)
  */
-async function refreshAllData() {
+async function fetchFleetData() {
+  if (!getAuthToken()) return;
   try {
-    const [statsRes, fleetRes, ipRes] = await Promise.all([
-      fetch('/api/v1/dashboard/stats').then(r => r.json()).catch(() => null),
-      fetch('/api/v1/telemetry/fleet/states').then(r => r.json()).catch(() => null),
-      fetch('/api/v1/dashboard/ip-pool').then(r => r.json()).catch(() => null),
-    ]);
-
-    // 1. Cập nhật danh sách đội Drone
-    if (fleetRes?.status === 'success') {
-      fleetDevices = fleetRes.data || [];
+    const res = await authFetch('/api/v1/telemetry/fleet/states');
+    const json = await res.json();
+    if (json?.status === 'success') {
+      const incomingList = json.data || [];
+      // Giữ nguyên các thông tin telemetry realtime (lastReceivedAt, gps, heading) đã nhận qua Socket
+      incomingList.forEach(incoming => {
+        const existing = fleetDevices.find(d => d.deviceId === incoming.deviceId);
+        if (existing && existing.telemetry) {
+          incoming.telemetry = {
+            ...incoming.telemetry,
+            ...existing.telemetry,
+            lastReceivedAt: existing.telemetry.lastReceivedAt || incoming.telemetry?.lastReceivedAt
+          };
+        }
+      });
+      fleetDevices = incomingList;
       renderFleetTable(fleetDevices);
       populateDroneDropdowns(fleetDevices);
-
-      // Cập nhật vị trí lên bản đồ: Chỉ vẽ các Drone đang Online, gỡ bỏ Drone Offline
-      const onlineIds = new Set();
-      fleetDevices.forEach(d => {
-        if (d.telemetry && isDroneOnline(d.telemetry)) {
-          onlineIds.add(d.deviceId);
-          handleIncomingTelemetry(d.telemetry);
-        } else {
-          removeDroneFromMap(d.deviceId);
-        }
-      });
-
-      // Dọn dẹp các marker cũ không còn trong danh sách Online
-      Object.keys(droneMarkers).forEach(id => {
-        if (!onlineIds.has(id)) {
-          removeDroneFromMap(id);
-        }
-      });
     }
+  } catch (err) {
+    console.warn('[API] Lỗi khi tải danh sách Drone:', err);
+  }
+}
 
-    // 2. Cập nhật các thẻ KPI tổng quan
-    if (statsRes?.status === 'success') {
-      const d = statsRes.data;
+/**
+ * Tải và cập nhật các chỉ số tổng quan (KPIs)
+ */
+async function fetchDashboardStats() {
+  if (!getAuthToken()) return;
+  try {
+    const res = await authFetch('/api/v1/dashboard/stats');
+    const json = await res.json();
+    if (json?.status === 'success') {
+      const d = json.data;
       const totalDrones = fleetDevices.length || d.devices?.total || 0;
       const onlineCount = fleetDevices.filter(dev => isDroneOnline(dev.telemetry)).length;
 
@@ -135,12 +123,38 @@ async function refreshAllData() {
         DOM.kpiIpCounts.innerText = `${d.ipPool?.usedCount || 0} / ${d.ipPool?.totalCapacity || 253} IP Đã Cấp`;
       }
     }
+  } catch (err) {
+    console.warn('[API] Lỗi khi tải thống kê Dashboard:', err);
+  }
+}
 
-    // 3. Cập nhật Ma trận IP Subnet
-    if (ipRes?.status === 'success') {
-      renderIpMatrix(ipRes.data || []);
+/**
+ * Tải và cập nhật Ma trận IP (Chỉ dành cho Admin)
+ */
+async function fetchIpPoolMatrix() {
+  const user = getAuthUser();
+  if (!user || user.role !== 'ADMIN') return;
+
+  try {
+    const res = await authFetch('/api/v1/dashboard/ip-pool');
+    const json = await res.json();
+    if (json?.status === 'success') {
+      renderIpMatrix(json.data || []);
     }
   } catch (err) {
-    console.error('[API] Lỗi khi làm mới dữ liệu hệ thống:', err);
+    console.warn('[API] Lỗi khi tải IP Matrix:', err);
   }
+}
+
+/**
+ * Làm mới toàn bộ dữ liệu hệ thống (Chạy khi khởi tạo hoặc khi người dùng bấm nút Refresh)
+ * KHÔNG can thiệp hoặc xóa đè các Marker/Đường bay đang được vẽ mượt qua WebSocket
+ */
+async function refreshAllData() {
+  if (!getAuthToken()) return;
+  await Promise.all([
+    fetchFleetData(),
+    fetchDashboardStats(),
+    fetchIpPoolMatrix()
+  ]);
 }

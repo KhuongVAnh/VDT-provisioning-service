@@ -9,14 +9,13 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     volumes:
-      # Mount thư mục data ra ngoài để không bị mất DB SQLite khi xóa container
-      - ./data:/data
       - /lib/modules:/lib/modules:ro
     environment:
       - PORT=10004
-      # Ghi đè đường dẫn DB ra thư mục volume
-      - DATABASE_URL=file:/data/provisioning.db
-      # Sử dụng các biến môi trường từ file .env cùng cấp với thư mục này
+      - DATABASE_URL=postgresql://postgres:postgres_password@127.0.0.1:5432/provisioning_db?schema=public
+      - ADMIN_DEFAULT_EMAIL=admin@gmail.com
+      - ADMIN_DEFAULT_PASSWORD=admin
+      - JWT_SECRET=super-secret-key-for-jwt-token-sbcloud-xblink
     env_file:
       - .env
     restart: unless-stopped

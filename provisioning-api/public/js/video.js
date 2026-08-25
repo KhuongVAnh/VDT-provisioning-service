@@ -204,10 +204,14 @@ async function startFpvVideoStream(deviceId) {
       .join('\r\n');
 
     // 3. Gửi SDP Offer qua NestJS Gateway Token Guard (Port 10004)
+    const token = typeof getAuthToken === 'function' ? getAuthToken() : '';
+    const whepHeaders = { 'Content-Type': 'application/sdp' };
+    if (token) whepHeaders['Authorization'] = `Bearer ${token}`;
+
     const res = await fetch(`/api/v1/video/${encodeURIComponent(deviceId)}/whep`, {
       method: 'POST',
       body: clientFirstOfferSdp,
-      headers: { 'Content-Type': 'application/sdp' }
+      headers: whepHeaders
     });
 
     if (!res.ok) {
@@ -241,7 +245,11 @@ async function startFpvVideoStream(deviceId) {
  */
 async function startHlsFallbackStream(deviceId) {
   try {
-    const res = await fetch(`/api/v1/video/${encodeURIComponent(deviceId)}/stream-info`);
+    const token = typeof getAuthToken === 'function' ? getAuthToken() : '';
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`/api/v1/video/${encodeURIComponent(deviceId)}/stream-info`, { headers });
     const json = await res.json();
     if (json.status !== 'success' || !json.data) {
       throw new Error('Không lấy được thông tin luồng stream từ server');
@@ -264,6 +272,9 @@ async function startHlsFallbackStream(deviceId) {
         maxLiveSyncPlaybackRate: 1.5,
         liveDurationInfinity: true,
         highBufferWatchdogPeriod: 1,
+        xhrSetup: function (xhr) {
+          if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+        },
       });
 
       hls.loadSource(hlsUrl);

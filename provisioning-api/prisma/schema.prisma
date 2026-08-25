@@ -3,18 +3,33 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  role         String    @default("PILOT") // ADMIN hoặc PILOT
+  devices      Device[]  // Danh sách Drone do User sở hữu
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model Device {
-  id              String   @id @default(uuid())
-  deviceId        String   @unique
-  hardwareModel   String
-  vpnIp           String?  @unique
-  vpnPublicKey    String
+  id            String   @id @default(uuid())
+  deviceId      String   @unique
+  hardwareModel String
+  vpnIp         String?  @unique
+  vpnPublicKey  String
   // We do not store the vpnPrivateKey in the database according to requirement #3
-  status          String   @default("PENDING") // PENDING, ACTIVE, REVOKED
-  lastSeen        DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status        String   @default("PENDING") // PENDING, ACTIVE, REVOKED
+  lastSeen      DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Quan hệ sở hữu: Mỗi Drone thuộc tối đa 1 Pilot
+  userId        String?
+  owner         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }

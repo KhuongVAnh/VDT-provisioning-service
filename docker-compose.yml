@@ -1,5 +1,25 @@
 services:
-  # 1. Redis Cache & Pub/Sub Message Broker (Lắng nghe nội bộ 127.0.0.1)
+  # 1. PostgreSQL Database Server (Lắng nghe nội bộ 127.0.0.1 qua POSTGRES_PORT)
+  postgres:
+    image: postgres:16-alpine
+    container_name: drone-postgres
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres_password}
+      - POSTGRES_DB=${POSTGRES_DB:-provisioning_db}
+      - PGPORT=${POSTGRES_PORT:-5432}
+    command: ["postgres", "-p", "${POSTGRES_PORT:-5432}"]
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-provisioning_db} -p ${POSTGRES_PORT:-5432}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis Cache & Pub/Sub Message Broker (Lắng nghe nội bộ 127.0.0.1 qua REDIS_PORT)
   redis:
     image: redis:7.4-alpine
     container_name: drone-redis
@@ -7,9 +27,9 @@ services:
     network_mode: "host"
     volumes:
       - ./data/redis:/data
-    command: ["redis-server", "--appendonly", "yes", "--port", "6380", "--bind", "127.0.0.1"]
+    command: ["sh", "-c", "redis-server --appendonly yes --port ${REDIS_PORT:-6380} --bind 127.0.0.1"]
 
-  # 2. Go MAVLink Ingestion Service - GCS Router Mode
+  # 3. Go MAVLink Ingestion Service - GCS Router Mode
   telemetry-ingestion:
     build:
       context: ./telemetry-ingestion-service
@@ -27,13 +47,16 @@ services:
     environment:
       - UDP_LISTEN_ADDR=${UDP_LISTEN_ADDR:-0.0.0.0:14551}
       - TCP_GCS_PORT=${TCP_GCS_PORT:-10002}
-      - REDIS_ADDR=${REDIS_ADDR:-127.0.0.1:6380}
+      - REDIS_ADDR=${REDIS_ADDR:-127.0.0.1:${REDIS_PORT:-6380}}
+      - REDIS_HOST=${REDIS_HOST:-127.0.0.1}
+      - REDIS_PORT=${REDIS_PORT:-6380}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
       - STATE_TTL_SECONDS=${STATE_TTL_SECONDS:-30}
       - PUBLISH_INTERVAL_MS=${PUBLISH_INTERVAL_MS:-100}
       - VPN_SUBNET_PREFIX=${VPN_SUBNET_PREFIX:-10.13.37.}
 
-  # 3. NestJS API Gateway, Provisioning & Mission Control Dashboard
+  # 4. NestJS API Gateway, Provisioning & Mission Control Dashboard
   provisioning-api:
     build:
       context: ./provisioning-api
@@ -45,35 +68,34 @@ services:
       - NET_ADMIN
       - SYS_MODULE
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     volumes:
-      - ./data/db:/data
       - /lib/modules:/lib/modules:ro
     env_file:
       - path: ./.env
         required: false
       - path: ./provisioning-api/.env
         required: false
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST:-127.0.0.1}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres_password}
+      - POSTGRES_DB=${POSTGRES_DB:-provisioning_db}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password}@${POSTGRES_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-provisioning_db}?schema=public}
+      - REDIS_HOST=${REDIS_HOST:-127.0.0.1}
+      - REDIS_PORT=${REDIS_PORT:-6380}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - PORT=${PORT:-10004}
+      - ADMIN_DEFAULT_EMAIL=${ADMIN_DEFAULT_EMAIL:-admin@gmail.com}
+      - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-admin}
+      - JWT_SECRET=${JWT_SECRET:-super-secret-key-for-jwt-token-sbcloud-xblink}
 
-  # 4. MediaMTX Video Streaming Server (Được triển khai thủ công qua Native Systemd Service trên VPS)
+  # 5. MediaMTX Video Streaming Server (Được triển khai thủ công qua Native Systemd Service trên VPS)
   # Chi tiết các bước cài đặt thủ công & hủy bỏ xem tại: huong_dan_cai_dat_mediamtx_manual.md
   # MediaMTX chỉ lắng nghe nội bộ tại 10.13.37.1:8554 (từ Drone) và 127.0.0.1 (NestJS Video Gateway).
   # ĐÓNG HOÀN TOÀN các cổng 10001 và 10005 ra Internet - Toàn bộ video đi qua Port 10004 của NestJS.
-  # 
-  # (Tùy chọn: Nếu muốn chạy qua Docker nội bộ thay vì Systemd, mở comment bên dưới):
-  # media-server:
-  #   image: bluenviron/mediamtx:latest
-  #   container_name: drone-media-server
-  #   restart: unless-stopped
-  #   network_mode: "host"
-  #   environment:
-  #     - MTX_PROTOCOLS=tcp,udp
-  #     - MTX_RTSPADDRESS=10.13.37.1:8554
-  #     - MTX_HLSADDRESS=127.0.0.1:8888
-  #     - MTX_WEBRTCADDRESS=127.0.0.1:8889
-  #     - MTX_API=yes
-  #     - MTX_APIADDRESS=127.0.0.1:9997
-  #   env_file:
-  #     - path: ./.env
-  #       required: false
-

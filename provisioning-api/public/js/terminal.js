@@ -96,11 +96,13 @@ function connectWebSsh() {
     DOM.sshStatus.innerText = `Trạng thái: Đang kết nối tới ${target}...`;
   }
 
+  const token = typeof getAuthToken === 'function' ? getAuthToken() : '';
   if (socket) {
     socket.emit('ssh:connect', {
       deviceId: target,
       username: user,
       password: pass,
+      token,
       cols: term.cols,
       rows: term.rows
     });

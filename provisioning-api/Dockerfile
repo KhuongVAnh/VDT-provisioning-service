@@ -25,4 +25,4 @@ RUN npm run build
 
 EXPOSE 10004
 
-CMD ["sh", "-c", "npx prisma db push && npm run start:prod"]
+CMD ["sh", "-c", "npx prisma db push && npx prisma db seed && npm run start:prod"]

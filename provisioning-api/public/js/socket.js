@@ -13,7 +13,11 @@
  * Khởi tạo kết nối Socket.IO tới máy chủ Gateway và lắng nghe các sự kiện thời gian thực.
  */
 function initWebSocket() {
-  socket = io();
+  const token = typeof getAuthToken === 'function' ? getAuthToken() : '';
+  socket = io({
+    auth: { token },
+    query: { token },
+  });
 
   // Khi kết nối WebSocket thành công
   socket.on('connect', () => {
@@ -39,8 +43,11 @@ function initWebSocket() {
 
   // Nhận dữ liệu stream phản hồi từ phiên Web SSH
   socket.on('ssh:data', (payload) => {
-    if (term && payload?.data) {
-      term.write(payload.data);
+    if (term) {
+      const text = typeof payload === 'string' ? payload : (payload?.data || '');
+      if (text) {
+        term.write(text);
+      }
     }
   });
 
@@ -50,6 +57,15 @@ function initWebSocket() {
       DOM.sshStatus.innerText = `Trạng thái: ${payload.message || payload.status}`;
     }
   });
+}
+
+function disconnectWebSocket() {
+  if (socket) {
+    try {
+      socket.disconnect();
+    } catch (e) {}
+    socket = null;
+  }
 }
 
 // Hàng đợi lưu trữ Telemetry mới nhất chờ vẽ theo chu kỳ làm tươi màn hình (60 FPS)
@@ -83,22 +99,56 @@ const handleIncomingTelemetry = queueTelemetryForRender;
  * Xử lý dữ liệu Telemetry thời gian thực nhận được từ Drone:
  *  1. Nếu Drone Online: Cập nhật vị trí Marker trên bản đồ Leaflet và xoay góc Heading.
  *  2. Vẽ đường bay lịch sử (Flight Trail Polyline).
- *  3. Nếu Drone Offline: Tự động gỡ Marker và đường bay khỏi bản đồ tác chiến.
+ *  3. Cập nhật số lượng Online trên KPI và bảng Đội Drone.
  *  4. Cập nhật các chỉ số bay lên Cockpit HUD nếu Drone này đang được chọn.
  * 
  * @param {any} t Gói tin Telemetry
  */
+let lastFleetTableUpdate = 0;
+
 function processTelemetryUpdate(t) {
   if (!t || !t.deviceId) return;
 
+  // Đánh dấu thời điểm nhận gói tin thực tế tại trình duyệt
+  t.lastReceivedAt = Date.now();
+  if (t.connected === undefined) t.connected = true;
+
   // Cập nhật trạng thái telemetry trong bộ nhớ fleetDevices
-  const existingDevice = fleetDevices.find(d => d.deviceId === t.deviceId);
+  const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
+  let existingDevice = fleetDevices.find(d => d.deviceId === t.deviceId);
   if (existingDevice) {
     existingDevice.telemetry = t;
+  } else if (currentUser && currentUser.role === 'ADMIN') {
+    // Chỉ Quản trị viên ADMIN mới tự động bổ sung Drone lạ phát hiện từ telemetry vào danh sách hiển thị
+    existingDevice = {
+      id: t.deviceId,
+      deviceId: t.deviceId,
+      hardwareModel: 'Real-time Telemetry Stream',
+      vpnIp: t.vpnIp || '10.13.37.X',
+      status: 'ACTIVE',
+      telemetry: t,
+    };
+    fleetDevices.push(existingDevice);
+    populateDroneDropdowns(fleetDevices);
+  } else {
+    // Nếu là PILOT và drone này không thuộc quyền sở hữu (không có trong fleetDevices đã claim), bỏ qua không vẽ
+    return;
   }
 
   // 1. Kiểm tra trạng thái Online
   const online = isDroneOnline(t);
+
+  // Cập nhật ngay lập tức ô IP trên ma trận IP Pool
+  if (typeof updateIpMatrixRealtime === 'function') {
+    const ip = t.vpnIp || existingDevice?.vpnIp;
+    updateIpMatrixRealtime(t.deviceId, ip, online);
+  }
+
+  // Cập nhật thẻ chỉ số KPI Đang bay
+  if (DOM.kpiOnline) {
+    const onlineCount = fleetDevices.filter(d => isDroneOnline(d.telemetry)).length;
+    DOM.kpiOnline.innerText = onlineCount;
+  }
 
   // Nếu Drone Offline -> Gỡ bỏ khỏi bản đồ tác chiến và cập nhật menu chọn
   if (!online) {
@@ -145,12 +195,12 @@ function processTelemetryUpdate(t) {
       droneMarkers[t.deviceId].setLatLng([lat, lon]);
       droneMarkers[t.deviceId].setIcon(createDroneIcon(heading, t.armed));
 
-      // Thêm điểm vào đường bay lịch sử (Giới hạn tối đa 150 điểm gần nhất để tối ưu RAM)
+      // Thêm điểm vào đường bay lịch sử (Lưu trữ tới 1000 điểm gần nhất cho toàn bộ chuyến bay)
       const trail = droneFlightTrails[t.deviceId];
       if (trail) {
         const points = trail.getLatLngs();
         points.push([lat, lon]);
-        if (points.length > 150) points.shift();
+        if (points.length > 1000) points.shift();
         trail.setLatLngs(points);
       }
     }
@@ -160,5 +210,13 @@ function processTelemetryUpdate(t) {
   if (!activeDroneId || activeDroneId === t.deviceId || activeDroneId === 'all') {
     if (!activeDroneId || activeDroneId === 'all') activeDroneId = t.deviceId;
     updateHudDisplay(t);
+  }
+
+  // Cập nhật định kỳ nhẹ bảng Đội Drone (nếu tab Đội Drone đang mở, mỗi 1s tối đa 1 lần)
+  const now = Date.now();
+  const fleetTab = document.getElementById('tab-fleet');
+  if (fleetTab && fleetTab.classList.contains('active') && (now - lastFleetTableUpdate > 1000)) {
+    lastFleetTableUpdate = now;
+    renderFleetTable(fleetDevices);
   }
 }

@@ -94,18 +94,44 @@ function renderIpMatrix(cells) {
 
   DOM.ipMatrix.innerHTML = cells.map(c => {
     let cls = 'available';
-    let tooltip = `IP: ${c.ip} (Trống)`;
+    let tooltip = `IP: ${c.ip} (Chưa Sử Dụng)`;
 
     if (c.status === 'gateway') {
       cls = 'gateway';
       tooltip = `IP: ${c.ip} (WireGuard Gateway 10.13.37.1)`;
-    } else if (c.status === 'active') {
-      cls = c.isOnline ? 'active-online' : 'active-offline';
-      tooltip = `IP: ${c.ip} (${c.deviceId || 'Active'}) - ${c.isOnline ? 'Online' : 'Offline'}`;
+    } else if (c.status === 'active' || c.deviceId) {
+      // Đối chiếu với bộ nhớ telemetry thời gian thực của fleetDevices
+      const dev = fleetDevices.find(d => d.deviceId === c.deviceId || d.vpnIp === c.ip);
+      const isOnline = dev && dev.telemetry ? isDroneOnline(dev.telemetry) : !!c.isOnline;
+
+      cls = isOnline ? 'active-online' : 'active-offline';
+      tooltip = `IP: ${c.ip} (${c.deviceId || dev?.deviceId || 'Active'}) - ${isOnline ? '🟢 Đang Bay (Live GPS)' : '⚪ Đã Cấp (Offline)'}`;
     }
 
-    return `<div class="ip-cell ${cls}" title="${tooltip}">.${c.hostNumber}</div>`;
+    return `<div class="ip-cell ${cls}" id="ip-cell-${c.hostNumber}" data-ip="${c.ip}" data-device="${c.deviceId || ''}" title="${tooltip}">.${c.hostNumber}</div>`;
   }).join('');
+}
+
+/**
+ * Cập nhật tức thời trạng thái màu sắc ô IP trên ma trận khi có gói tin Telemetry thời gian thực
+ */
+function updateIpMatrixRealtime(deviceId, vpnIp, isOnline) {
+  if (!DOM.ipMatrix || !vpnIp) return;
+  const host = parseInt(vpnIp.split('.').pop(), 10);
+  if (!host) return;
+
+  const cell = document.getElementById(`ip-cell-${host}`) || DOM.ipMatrix.children[host - 1];
+  if (cell && !cell.classList.contains('gateway') && !cell.classList.contains('available')) {
+    if (isOnline) {
+      cell.classList.remove('active-offline');
+      cell.classList.add('active-online');
+      cell.title = `IP: ${vpnIp} (${deviceId || 'Active'}) - 🟢 Đang Bay (Live GPS)`;
+    } else {
+      cell.classList.remove('active-online');
+      cell.classList.add('active-offline');
+      cell.title = `IP: ${vpnIp} (${deviceId || 'Active'}) - ⚪ Đã Cấp (Offline)`;
+    }
+  }
 }
 
 /**
@@ -215,20 +241,33 @@ async function submitManualRegister() {
 }
 
 // --------------------------------------------------------------------------
-// ĐIỂM KHỞI ĐỘNG CHÍNH CỦA ỨNG DỤNG (ENTRY POINT)
+// KHỞI ĐỘNG CÁC MODULE DASHBOARD KHI ĐÃ ĐĂNG NHẬP THÀNH CÔNG (AUTHENTICATED)
 // --------------------------------------------------------------------------
-window.addEventListener('DOMContentLoaded', () => {
-  console.log('🚀 Đang khởi động Drone Fleet Mission Control Cockpit...');
+let dashboardRefreshInterval = null;
+let isDashboardInitialized = false;
 
-  // 1. Khởi tạo bản đồ tác chiến Leaflet
-  initTacticalMap();
+window.initDashboardApp = function() {
+  console.log('🚀 [Mission Control] Người dùng đã xác thực. Khởi động Cockpit Dashboard...');
 
-  // 2. Thiết lập kết nối thời gian thực WebSocket Socket.IO
+  // 1. Khởi tạo bản đồ tác chiến Leaflet (nếu chưa khởi tạo)
+  if (!isDashboardInitialized) {
+    initTacticalMap();
+    isDashboardInitialized = true;
+  } else if (map) {
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
+  }
+
+  // 2. Thiết lập kết nối thời gian thực WebSocket Socket.IO (kèm JWT Token)
   initWebSocket();
 
   // 3. Tải dữ liệu ban đầu
   refreshAllData();
 
-  // 4. Định kỳ đồng bộ lại dữ liệu mỗi 5 giây
-  setInterval(refreshAllData, 5000);
-});
+  // 4. Định kỳ đồng bộ lại dữ liệu nền mỗi 30 giây (WebSocket xử lý telemetry 10Hz thời gian thực)
+  if (dashboardRefreshInterval) {
+    clearInterval(dashboardRefreshInterval);
+  }
+  dashboardRefreshInterval = setInterval(refreshAllData, 30000);
+};

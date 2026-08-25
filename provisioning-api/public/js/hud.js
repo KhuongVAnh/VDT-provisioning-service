@@ -26,9 +26,24 @@ function switchTab(tabId) {
   const activeBtn = Array.from(document.querySelectorAll('.nav-tab')).find(b => b.getAttribute('onclick')?.includes(tabId));
   if (activeBtn) activeBtn.classList.add('active');
 
-  // Khắc phục lỗi render kích thước của Leaflet Map khi mở lại tab Tác chiến
-  if (tabId === 'tab-tactical' && map) {
-    setTimeout(() => map.invalidateSize(), 150);
+  // Khắc phục lỗi render kích thước của Leaflet Map và làm tươi menu chọn Drone khi mở lại tab Tác chiến
+  if (tabId === 'tab-tactical') {
+    if (typeof populateDroneDropdowns === 'function') {
+      populateDroneDropdowns(fleetDevices);
+    }
+    if (map) {
+      setTimeout(() => map.invalidateSize(), 150);
+    }
+  }
+
+  // Tải lại danh sách thiết bị khi mở tab Đội Drone
+  if (tabId === 'tab-fleet' && typeof fetchFleetData === 'function') {
+    fetchFleetData();
+  }
+
+  // Tải lại ma trận IP khi mở tab IP Matrix
+  if (tabId === 'tab-ip-pool' && typeof fetchIpPoolMatrix === 'function') {
+    fetchIpPoolMatrix();
   }
 
   // Khắc phục lỗi co giãn kích thước của Xterm Terminal khi mở lại tab Web SSH

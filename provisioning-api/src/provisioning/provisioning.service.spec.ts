@@ -13,7 +13,8 @@ describe('ProvisioningService', () => {
     findByDeviceId: jest.fn(),
     createDevice: jest.fn(),
     updateDevice: jest.fn(),
-    findActiveDevices: jest.fn(),
+    findActiveDevices: jest.fn().mockResolvedValue([]),
+    syncManualKernelPeer: jest.fn().mockResolvedValue({ id: '1' }),
   };
   
   const mockConfigService = {
@@ -23,13 +24,15 @@ describe('ProvisioningService', () => {
       if (key === 'WG_SERVER_ALLOWED_IPS') return '10.13.37.0/24';
       if (key === 'WG_SERVER_PUBLIC_KEY') return 'SRV_PUB_KEY';
       if (key === 'MAVLINK_TARGET_HOST') return '10.13.37.1';
-      if (key === 'MAVLINK_TARGET_PORT') return '14550';
+      if (key === 'MAVLINK_TARGET_PORT') return '14551';
+      if (key === 'VPN_SUBNET_PREFIX') return '10.13.37.';
       return defaultValue || null;
     }),
   };
 
   const mockIpPoolService = {
     allocateIp: jest.fn(),
+    getSubnetPrefix: jest.fn().mockReturnValue('10.13.37.'),
   };
 
   const mockWireguardService = {
@@ -37,6 +40,7 @@ describe('ProvisioningService', () => {
     addPeer: jest.fn(),
     removePeer: jest.fn(),
     getServerPublicKey: jest.fn().mockResolvedValue('SRV_PUB_KEY'),
+    getLivePeerStats: jest.fn().mockResolvedValue(new Map()),
   };
 
   beforeEach(async () => {
@@ -52,6 +56,31 @@ describe('ProvisioningService', () => {
 
     service = module.get<ProvisioningService>(ProvisioningService);
     jest.clearAllMocks();
+  });
+
+  describe('onModuleInit', () => {
+    it('phải quét và đồng bộ WireGuard kernel peers vào Database khi khởi động', async () => {
+      const kernelPeers = new Map([
+        [
+          'PUB_KEY_PEER_1',
+          {
+            publicKey: 'PUB_KEY_PEER_1',
+            endpoint: '1.2.3.4:51820',
+            allowedIps: '10.13.37.9/32',
+            latestHandshake: 1700000000,
+            transferRx: 100,
+            transferTx: 200,
+            isOnline: true,
+          },
+        ],
+      ]);
+      mockWireguardService.getLivePeerStats.mockResolvedValue(kernelPeers);
+
+      await service.onModuleInit();
+
+      expect(mockWireguardService.getLivePeerStats).toHaveBeenCalled();
+      expect(mockDeviceService.syncManualKernelPeer).toHaveBeenCalledWith('10.13.37.9', 'PUB_KEY_PEER_1', 1700000000);
+    });
   });
 
   describe('registerDevice', () => {

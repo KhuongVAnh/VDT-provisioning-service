@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { DeviceService } from '../device/device.service';
 import { IpPoolService, IpPoolStats } from '../ip-pool/ip-pool.service';
 import { WireguardService, WireguardServerInfo } from '../wireguard/wireguard.service';
+import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
 
 export interface DeviceFleetItem {
@@ -56,14 +57,16 @@ export class DashboardService {
     private readonly ipPoolService: IpPoolService,
     private readonly wireguardService: WireguardService,
     private readonly configService: ConfigService,
+    @Optional() private readonly redisService?: RedisService,
   ) {}
 
   /**
-   * Lấy tổng quan toàn bộ chỉ số KPI của hệ thống phục vụ Dashboard
+   * Lấy tổng quan toàn bộ chỉ số KPI của hệ thống phục vụ Dashboard (Lọc theo quyền Pilot/Admin)
    */
-  async getOverviewStats(): Promise<DashboardOverviewStats> {
+  async getOverviewStats(user?: any): Promise<DashboardOverviewStats> {
+    const userId = user && user.role !== 'ADMIN' ? user.id : undefined;
     const [deviceCounts, ipPoolStats, livePeerMap, serverInfo] = await Promise.all([
-      this.deviceService.countStats(),
+      this.deviceService.countStats(userId),
       this.ipPoolService.getPoolStats(),
       this.wireguardService.getLivePeerStats(),
       this.wireguardService.getServerInfo(),
@@ -98,9 +101,10 @@ export class DashboardService {
   /**
    * Lấy danh sách toàn bộ Đội Drone (Fleet), kết hợp dữ liệu DB và Telemetry thời gian thực từ WireGuard
    */
-  async getFleet(): Promise<DeviceFleetItem[]> {
+  async getFleet(user?: any): Promise<DeviceFleetItem[]> {
+    const userId = user && user.role !== 'ADMIN' ? user.id : undefined;
     const [devices, livePeerMap] = await Promise.all([
-      this.deviceService.findAllDevices(),
+      this.deviceService.findAllDevices(userId),
       this.wireguardService.getLivePeerStats(),
     ]);
 
@@ -131,9 +135,10 @@ export class DashboardService {
    */
   async getIpPoolMatrix(): Promise<IpMatrixCell[]> {
     const subnet = this.ipPoolService.getSubnetPrefix();
-    const [devices, livePeerMap] = await Promise.all([
+    const [devices, livePeerMap, redisStates] = await Promise.all([
       this.deviceService.findAllDevices(),
       this.wireguardService.getLivePeerStats(),
+      this.redisService ? this.redisService.getAllTelemetryStates().catch(() => ({})) : Promise.resolve({}),
     ]);
 
     // Tạo Map từ vpnIp -> Device
@@ -163,13 +168,19 @@ export class DashboardService {
 
       if (device) {
         const peerStats = livePeerMap.get(device.vpnPublicKey);
+        const telemetry = redisStates[device.deviceId] || (device.vpnIp ? redisStates[device.vpnIp] : null);
+        const now = Date.now();
+        
+        // Drone được coi là ĐANG BAY (Xanh) nếu có telemetry thời gian thực trong vòng 15 giây gần nhất
+        const isOnline = telemetry && telemetry.connected !== false && telemetry.timestamp && (now - telemetry.timestamp < 15000);
+
         matrix.push({
           ip,
           hostNumber: host,
           status: 'active',
           deviceId: device.deviceId,
           hardwareModel: device.hardwareModel,
-          isOnline: peerStats ? peerStats.isOnline : false,
+          isOnline: !!isOnline,
         });
       } else {
         matrix.push({
@@ -225,7 +236,7 @@ export class DashboardService {
     const maskedToken = token.length > 6 ? `${token.substring(0, 3)}***${token.substring(token.length - 3)}` : '***';
     const serverEndpoint = this.configService.get<string>('WG_SERVER_ENDPOINT', '103.253.20.32:10006');
     const mavlinkHost = this.configService.get<string>('MAVLINK_TARGET_HOST', '10.13.37.1');
-    const mavlinkPort = this.configService.get<number>('MAVLINK_TARGET_PORT', 14550);
+    const mavlinkPort = this.configService.get<number>('MAVLINK_TARGET_PORT', 14551);
     const subnetPrefix = this.ipPoolService.getSubnetPrefix();
 
     return {

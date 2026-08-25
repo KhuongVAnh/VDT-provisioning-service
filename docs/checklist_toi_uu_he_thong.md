@@ -73,33 +73,101 @@
 
 ## IV. NHÓM 4: TINH CHỈNH HẠ TẦNG MẠNG & WIREGUARD VPN (LINUX KERNEL)
 
-### [ ] Task 4.1: Chống phân mảnh gói tin WireGuard (MTU Tuning)
-- **Mục tiêu:** Tránh làm vỡ gói tin UDP khi truyền video H.264 qua 4G/LTE.
-- **Giải pháp:** Đặt MTU card mạng `wg0` chuẩn xác là **`1420 bytes`** (hoặc `1360 bytes` cho mạng 4G có nhiều header đóng gói).
+### [ ] Task 4.1: Chống phân mảnh gói tin WireGuard (MTU Tuning = 1360 bytes)
+- **Mục tiêu:** Tránh làm vỡ và phân mảnh gói tin UDP (IP Fragmentation) khi truyền video H.264 qua sóng 4G/LTE.
 
-### [ ] Task 4.2: Kích hoạt thuật toán điều khiển tắc nghẽn BBR trên VPS
-- **Mục tiêu:** Tăng tốc độ truyền tải video và giảm độ trễ hàng đợi trên Linux VPS.
-- **Lệnh thực hiện trên Ubuntu VPS:**
+#### 🛠️ 1. Cách làm thực hiện:
+* **Thiết bị áp dụng:** Cả **Drone (Companion Computer)** và **VPS** *(quan trọng nhất là Drone)*.
+* **Cấu hình file tĩnh:** Thêm dòng `MTU = 1360` vào khối `[Interface]` trong `/etc/wireguard/wg0.conf` trên cả 2 thiết bị:
+  ```ini
+  [Interface]
+  PrivateKey = <YOUR_PRIVATE_KEY>
+  Address = 10.13.37.X/24
+  MTU = 1360
+  ```
+* **Áp dụng nhanh trực tiếp (Runtime - Không cần restart mạng):**
   ```bash
-  echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
-  sudo sysctl -p
+  sudo ip link set dev wg0 mtu 1360
   ```
 
-### [ ] Task 4.3: Nới rộng bộ đệm Socket mạng (Network Buffer Optimization)
-- **Lệnh thực hiện:**
-  ```bash
-  sudo sysctl -w net.core.rmem_max=16777216
-  sudo sysctl -w net.core.wmem_max=16777216
-  ```
+#### 📖 2. Giải thích ngắn gọn cơ chế kỹ thuật:
+* **Vấn đề của con số mặc định 1500:**  
+  Hạ tầng mạng chuẩn Ethernet chỉ cho phép gói tin tối đa **1500 bytes**. Nếu giữ nguyên 1500, khi cộng thêm phần phụ phí mã hóa của WireGuard (~60–80 bytes) và phần đóng gói ngầm của nhà mạng 4G/LTE (GTP-U/IPv6, ~60–80 bytes), tổng kích thước gói sẽ vượt quá 1500 bytes $\rightarrow$ **Trạm BTS 4G buộc phải xé nhỏ gói tin (IP Fragmentation) hoặc vứt bỏ (Drop).**
+* **Tác hại nghiêm trọng lên Video H.264:**  
+  Video nén H.264 truyền qua UDP nếu bị xé mảnh mà rớt dù chỉ 1 mảnh nhỏ sẽ làm hỏng toàn bộ khung hình, gây rách hình (tearing), giật lag và mất frame FPV nghiêm trọng.
+* **Ý nghĩa con số 1360 bytes:**  
+  Là kích thước ruột dữ liệu an toàn sau khi đã trừ hao toàn bộ các lớp vỏ bọc:
+  $$\text{1500 (Gốc)} - \text{80 (Overhead 4G)} - \text{60 (Overhead WireGuard)} = \mathbf{1360\text{ bytes}}$$
+  * **Trên Drone:** Ép luồng video H.264 cắt thành các block $\le 1360$ bytes để khi bọc mã hóa gửi qua sóng 4G không bị vỡ gói.
+  * **Trên VPS:** Giới hạn dữ liệu điều khiển (MAVLink, lệnh bay) gửi ngược về Drone không bị nghẽn dọc đường.
+
+### [ ] Task 4.2: Kích hoạt thuật toán điều khiển tắc nghẽn TCP BBR (Google Congestion Control)
+- **Mục tiêu:** Tối đa hóa thông lượng mạng, triệt tiêu độ trễ hàng đợi và chống tụt bitrate video khi sóng 4G chập chờn.
+
+#### 🛠️ 1. Cách làm thực hiện trên Ubuntu VPS:
+Chạy 3 dòng lệnh sau trong Terminal VPS:
+```bash
+echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+*Kiểm tra kích hoạt thành công (kết quả trả về `bbr`):*
+```bash
+sysctl net.ipv4.tcp_congestion_control
+```
+
+#### 📖 2. Tại sao BBR vượt trội hoàn toàn và bắt buộc phải bật?
+* **Vấn đề của thuật toán cũ (CUBIC mặc định trên Linux):**  
+  CUBIC dùng cơ chế kiểm soát theo "mất gói". Khi Drone bay trong vùng sóng 4G/5G, hiện tượng rớt gói ngẫu nhiên do nhiễu sóng là bình thường. Nhưng CUBIC lại **hiểu nhầm là nghẽn mạng $\rightarrow$ tự động bóp 50% băng thông truyền**, đồng thời nhồi nhét đầy các bộ đệm trung gian (Bufferbloat) khiến độ trễ video vọt từ **30ms lên 500ms – 1000ms**, gây đứng hình FPV.
+* **Đột phá công nghệ của Google BBR:**
+  1. ⚡ **Bơm dữ liệu ở tốc độ trần tối đa:** BBR đo liên tục băng thông thực tế và RTT nhỏ nhất để truyền tải mượt mà, **triệt tiêu 100% độ trễ hàng đợi (Bufferbloat)**.
+  2. 🛡️ **Kháng mất gói 4G/LTE:** BBR vẫn duy trì **100% tốc độ truyền** ngay cả khi sóng không dây bị rớt gói ngẫu nhiên tới 15% – 20%.
+  3. 🚀 **Hiệu quả thực tế:** Tăng tốc độ bắt tay WebRTC WHEP, giảm giật lag luồng video dự phòng HLS và giúp đường truyền điều khiển MAVLink phản hồi tức thì.
+
+### [ ] Task 4.3: Nới rộng bộ đệm Socket mạng lên 16MB (Socket Buffer & BDP Optimization)
+- **Mục tiêu:** Cung cấp đủ "sức chứa" bộ nhớ RAM trên VPS để không làm nghẽn băng thông khi truyền tải dữ liệu và luồng video liên tục.
+
+#### 🛠️ 1. Cách làm thực hiện trên Ubuntu VPS:
+Ghi cấu hình vĩnh viễn vào `/etc/sysctl.conf` và kích hoạt ngay:
+```bash
+echo "net.core.rmem_max=16777216" | sudo tee -a /etc/sysctl.conf
+echo "net.core.wmem_max=16777216" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.tcp_rmem=4096 87380 16777216" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.tcp_wmem=4096 65536 16777216" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+#### 📖 2. Vấn đề của cấu hình mặc định trên Linux:
+* **Mặc định:** Kernel Linux chỉ cấp cho mỗi socket mạng một bộ nhớ đệm (buffer) rất nhỏ, thường chỉ khoảng **128 KB – 212 KB**.
+* **Cơ chế hoạt động:**
+  * Khi VPS gửi dữ liệu (**Send Buffer - `wmem`**): Dữ liệu phải nằm ở buffer này cho đến khi nhận được gói xác nhận (ACK) từ phía nhận.
+  * Khi VPS nhận dữ liệu (**Receive Buffer - `rmem`**): Dữ liệu từ mạng sẽ tạm trú ở buffer này trước khi ứng dụng (MediaMTX / WireGuard) kịp đọc và xử lý.
+* **Hậu quả:** Khi truyền video bitrate cao hoặc luồng FPV qua mạng có độ trễ (như 4G/LTE), buffer vài trăm KB này sẽ bị **đầy ngay lập tức**. Khi buffer đầy:
+  * Bên gửi buộc phải phanh gấp, ngừng truyền để đợi bên nhận dọn trống buffer.
+  * Tốc độ truyền tải thực tế bị tụt thảm hại, dù đường truyền của VPS có thể là **1 Gbps**.
+
+#### 📐 3. Công thức BDP (Bandwidth-Delay Product) chứng minh vì sao cần 16 MB:
+Khả năng truyền tải dữ liệu tối đa mà không bị nghẽn phụ thuộc vào lượng dữ liệu có thể tồn tại đồng thời trên "đường ống" nối giữa 2 máy (*in-flight data*):
+$$\text{BDP} = \text{Băng thông (Bandwidth)} \times \text{Độ trễ khứ hồi (RTT)}$$
+
+* **Ví dụ tính toán thực tế:**
+  * Băng thông VPS: $1\text{ Gbps} = 125\text{ MB/s}$
+  * Ping qua sóng 4G/LTE: $100\text{ ms} = 0.1\text{ giây}$
+  * **Dung lượng bộ đệm tối thiểu cần có:**
+    $$\text{BDP} = 125\text{ MB/s} \times 0.1\text{ s} = \mathbf{12.5\text{ MB}} \quad (\text{Làm tròn cấu hình: } \mathbf{16\text{ MB}})$$
+
+* **Hậu quả nếu chỉ giữ buffer mặc định 212 KB:**  
+  Tốc độ tối đa bạn có thể đạt được qua mạng ping 100ms chỉ là:
+  $$\text{Tốc độ tối đa} = \frac{212\text{ KB}}{0.1\text{ s}} \approx 2.12\text{ MB/s} \approx \mathbf{17\text{ Mbps}}$$
+  *(Tức là thuê VPS mạng 1 Gbps nhưng thực tế truyền đi chỉ được ~17 Mbps vì bị thắt cổ chai ở bộ đệm Socket của Linux).*
 
 ---
 
 ## V. NHÓM 5: TỐI ƯU CƠ SỞ DỮ LIỆU & LƯU TRỮ LỊCH SỬ BAY (DATA PERSISTENCE)
 
-### [ ] Task 5.1: Chuyển đổi Database từ SQLite sang PostgreSQL
+### [x] Task 5.1: Chuyển đổi Database từ SQLite sang PostgreSQL
 - **Mục tiêu:** Đảm bảo khả năng chịu tải ghi đồng thời (Concurrency Write) khi có nhiều thiết bị onboard cùng lúc.
-- **Giải pháp:** Cập nhật file [`schema.prisma`](file:///home/kva_linux_os/project/provisioning_service/provisioning-api/prisma/schema.prisma) chuyển provider sang `postgresql` và chạy `npx prisma migrate deploy`.
+- **Giải pháp & Hiện trạng:** Đã hoàn tất chuyển đổi `datasource` trong [`schema.prisma`](file:///home/kva_linux_os/project/provisioning_service/provisioning-api/prisma/schema.prisma) sang `postgresql` qua adapter `@prisma/adapter-pg`. Thêm PostgreSQL container `postgres:16-alpine` với healthcheck vào Docker Compose, tự động đồng bộ schema và seed tài khoản Admin (`admin@gmail.com` / `admin`) khi container khởi động.
 
 ### [ ] Task 5.2: Lưu trữ lịch sử chuyến bay (Flight Blackbox Logs)
 - **Mục tiêu:** Xem lại lộ trình chuyến bay (Flight Replay / Audit).

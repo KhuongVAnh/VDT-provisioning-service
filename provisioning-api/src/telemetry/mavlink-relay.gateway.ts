@@ -10,6 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Logger, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import * as dgram from 'dgram';
 import { RedisService } from '../redis/redis.service';
@@ -19,8 +20,9 @@ import { DeviceService } from '../device/device.service';
  * MavlinkRelayGateway chịu trách nhiệm làm cầu nối nhị phân 2 chiều (Binary MAVLink Relay):
  * 1. Downlink (Drone -> QGC): Nhận byte MAVLink thô từ Redis `channel:drone:raw:<droneId>` và bắn xuống WebSocket.
  * 2. Uplink (QGC -> Drone): Nhận byte điều khiển từ WebSocket và bắn UDP Socket xuống `10.13.37.X:14550`.
+ * 3. Bảo mật: Yêu cầu JWT token xác thực quyền sở hữu Drone trước khi cho phép kết nối điều khiển.
  * 
- * Endpoint: ws://<IP_VPS>:10004/mavlink?droneId=DRONE_ID
+ * Endpoint: ws://<IP_VPS>:10004/mavlink?token=JWT_TOKEN&droneId=DRONE_ID
  */
 @WebSocketGateway({
   namespace: '/mavlink',
@@ -43,8 +45,9 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnGatewayConnection, 
     private readonly redisService: RedisService,
     private readonly deviceService: DeviceService,
     private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
   ) {
-    this.uplinkPort = Number(this.configService.get<number>('DRONE_UPLINK_UDP_PORT', 14550));
+    this.uplinkPort = Number(this.configService.get<number>('DRONE_UPLINK_UDP_PORT', 14551));
   }
 
   afterInit() {
@@ -88,8 +91,12 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnGatewayConnection, 
   }
 
   async handleConnection(client: Socket) {
-    // 1. Lấy droneId từ query params hoặc headers
+    // 1. Lấy droneId và token từ query params hoặc headers
     const droneId = (client.handshake?.query?.droneId as string) || (client.handshake?.headers?.['x-drone-id'] as string);
+    const rawToken =
+      (client.handshake?.query?.token as string) ||
+      (client.handshake?.headers?.authorization as string) ||
+      (client.handshake?.headers?.['x-token'] as string);
 
     if (!droneId) {
       this.logger.warn(`Client ${client.id} bị từ chối kết nối do thiếu tham số droneId (?droneId=...)`);
@@ -98,15 +105,50 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnGatewayConnection, 
       return;
     }
 
+    // 2. Xác thực JWT Token & Quyền sở hữu Drone
+    let token = rawToken;
+    if (token && token.startsWith('Bearer ')) {
+      token = token.substring(7);
+    }
+
+    if (!token) {
+      this.logger.warn(`Client ${client.id} bị từ chối kết nối do thiếu token xác thực`);
+      client.emit('error', { message: 'Yêu cầu token xác thực JWT (?token=... hoặc Header Authorization)' });
+      client.disconnect(true);
+      return;
+    }
+
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token);
+      if (payload && payload.role !== 'ADMIN') {
+        // Kiểm tra xem User có sở hữu Drone này không
+        const device: any = await this.deviceService.findByDeviceId(droneId);
+
+        if (!device || device.userId !== payload.sub) {
+          this.logger.warn(`Client ${client.id} (User: ${payload.email}) bị từ chối: Không sở hữu Drone [${droneId}]`);
+          client.emit('error', { message: `Bạn không có quyền điều khiển Drone [${droneId}]` });
+          client.disconnect(true);
+          return;
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Client ${client.id} bị từ chối: Token xác thực không hợp lệ (${err.message})`);
+      client.emit('error', { message: 'Token xác thực không hợp lệ hoặc đã hết hạn' });
+      client.disconnect(true);
+      return;
+    }
+
     client.data = client.data || {};
     client.data.droneId = droneId;
+    client.data.user = payload;
 
     if (!this.droneClients.has(droneId)) {
       this.droneClients.set(droneId, new Set());
     }
     this.droneClients.get(droneId)!.add(client);
 
-    this.logger.log(`🎮 Pilot Bridge [${client.id}] đã kết nối MAVLink Relay cho Drone: ${droneId}`);
+    this.logger.log(`🎮 Pilot Bridge [${client.id}] đã xác thực & kết nối MAVLink Relay cho Drone: ${droneId} (User: ${payload?.email || 'Unknown'})`);
   }
 
   handleDisconnect(client: Socket) {

@@ -94,18 +94,31 @@ function focusDroneOnMap(deviceId) {
 }
 
 /**
- * Gỡ bỏ Marker và đường bay lịch sử của Drone khỏi bản đồ khi Drone Offline.
+ * Gỡ bỏ Marker của Drone khỏi bản đồ khi Drone Offline (Giữ nguyên đường bay lịch sử).
  * 
  * @param {string} deviceId Mã Drone cần gỡ
+ * @param {boolean} clearTrail Có xóa vĩnh viễn đường bay không (mặc định là false)
  */
-function removeDroneFromMap(deviceId) {
+function removeDroneFromMap(deviceId, clearTrail = false) {
   if (!deviceId) return;
   if (droneMarkers[deviceId]) {
     if (map) map.removeLayer(droneMarkers[deviceId]);
     delete droneMarkers[deviceId];
   }
-  if (droneFlightTrails[deviceId]) {
+  if (clearTrail && droneFlightTrails[deviceId]) {
     if (map) map.removeLayer(droneFlightTrails[deviceId]);
     delete droneFlightTrails[deviceId];
   }
+}
+
+/**
+ * Xóa sạch toàn bộ đường bay trên bản đồ khi người dùng chủ động yêu cầu
+ */
+function clearAllFlightTrails() {
+  Object.keys(droneFlightTrails).forEach(id => {
+    if (map && droneFlightTrails[id]) {
+      map.removeLayer(droneFlightTrails[id]);
+    }
+  });
+  droneFlightTrails = {};
 }

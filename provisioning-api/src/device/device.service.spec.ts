@@ -8,6 +8,7 @@ describe('DeviceService', () => {
   const mockPrismaService = {
     device: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -56,6 +57,7 @@ describe('DeviceService', () => {
       const result = await service.findAllDevices();
       expect(result).toEqual(mockDevices);
       expect(mockPrismaService.device.findMany).toHaveBeenCalledWith({
+        where: {},
         orderBy: { createdAt: 'desc' },
       });
     });
@@ -100,6 +102,49 @@ describe('DeviceService', () => {
 
       const result = await service.createDevice(input);
       expect(result).toEqual(created);
+    });
+  });
+
+  describe('syncManualKernelPeer', () => {
+    it('phải tạo bản ghi tạm DRONE-IP-X-X-X-X khi phát hiện peer mới từ kernel', async () => {
+      mockPrismaService.device.findFirst.mockResolvedValue(null);
+      mockPrismaService.device.findUnique.mockResolvedValue(null);
+      const created = { id: 'd-1', deviceId: 'DRONE-IP-10-13-37-8', vpnIp: '10.13.37.8', vpnPublicKey: 'PUB-8' };
+      mockPrismaService.device.create.mockResolvedValue(created);
+
+      const result = await service.syncManualKernelPeer('10.13.37.8', 'PUB-8');
+      expect(result.deviceId).toBe('DRONE-IP-10-13-37-8');
+      expect(mockPrismaService.device.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            deviceId: 'DRONE-IP-10-13-37-8',
+            vpnIp: '10.13.37.8',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('bindOrUpdateDeviceIdentity', () => {
+    it('phải nâng cấp từ ID tạm DRONE-IP-... sang ID thật khi nhận được telemetry', async () => {
+      mockPrismaService.device.findUnique.mockResolvedValue(null); // chưa có theo ID thật
+      mockPrismaService.device.findFirst.mockResolvedValue({
+        id: 'd-temp',
+        deviceId: 'DRONE-IP-10-13-37-8',
+        vpnIp: '10.13.37.8',
+        hardwareModel: 'Manual WireGuard Peer',
+      });
+      const updated = { id: 'd-temp', deviceId: 'DRONE-REAL-01', vpnIp: '10.13.37.8' };
+      mockPrismaService.device.update.mockResolvedValue(updated);
+
+      const result = await service.bindOrUpdateDeviceIdentity('DRONE-REAL-01', '10.13.37.8', 'Pixhawk 4');
+      expect(result.deviceId).toBe('DRONE-REAL-01');
+      expect(mockPrismaService.device.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'd-temp' },
+          data: expect.objectContaining({ deviceId: 'DRONE-REAL-01' }),
+        }),
+      );
     });
   });
 });

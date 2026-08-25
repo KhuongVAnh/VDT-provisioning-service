@@ -3,6 +3,7 @@ import { MavlinkRelayGateway } from './mavlink-relay.gateway';
 import { RedisService } from '../redis/redis.service';
 import { DeviceService } from '../device/device.service';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 
 describe('MavlinkRelayGateway', () => {
   let gateway: MavlinkRelayGateway;
@@ -42,7 +43,14 @@ describe('MavlinkRelayGateway', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn().mockReturnValue(14550),
+            get: jest.fn().mockReturnValue(14551),
+          },
+        },
+        {
+          provide: JwtService,
+          useValue: {
+            verify: jest.fn().mockReturnValue({ sub: 'usr-1', email: 'admin@gmail.com', role: 'ADMIN' }),
+            sign: jest.fn().mockReturnValue('mock-token'),
           },
         },
       ],
@@ -62,7 +70,7 @@ describe('MavlinkRelayGateway', () => {
   it('phải từ chối kết nối nếu thiếu tham số droneId', async () => {
     const mockClient: any = {
       id: 'client-1',
-      handshake: { query: {}, headers: {} },
+      handshake: { query: { token: 'valid-token' }, headers: {} },
       emit: jest.fn(),
       disconnect: jest.fn(),
     };
@@ -73,10 +81,24 @@ describe('MavlinkRelayGateway', () => {
     expect(mockClient.disconnect).toHaveBeenCalledWith(true);
   });
 
-  it('phải chấp nhận kết nối khi có query param droneId', async () => {
+  it('phải từ chối kết nối nếu thiếu token xác thực', async () => {
+    const mockClient: any = {
+      id: 'client-no-token',
+      handshake: { query: { droneId: 'DRONE-001' }, headers: {} },
+      emit: jest.fn(),
+      disconnect: jest.fn(),
+    };
+
+    await gateway.handleConnection(mockClient);
+
+    expect(mockClient.emit).toHaveBeenCalledWith('error', expect.objectContaining({ message: expect.stringContaining('token') }));
+    expect(mockClient.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('phải chấp nhận kết nối khi có droneId và token hợp lệ', async () => {
     const mockClient: any = {
       id: 'client-2',
-      handshake: { query: { droneId: 'DRONE-001' }, headers: {} },
+      handshake: { query: { droneId: 'DRONE-001', token: 'valid-token' }, headers: {} },
       data: {},
       emit: jest.fn(),
       disconnect: jest.fn(),
@@ -91,7 +113,7 @@ describe('MavlinkRelayGateway', () => {
   it('phải chuyển tiếp downlink buffer tới client đang kết nối', async () => {
     const mockClient: any = {
       id: 'client-3',
-      handshake: { query: { droneId: 'DRONE-001' }, headers: {} },
+      handshake: { query: { droneId: 'DRONE-001', token: 'valid-token' }, headers: {} },
       data: {},
       connected: true,
       emit: jest.fn(),

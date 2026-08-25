@@ -89,6 +89,37 @@ describe('TelemetryService', () => {
     expect(states[0].telemetry.flightMode).toBe('GUIDED');
   });
 
+  it('phải cô lập phi đội khi user là PILOT và không thêm drone lạ', async () => {
+    mockDeviceService.findAllDevices.mockResolvedValueOnce([
+      {
+        id: '1',
+        deviceId: 'DRONE-001',
+        hardwareModel: 'Pi 4',
+        vpnIp: '10.13.37.5',
+        status: 'ACTIVE',
+        lastSeen: new Date(),
+        userId: 'pilot-123',
+      },
+    ]);
+
+    mockRedisService.getAllTelemetryStates.mockResolvedValueOnce({
+      'DRONE-001': {
+        deviceId: 'DRONE-001',
+        connected: true,
+        armed: true,
+      },
+      'DRONE-OTHER': {
+        deviceId: 'DRONE-OTHER',
+        connected: true,
+        armed: true,
+      },
+    });
+
+    const pilotStates = await service.getAllFleetStates({ id: 'pilot-123', role: 'PILOT' });
+    expect(pilotStates).toHaveLength(1);
+    expect(pilotStates[0].deviceId).toBe('DRONE-001');
+  });
+
   it('should return single device state', async () => {
     const state = await service.getDeviceState('DRONE-001');
     expect(state.deviceId).toBe('DRONE-001');

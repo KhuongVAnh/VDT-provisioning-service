@@ -1,16 +1,35 @@
 services:
-  # 1. Redis Cache & Pub/Sub Message Broker (Local Bridge Mode)
+  # 1. PostgreSQL Database Server (Local Bridge Mode)
+  postgres:
+    image: postgres:16-alpine
+    container_name: drone-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres_password}
+      - POSTGRES_DB=${POSTGRES_DB:-provisioning_db}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-provisioning_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis Cache & Pub/Sub Message Broker (Local Bridge Mode)
   redis:
     image: redis:7.4-alpine
     container_name: drone-redis
     restart: unless-stopped
     ports:
-      - "6380:6380"
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - ./data/redis:/data
-    command: ["redis-server", "--appendonly", "yes", "--port", "6380"]
+    command: ["redis-server", "--appendonly", "yes"]
 
-  # 2. Go MAVLink Ingestion Service (Local Bridge Mode)
+  # 3. Go MAVLink Ingestion Service (Local Bridge Mode)
   telemetry-ingestion:
     build:
       context: ./telemetry-ingestion-service
@@ -25,13 +44,15 @@ services:
     environment:
       - UDP_LISTEN_ADDR=0.0.0.0:14551
       - TCP_GCS_PORT=10002
-      - REDIS_ADDR=redis:6380
+      - REDIS_ADDR=redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - REDIS_DB=0
       - STATE_TTL_SECONDS=30
       - PUBLISH_INTERVAL_MS=100
       - VPN_SUBNET_PREFIX=10.13.37.
 
-  # 3. NestJS API Gateway & Mission Control Dashboard (Local Bridge Mode)
+  # 4. NestJS API Gateway & Mission Control Dashboard (Local Bridge Mode)
   provisioning-api:
     build:
       context: ./provisioning-api
@@ -39,27 +60,38 @@ services:
     container_name: drone-provisioning-api
     restart: unless-stopped
     ports:
-      - "10004:10004"
+      - "${PORT:-10004}:10004"
     depends_on:
-      - redis
-    volumes:
-      - ./data/db:/data
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
-      - DATABASE_URL=file:/data/provisioning.db
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_password
+      - POSTGRES_DB=provisioning_db
+      - DATABASE_URL=postgresql://postgres:postgres_password@postgres:5432/provisioning_db?schema=public
+      - ADMIN_DEFAULT_EMAIL=admin@gmail.com
+      - ADMIN_DEFAULT_PASSWORD=admin
+      - JWT_SECRET=super-secret-key-for-jwt-token-sbcloud-xblink
       - REDIS_HOST=redis
-      - REDIS_PORT=6380
+      - REDIS_PORT=6379
       - PORT=10004
       - PROVISION_SECRET_TOKEN=FACTORY_SECRET_KEY_2026
       - WG_SERVER_ENDPOINT=103.253.20.32:10006
       - WG_INTERFACE=wg0
       - VPN_SUBNET_PREFIX=10.13.37.
+      - MAVLINK_TARGET_HOST=10.13.37.1
+      - MAVLINK_TARGET_PORT=14551
+      - DRONE_UPLINK_UDP_PORT=14551
       - INTERNAL_MTX_HOST=media-server
       - INTERNAL_MTX_HLS_PORT=8888
       - INTERNAL_MTX_WHEP_PORT=10001
       - INTERNAL_MTX_RTSP_PORT=8554
 
-
-  # 4. Ultra-Low Latency Video Streaming Server (MediaMTX - Local Bridge Mode)
+  # 5. Ultra-Low Latency Video Streaming Server (MediaMTX - Local Bridge Mode)
   media-server:
     image: bluenviron/mediamtx:latest
     container_name: drone-media-server

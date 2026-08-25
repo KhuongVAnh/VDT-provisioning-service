@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { AuthModule } from './auth/auth.module';
 import { DeviceModule } from './device/device.module';
 import { IpPoolModule } from './ip-pool/ip-pool.module';
 import { WireguardModule } from './wireguard/wireguard.module';
@@ -29,6 +30,8 @@ import { VideoModule } from './video/video.module';
     PrismaModule,
     // 3. Kết nối Redis Server (Hashes & Pub/Sub)
     RedisModule,
+    // 3b. Module Xác thực & Phân quyền Người dùng (Multi-tenant Auth)
+    AuthModule,
     // 4. Module quản lý thực thể thiết bị Drone
     DeviceModule,
     // 5. Module quản lý cấp phát IP VPN nội bộ

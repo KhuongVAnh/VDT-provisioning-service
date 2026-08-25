@@ -23,6 +23,103 @@
 <body>
 
   <!-- ======================================================================== -->
+  <!-- 0. MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ TÁC CHIẾN (AUTH SCREEN - ROUTE GUARD)    -->
+  <!-- ======================================================================== -->
+  <div id="auth-screen" style="display: flex;">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo">
+          <i class="fa-solid fa-jet-fighter"></i>
+        </div>
+        <h1 class="auth-title">DRONE MISSION CONTROL</h1>
+        <p class="auth-subtitle">Cockpit Gateway & BVLOS Fleet Security Center</p>
+      </div>
+
+      <!-- TABS CHUYỂN ĐỔI LOGIN / REGISTER -->
+      <div class="auth-tabs">
+        <button id="tab-btn-login" class="auth-tab-btn active" onclick="showAuthScreen('login')">
+          <i class="fa-solid fa-shield-halved"></i> ĐĂNG NHẬP
+        </button>
+        <button id="tab-btn-register" class="auth-tab-btn" onclick="showAuthScreen('register')">
+          <i class="fa-solid fa-user-plus"></i> ĐĂNG KÝ PHI CÔNG
+        </button>
+      </div>
+
+      <!-- FORM ĐĂNG NHẬP -->
+      <form id="auth-login-form" onsubmit="handleLoginSubmit(event)">
+        <div id="login-error-msg" class="auth-alert auth-alert-error" style="display: none;"></div>
+
+        <div class="auth-form-group">
+          <label for="login-email">Email Tài Khoản</label>
+          <div class="auth-input-wrapper">
+            <i class="fa-solid fa-envelope"></i>
+            <input type="email" id="login-email" required placeholder="admin@gmail.com" autocomplete="username">
+          </div>
+        </div>
+
+        <div class="auth-form-group">
+          <label for="login-password">Mật Khẩu</label>
+          <div class="auth-input-wrapper">
+            <i class="fa-solid fa-lock"></i>
+            <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password">
+          </div>
+        </div>
+
+        <button type="submit" id="login-submit-btn" class="auth-submit-btn">
+          <i class="fa-solid fa-right-to-bracket"></i> Đăng Nhập Hệ Thống
+        </button>
+      </form>
+
+      <!-- FORM ĐĂNG KÝ -->
+      <form id="auth-register-form" onsubmit="handleRegisterSubmit(event)" style="display: none;">
+        <div id="register-error-msg" class="auth-alert auth-alert-error" style="display: none;"></div>
+
+        <div class="auth-form-group">
+          <label for="reg-fullname">Họ và Tên Phi Công</label>
+          <div class="auth-input-wrapper">
+            <i class="fa-solid fa-user"></i>
+            <input type="text" id="reg-fullname" required placeholder="Phi công Nguyễn Văn A">
+          </div>
+        </div>
+
+        <div class="auth-form-group">
+          <label for="reg-email">Email Đăng Ký</label>
+          <div class="auth-input-wrapper">
+            <i class="fa-solid fa-envelope"></i>
+            <input type="email" id="reg-email" required placeholder="pilot@gmail.com">
+          </div>
+        </div>
+
+        <div class="auth-form-group">
+          <label for="reg-password">Mật Khẩu (Tối thiểu 4 ký tự)</label>
+          <div class="auth-input-wrapper">
+            <i class="fa-solid fa-lock"></i>
+            <input type="password" id="reg-password" required minlength="4" placeholder="••••••••">
+          </div>
+        </div>
+
+        <button type="submit" id="register-submit-btn" class="auth-submit-btn" style="background: linear-gradient(135deg, #059669, #0284c7);">
+          <i class="fa-solid fa-user-plus"></i> Hoàn Tất Đăng Ký
+        </button>
+      </form>
+
+      <!-- DEMO ACCOUNT HELPER -->
+      <div class="auth-demo-badge">
+        <span>🔑 Tài khoản Admin mặc định:</span><br>
+        <span style="cursor: pointer;" onclick="fillAdminDemoAccount()" title="Bấm để tự động điền">
+          <code>admin@gmail.com</code> / <code>admin</code> 
+          <i class="fa-solid fa-arrow-pointer" style="margin-left: 4px; color: var(--accent);"></i>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================== -->
+  <!-- 1. GIAO DIỆN CHÍNH (APP SCREEN - ĐƯỢC BẢO VỆ CHỈ HIỆN KHI ĐÃ ĐĂNG NHẬP) -->
+  <!-- ======================================================================== -->
+  <div id="app-screen" style="display: none; width: 100%; min-height: 100vh; flex-direction: column;">
+
+  <!-- ======================================================================== -->
   <!-- 1. THANH TIÊU ĐỀ & ĐIỀU HƯỚNG CHÍNH (HEADER)                              -->
   <!-- ======================================================================== -->
   <header>
@@ -48,13 +145,13 @@
       <button class="nav-tab" onclick="switchTab('tab-terminal')">
         <i class="fa-solid fa-terminal"></i> Web SSH
       </button>
-      <button class="nav-tab" onclick="switchTab('tab-ip-pool')">
+      <button class="nav-tab admin-only-tab" onclick="switchTab('tab-ip-pool')">
         <i class="fa-solid fa-network-wired"></i> IP Matrix
       </button>
     </div>
 
-    <!-- STATUS INDICATORS -->
-    <div class="header-status">
+    <!-- STATUS INDICATORS & USER PROFILE -->
+    <div class="header-status" style="display: flex; align-items: center; gap: 0.5rem;">
       <div class="live-badge">
         <div class="live-dot"></div>
         <span id="ws-status-text">GATEWAY 10004 LIVE</span>
@@ -62,6 +159,7 @@
       <button class="btn btn-secondary" onclick="refreshAllData()" title="Làm mới dữ liệu">
         <i class="fa-solid fa-arrows-rotate"></i>
       </button>
+      <div id="user-profile-widget"></div>
     </div>
   </header>
 
@@ -354,8 +452,9 @@
             <h2 style="font-size: 1.1rem; font-weight: 700;">Quản Trị Đội Drone (Fleet Management)</h2>
             <p style="font-size: 0.78rem; color: var(--text-muted);">Theo dõi tình trạng kết nối WireGuard, lưu lượng mạng và phân quyền thiết bị</p>
           </div>
-          <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-primary" onclick="toggleManualRegisterModal()"><i class="fa-solid fa-plus"></i> Ghi Danh Drone Mới</button>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="handleClaimDroneSubmit()" style="background:#059669; border-color:#10b981;"><i class="fa-solid fa-drone"></i> Nhận Quyền Quản Lý (Claim Drone)</button>
+            <button class="btn btn-primary admin-only-tab" onclick="toggleManualRegisterModal()"><i class="fa-solid fa-plus"></i> Ghi Danh Drone Mới</button>
             <button class="btn btn-secondary" onclick="refreshAllData()"><i class="fa-solid fa-arrows-rotate"></i> Làm mới</button>
           </div>
         </div>
@@ -464,6 +563,8 @@
     </div>
   </div>
 
+  </div> <!-- /#app-screen -->
+
   <!-- ======================================================================== -->
   <!-- 4. THƯ VIỆN JAVASCRIPT BÊN NGOÀI                                         -->
   <!-- ======================================================================== -->
@@ -476,6 +577,7 @@
   <!-- ======================================================================== -->
   <!-- 5. CÁC MODULE JAVASCRIPT CỦA DỰ ÁN                                       -->
   <!-- ======================================================================== -->
+  <script src="/js/auth.js"></script>
   <script src="/js/state.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/hud.js"></script>

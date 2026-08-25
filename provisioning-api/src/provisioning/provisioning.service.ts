@@ -26,8 +26,8 @@ export class ProvisioningService implements OnModuleInit {
 
   /**
    * Tự động chạy mỗi khi NestJS khởi động thành công.
-   * Chức năng: Đọc toàn bộ thiết bị đang ACTIVE trong SQLite và nạp lại vào WireGuard (Kernel).
-   * Giúp khôi phục mạng VPN ngay lập tức nếu VPS hoặc Docker bị mất điện/restart.
+   * 1. Đọc toàn bộ thiết bị đang ACTIVE trong Database và nạp lại vào WireGuard (Kernel).
+   * 2. Quét chiều ngược lại từ Linux Kernel: Tự động ghi danh & khóa IP cho các WireGuard peers thủ công vào IP Pool.
    */
   async onModuleInit() {
     this.logger.log('Bắt đầu đồng bộ VPN: Khôi phục cấu hình peer từ Database vào WireGuard...');
@@ -64,6 +64,46 @@ export class ProvisioningService implements OnModuleInit {
       );
     } catch (error) {
       this.logger.error('Lỗi khi đồng bộ VPN lúc khởi động', error);
+    }
+
+    // 2. Quét chiều ngược lại từ Linux Kernel: Nhận diện & khóa IP thủ công vào IP Pool
+    await this.syncKernelPeersToDatabase();
+  }
+
+  /**
+   * Quét toàn bộ danh sách peers trong Linux Kernel (`wg show dump`).
+   * Nếu phát hiện peer có IP hợp lệ trong dải VPN nhưng chưa có trong Database:
+   * Tự động tạo bản ghi tạm (ví dụ DRONE-IP-10-13-37-5) để khóa ô IP trong IP Pool, tránh cấp trùng.
+   */
+  private async syncKernelPeersToDatabase() {
+    this.logger.log('Bắt đầu quét WireGuard Kernel peers để đồng bộ IP Pool & nhận diện Drone thủ công...');
+    try {
+      const peerStatsMap = await this.wireguardService.getLivePeerStats();
+      const subnet = this.ipPoolService.getSubnetPrefix();
+      let syncedCount = 0;
+
+      for (const peer of peerStatsMap.values()) {
+        if (!peer.allowedIps) continue;
+
+        // peer.allowedIps có thể là '10.13.37.5/32' hoặc danh sách phân tách bằng dấu phẩy
+        const ipCidrs = peer.allowedIps.split(',');
+        for (const rawCidr of ipCidrs) {
+          const ip = rawCidr.trim().split('/')[0];
+          // Kiểm tra xem IP có thuộc dải mạng VPN (ví dụ: 10.13.37.X và không phải Gateway 10.13.37.1)
+          if (ip.startsWith(subnet) && ip !== `${subnet}1` && /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)) {
+            try {
+              await this.deviceService.syncManualKernelPeer(ip, peer.publicKey, peer.latestHandshake);
+              syncedCount++;
+            } catch (err) {
+              this.logger.debug(`Không thể đồng bộ kernel peer ${ip}: ${err.message}`);
+            }
+          }
+        }
+      }
+
+      this.logger.log(`Hoàn tất quét Kernel peers! Đã kiểm tra & khóa ${syncedCount} IP trong IP Pool.`);
+    } catch (error) {
+      this.logger.warn(`Lỗi khi quét WireGuard kernel peers lúc khởi động: ${error.message}`);
     }
   }
 
@@ -202,7 +242,7 @@ export class ProvisioningService implements OnModuleInit {
     const serverPublicKey = await this.wireguardService.getServerPublicKey();
     
     const mavlinkHost = this.configService.get<string>('MAVLINK_TARGET_HOST', '10.13.37.1');
-    const mavlinkPort = parseInt(this.configService.get<string>('MAVLINK_TARGET_PORT', '14550'), 10);
+    const mavlinkPort = parseInt(this.configService.get<string>('MAVLINK_TARGET_PORT', '14551'), 10);
 
     return {
       status: 'success',

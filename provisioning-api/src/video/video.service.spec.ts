@@ -3,6 +3,7 @@ import { VideoService } from './video.service';
 import { VideoController } from './video.controller';
 import { VideoGateway } from './video.gateway';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 
 describe('VideoModule Tests', () => {
   let service: VideoService;
@@ -28,6 +29,14 @@ describe('VideoModule Tests', () => {
             }),
           },
         },
+        {
+          provide: PrismaService,
+          useValue: {
+            device: {
+              findUnique: jest.fn().mockResolvedValue({ id: '1', deviceId: 'DRONE-001', userId: 'usr-1' }),
+            },
+          },
+        },
       ],
     }).compile();
 
@@ -44,32 +53,29 @@ describe('VideoModule Tests', () => {
 
   it('should return unified single-port stream endpoints on port 10004', () => {
     const endpoints = service.getStreamEndpoints('DRONE-001');
-    expect(endpoints.deviceId).toBe('DRONE-001');
-    expect(endpoints.streamPath).toBe('live/DRONE-001');
-    expect(endpoints.hlsUrl).toContain(':10004/api/v1/video/DRONE-001/index.m3u8');
-    expect(endpoints.httpStreamUrl).toContain(':10004/api/v1/video/DRONE-001/live.mp4');
-    expect(endpoints.whepProxyUrl).toContain(':10004/api/v1/video/DRONE-001/whep');
+    expect(endpoints.hlsUrl).toBe('http://103.253.20.32:10004/api/v1/video/DRONE-001/index.m3u8');
+    expect(endpoints.whepProxyUrl).toBe('http://103.253.20.32:10004/api/v1/video/DRONE-001/whep');
+    expect(endpoints.httpStreamUrl).toBe('http://103.253.20.32:10004/api/v1/video/DRONE-001/live.mp4');
   });
 
   it('controller should return stream info with success status', () => {
-    const res = controller.getStreamInfo('DRONE-TEST');
-    expect(res.status).toBe('success');
-    expect(res.data.deviceId).toBe('DRONE-TEST');
+    const result = controller.getStreamInfo('DRONE-001');
+    expect(result.status).toBe('success');
+    expect(result.data.deviceId).toBe('DRONE-001');
   });
 
   it('gateway should handle subscribe/unsubscribe video room', () => {
-    const mockSocket: any = {
-      id: 'test-socket-1',
+    const mockClient: any = {
+      id: 'socket-123',
       join: jest.fn(),
       leave: jest.fn(),
+      emit: jest.fn(),
     };
 
-    const subRes = gateway.handleSubscribeVideo(mockSocket, { deviceId: 'DRONE-01' });
-    expect(subRes.status).toBe('success');
-    expect(mockSocket.join).toHaveBeenCalledWith('video:DRONE-01');
+    gateway.handleSubscribeVideo(mockClient, { deviceId: 'DRONE-001' });
+    expect(mockClient.join).toHaveBeenCalledWith('video:DRONE-001');
 
-    const unsubRes = gateway.handleUnsubscribeVideo(mockSocket, { deviceId: 'DRONE-01' });
-    expect(unsubRes.status).toBe('success');
-    expect(mockSocket.leave).toHaveBeenCalledWith('video:DRONE-01');
+    gateway.handleUnsubscribeVideo(mockClient, { deviceId: 'DRONE-001' });
+    expect(mockClient.leave).toHaveBeenCalledWith('video:DRONE-001');
   });
 });
