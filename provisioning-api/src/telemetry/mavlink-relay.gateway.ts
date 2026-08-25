@@ -8,7 +8,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger, Injectable } from '@nestjs/common';
+import { Logger, Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
@@ -31,13 +31,15 @@ import { DeviceService } from '../device/device.service';
   },
 })
 @Injectable()
-export class MavlinkRelayGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(MavlinkRelayGateway.name);
   private udpSocket: dgram.Socket;
   private readonly uplinkPort: number;
+  // Cờ đánh dấu trạng thái đăng ký Redis Pub/Sub (tránh duplicate subscription)
+  private isRedisSubscribed = false;
   // Lưu danh sách client đang theo dõi từng drone: droneId -> Set<Socket>
   private droneClients = new Map<string, Set<Socket>>();
 
@@ -50,6 +52,16 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnGatewayConnection, 
     this.uplinkPort = Number(this.configService.get<number>('DRONE_UPLINK_UDP_PORT', 14551));
   }
 
+  /**
+   * Hook vòng đời Module NestJS: Đảm bảo đăng ký Redis Pub/Sub sau khi các Provider (RedisService) đã khởi tạo
+   */
+  onModuleInit() {
+    this.initRedisSubscription();
+  }
+
+  /**
+   * Hook vòng đời WebSocket Gateway: Khởi tạo UDP Socket và kích hoạt đăng ký Redis
+   */
   afterInit() {
     this.udpSocket = dgram.createSocket('udp4');
     this.udpSocket.on('error', (err) => {
@@ -61,19 +73,28 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnGatewayConnection, 
   }
 
   /**
-   * Lắng nghe kênh Redis Pub/Sub chứa luồng byte nhị phân MAVLink thô từ Go Ingestion Service
+   * Lắng nghe kênh Redis Pub/Sub chứa luồng byte nhị phân MAVLink thô từ Go Ingestion Service.
+   * Tích hợp cơ chế Auto-Retry (Polling 500ms) để xử lý triệt để Race Condition khi WebSocket Gateway
+   * khởi tạo trước thời điểm Redis Connection sẵn sàng.
    */
   private initRedisSubscription() {
+    // Nếu đã đăng ký thành công trước đó thì bỏ qua (tránh double listener)
+    if (this.isRedisSubscribed) return;
+
     const subscriber = this.redisService.getSubscriber();
     if (!subscriber) {
-      this.logger.warn('Redis Subscriber chưa sẵn sàng cho MAVLink Relay.');
+      this.logger.warn('Redis Subscriber chưa sẵn sàng, sẽ tự động thử lại sau 500ms...');
+      setTimeout(() => this.initRedisSubscription(), 500);
       return;
     }
+
+    this.isRedisSubscribed = true;
 
     // Đăng ký pattern tất cả các kênh drone raw: channel:drone:raw:*
     subscriber.psubscribe('channel:drone:raw:*', (err) => {
       if (err) {
         this.logger.error(`Lỗi psubscribe channel:drone:raw:*: ${err.message}`);
+        this.isRedisSubscribed = false; // Reset cờ để cho phép thử lại nếu lỗi
       } else {
         this.logger.log('✅ Đã đăng ký lắng nghe Redis Pattern: channel:drone:raw:*');
       }
