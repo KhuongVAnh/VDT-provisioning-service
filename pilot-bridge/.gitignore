@@ -1,0 +1,53 @@
+# ==============================================================================
+# C++ / CMake / Qt Build Artifacts
+# ==============================================================================
+build/
+bin/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# Qt Automoc, Autorcc, Autouic generated files
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.moc
+
+# Qt Creator specific files
+CMakeLists.txt.user*
+*.pro.user*
+*.stash
+
+# Compilation Database & Language Server
+compile_commands.json
+.cache/
+.clangd/
+
+# 3rd-party dependencies (cloned automatically via build_and_run.sh)
+3rdparty/mavlink/
+3rdparty/libdatachannel/
+3rdparty/*
+!3rdparty/README.md
+!3rdparty/.gitkeep
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test binaries & temporary files
+tests/test_gw
+tests/test_bridge_core
+tests/*.out
+tests/*.log

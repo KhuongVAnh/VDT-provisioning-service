@@ -6,8 +6,8 @@
 ## I. TỔNG QUAN VAI TRÒ CỦA REDIS TRONG HỆ THỐNG
 
 Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tại cổng nội bộ `6379`/`6380`) đóng vai trò là **Trục Xương Sống Bộ Nhớ Tốc Độ Cao (High-Speed In-Memory Backbone)**, kết nối giữa:
-1. **Dịch vụ nuốt dữ liệu bay ([`telemetry-ingestion-service`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service) - Golang):** Ghi trạng thái và phát sự kiện ở tần số cao (10Hz – 50Hz).
-2. **Cổng điều phối & API ([`provisioning-api`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api) - NestJS):** Đọc trạng thái tức thời và Subscribe luồng sự kiện để bắn tới Web Dashboard.
+1. **Dịch vụ nuốt dữ liệu bay ([`telemetry-ingestion-service`](../telemetry-ingestion-service) - Golang):** Ghi trạng thái và phát sự kiện ở tần số cao (10Hz – 50Hz).
+2. **Cổng điều phối & API ([`provisioning-api`](../provisioning-api) - NestJS):** Đọc trạng thái tức thời và Subscribe luồng sự kiện để bắn tới Web Dashboard.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -56,8 +56,8 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
   HSET drone:ip_map "10.13.37.3" "DRONE-002"
   ```
 * **Các bên tương tác:**
-  * ✍️ **Bên ghi (Writer):** NestJS [`DeviceService`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/device/device.service.ts#L45) (khi cấp phát thiết bị mới) hoặc Go [`IPResolver.SetMapping`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/resolver/resolver.go#L120).
-  * 👁️ **Bên đọc (Reader):** Go [`IPResolver.ResolveIP`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/resolver/resolver.go#L53), NestJS [`WebSSHService`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/web-ssh/web-ssh.service.ts#L74), NestJS [`TelemetryService`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/telemetry/telemetry.service.ts#L131).
+  * ✍️ **Bên ghi (Writer):** NestJS [`DeviceService`](../provisioning-api/src/device/device.service.ts) (khi cấp phát thiết bị mới) hoặc Go [`IPResolver.SetMapping`](../telemetry-ingestion-service/internal/resolver/resolver.go).
+  * 👁️ **Bên đọc (Reader):** Go [`IPResolver.ResolveIP`](../telemetry-ingestion-service/internal/resolver/resolver.go), NestJS [`WebSSHService`](../provisioning-api/src/web-ssh/web-ssh.service.ts), NestJS [`TelemetryService`](../provisioning-api/src/telemetry/telemetry.service.ts).
 
 ---
 
@@ -71,8 +71,8 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
   HSET drone:sys_map "2" "DRONE-002"
   ```
 * **Các bên tương tác:**
-  * ✍️ **Bên ghi (Writer):** Go [`IPResolver.SetSysMapping`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/resolver/resolver.go#L134).
-  * 👁️ **Bên đọc (Reader):** Go [`IPResolver`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/resolver/resolver.go#L86) và NestJS [`TelemetryService`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/telemetry/telemetry.service.ts#L132).
+  * ✍️ **Bên ghi (Writer):** Go [`IPResolver.SetSysMapping`](../telemetry-ingestion-service/internal/resolver/resolver.go).
+  * 👁️ **Bên đọc (Reader):** Go [`IPResolver`](../telemetry-ingestion-service/internal/resolver/resolver.go) và NestJS [`TelemetryService`](../provisioning-api/src/telemetry/telemetry.service.ts).
 
 ---
 
@@ -92,8 +92,8 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
   ```
 * **Ưu điểm thiết kế:** Khi Web Dashboard cần lấy trạng thái của toàn bộ 100+ Drone, NestJS chỉ cần gọi duy nhất **1 lệnh `HGETALL drone:states`** (thực thi dưới 1ms) thay vì phải gửi 100 câu lệnh riêng lẻ.
 * **Các bên tương tác:**
-  * ✍️ **Bên ghi (Writer):** Go [`RedisPublisher.PublishTelemetry`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go#L40).
-  * 👁️ **Bên đọc (Reader):** NestJS [`RedisService.getAllTelemetryStates`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/redis/redis.service.ts#L120) và [`TelemetryService.getAllFleetStates`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/telemetry/telemetry.service.ts#L118).
+  * ✍️ **Bên ghi (Writer):** Go [`RedisPublisher.PublishTelemetry`](../telemetry-ingestion-service/internal/publisher/redis.go).
+  * 👁️ **Bên đọc (Reader):** NestJS [`RedisService.getAllTelemetryStates`](../provisioning-api/src/redis/redis.service.ts) và [`TelemetryService.getAllFleetStates`](../provisioning-api/src/telemetry/telemetry.service.ts).
 
 ---
 
@@ -110,7 +110,7 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
   SET drone:state:DRONE-001 '{"deviceId":"DRONE-001",...}' EX 10
   ```
 * **Các bên tương tác:**
-  * ✍️ **Bên ghi (Writer):** Go [`RedisPublisher.PublishTelemetry`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go#L44).
+  * ✍️ **Bên ghi (Writer):** Go [`RedisPublisher.PublishTelemetry`](../telemetry-ingestion-service/internal/publisher/redis.go).
   * 👁️ **Bên đọc (Reader):** Dùng khi kiểm tra nhanh trạng thái đơn lẻ `GET drone:state:DRONE-001`.
 
 ---
@@ -124,8 +124,8 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 * **Mục đích:** Kênh phát sóng sự kiện tổng hợp cho **toàn bộ phi đội**. Mỗi khi bất kỳ Drone nào trong hệ thống gửi dữ liệu về, Go Worker sẽ bắn một tin nhắn JSON vào kênh này.
 * **Payload tin nhắn:** Chuỗi JSON `TelemetryPayload` chuẩn hóa.
 * **Các bên tương tác:**
-  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go#L51).
-  * 👂 **Bên nhận (Subscriber):** NestJS [`TelemetryService.startRedisSubscription`](file:///d:/huster%20document/VDT/remote%20ID/server_cloud/provisioning_service/provisioning-api/src/telemetry/telemetry.service.ts#L52). NestJS nhận tin nhắn và chuyển tiếp ngay lập tức sang Socket.IO (`telemetry:update`) để cập nhật lên Bản đồ Leaflet.
+  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](../telemetry-ingestion-service/internal/publisher/redis.go).
+  * 👂 **Bên nhận (Subscriber):** NestJS [`TelemetryService.startRedisSubscription`](../provisioning-api/src/telemetry/telemetry.service.ts). NestJS nhận tin nhắn và chuyển tiếp ngay lập tức sang Socket.IO (`telemetry:update`) để cập nhật lên Bản đồ Leaflet.
 
 ---
 
@@ -133,7 +133,7 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 * **Kiểu dữ liệu:** `Pub/Sub Channel`
 * **Mục đích:** Kênh phát sóng sự kiện riêng biệt cho **từng Drone cụ thể**. Phục vụ các microservice hoặc AI worker chỉ muốn theo dõi 1 Drone duy nhất mà không bị quá tải bởi dữ liệu của các Drone khác.
 * **Các bên tương tác:**
-  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](file:///home/kva_linux_os/project/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go#L49).
+  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](../telemetry-ingestion-service/internal/publisher/redis.go).
 
 ---
 
@@ -142,8 +142,8 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 * **Mục đích:** Kênh vận chuyển **toàn bộ gói tin nhị phân thô MAVLink v2 (Raw Bytes)** nhận được từ Drone, không qua bước chuyển đổi JSON. Kênh này được **NestJS `MavlinkRelayGateway`** lắng nghe để chuyển tiếp tức thì xuống **Pilot Bridge / QGroundControl** qua WebSocket nhị phân (Cổng 10004).
 * **Payload tin nhắn:** Mảng byte nhị phân MAVLink (`[]byte` / `Buffer`).
 * **Các bên tương tác:**
-  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher.PublishRawFrame`](file:///home/kva_linux_os/project/provisioning_service/telemetry-ingestion-service/internal/publisher/redis.go).
-  * 👂 **Bên nhận (Subscriber):** NestJS [`MavlinkRelayGateway`](file:///home/kva_linux_os/project/provisioning_service/provisioning-api/src/telemetry/mavlink-relay.gateway.ts).
+  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher.PublishRawFrame`](../telemetry-ingestion-service/internal/publisher/redis.go).
+  * 👂 **Bên nhận (Subscriber):** NestJS [`MavlinkRelayGateway`](../provisioning-api/src/telemetry/mavlink-relay.gateway.ts).
 
 ---
 

@@ -51,7 +51,7 @@
 
 ### [ ] Task 2.3: Tối ưu truyền video thích ứng trên Drone (Dynamic Adaptive Bitrate)
 - **Mục tiêu:** Drone tự động hạ độ phân giải / bitrate khi sóng 4G/5G bị yếu, không làm đứt luồng video.
-- **Giải pháp:** Hoàn thiện vòng lặp kiểm tra RTCP / Ping trong script [`drone_stream_adaptive.sh`](file:///home/kva_linux_os/project/provisioning_service/scripts/drone_stream_adaptive.sh) để tự đổi bitrate encoder V4L2/GStreamer on-the-fly.
+- **Giải pháp:** Hoàn thiện vòng lặp kiểm tra RTCP / Ping trong script [`drone_stream_adaptive.sh`](../scripts/drone_stream_adaptive.sh) để tự đổi bitrate encoder V4L2/GStreamer on-the-fly.
 
 ---
 
@@ -167,7 +167,7 @@ $$\text{BDP} = \text{Băng thông (Bandwidth)} \times \text{Độ trễ khứ h�
 
 ### [x] Task 5.1: Chuyển đổi Database từ SQLite sang PostgreSQL
 - **Mục tiêu:** Đảm bảo khả năng chịu tải ghi đồng thời (Concurrency Write) khi có nhiều thiết bị onboard cùng lúc.
-- **Giải pháp & Hiện trạng:** Đã hoàn tất chuyển đổi `datasource` trong [`schema.prisma`](file:///home/kva_linux_os/project/provisioning_service/provisioning-api/prisma/schema.prisma) sang `postgresql` qua adapter `@prisma/adapter-pg`. Thêm PostgreSQL container `postgres:16-alpine` với healthcheck vào Docker Compose, tự động đồng bộ schema và seed tài khoản Admin (`admin@gmail.com` / `admin`) khi container khởi động.
+- **Giải pháp & Hiện trạng:** Đã hoàn tất chuyển đổi `datasource` trong [`schema.prisma`](../provisioning-api/prisma/schema.prisma) sang `postgresql` qua adapter `@prisma/adapter-pg`. Thêm PostgreSQL container `postgres:16-alpine` với healthcheck vào Docker Compose, tự động đồng bộ schema và seed tài khoản Admin (`admin@gmail.com` / `admin`) khi container khởi động.
 
 ### [ ] Task 5.2: Lưu trữ lịch sử chuyến bay (Flight Blackbox Logs)
 - **Mục tiêu:** Xem lại lộ trình chuyến bay (Flight Replay / Audit).

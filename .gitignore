@@ -44,4 +44,5 @@ build/
 **/build/
 compile_commands.json
 
-/pilot-bridge
+docs/note.txt
+
