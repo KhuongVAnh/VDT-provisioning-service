@@ -58,7 +58,8 @@ type RedisPublisher struct {
 	focusMap sync.Map // key: deviceId (string), value: bool
 
 	// Dấu thời gian gửi bản tin Lite 1Hz gần nhất cho từng Drone
-	lastLiteSent sync.Map // key: deviceId (string), value: time.Time
+	lastLiteSent    sync.Map // key: deviceId (string), value: time.Time
+	lastRawLiteSent sync.Map // key: deviceId (string), value: time.Time
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -247,9 +248,13 @@ func (p *RedisPublisher) flushBatch() {
 			rawFullChan := fmt.Sprintf("channel:drone:raw:full:%s", rawItem.DeviceID)
 			pipe.Publish(p.ctx, rawFullChan, rawItem.RawBytes)
 		} else {
-			// Drone nền: phát luồng Raw Lite (cho QGroundControl Multi-Vehicle)
-			rawLiteChan := fmt.Sprintf("channel:drone:raw:lite:%s", rawItem.DeviceID)
-			pipe.Publish(p.ctx, rawLiteChan, rawItem.RawBytes)
+			// Drone nền: phát luồng Raw Lite khống chế 1Hz (cho QGroundControl Multi-Vehicle)
+			lastRaw, exists := p.lastRawLiteSent.Load(rawItem.DeviceID)
+			if !exists || now.Sub(lastRaw.(time.Time)) >= 1000*time.Millisecond {
+				p.lastRawLiteSent.Store(rawItem.DeviceID, now)
+				rawLiteChan := fmt.Sprintf("channel:drone:raw:lite:%s", rawItem.DeviceID)
+				pipe.Publish(p.ctx, rawLiteChan, rawItem.RawBytes)
+			}
 		}
 	}
 

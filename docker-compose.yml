@@ -46,7 +46,6 @@ services:
         required: false
     environment:
       - UDP_LISTEN_ADDR=${UDP_LISTEN_ADDR:-0.0.0.0:14551}
-      - TCP_GCS_PORT=${TCP_GCS_PORT:-10002}
       - REDIS_ADDR=${REDIS_ADDR:-127.0.0.1:${REDIS_PORT:-6380}}
       - REDIS_HOST=${REDIS_HOST:-127.0.0.1}
       - REDIS_PORT=${REDIS_PORT:-6380}

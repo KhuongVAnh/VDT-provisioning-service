@@ -42,11 +42,11 @@
   - [x] Thay thế key String TTL bằng Sorted Set (`ZSET drone:heartbeats` - Score: Unix Timestamp).
   - [x] Bộ đệm RAM Channel (2,000 items) gom Micro-Batching 20ms trước khi `pipe.Exec()` 1 lần duy nhất.
 
-### [x] Task 1.5: Phân luồng kênh Đa tầng (Kênh Focus 10Hz vs Kênh Lite 1Hz) & L1 Cache chống Cache Stampede
+### [x] Task 1.5: Phân luồng kênh Đa tầng (Kênh Focus 20Hz vs Kênh Lite 1Hz) & L1 Cache chống Cache Stampede
 - **Mục tiêu:** Tối ưu hóa tải CPU Node.js và triệt tiêu nghẽn Redis khi hàng ngàn User cùng F5 Web Dashboard.
 - **Trạng thái:** ✅ **ĐÃ HOÀN THÀNH** trong `telemetry-ingestion-service` và `provisioning-api/src/telemetry/`.
 - **Cơ chế hoạt động:**
-  - [x] Quản lý phân tầng tần số qua Redis Set `drone:focus_set`: Drone đang Focus phát 10Hz Full, Drone nền/tiểu đội phát 1Hz Lite.
+  - [x] Quản lý phân tầng tần số qua Redis Set `drone:focus_set`: Drone đang Focus phát 20Hz Full (50ms), Drone nền/tiểu đội phát 1Hz Lite.
   - [x] L1 In-Memory Cache (RAM Node.js 500ms) kết hợp SingleFlight Mutex trong `TelemetryService.getAllFleetStates()`.
 
 ### [x] Task 1.6: Kiến trúc Đăng ký Kênh Động theo Nhu cầu & Phân quyền Admin / Pilot (On-Demand Dynamic Subscription)

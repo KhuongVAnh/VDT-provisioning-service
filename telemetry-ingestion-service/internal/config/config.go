@@ -16,11 +16,6 @@ type Config struct {
 	// Thiết lập bằng biến môi trường UDP_LISTEN_ADDR, ví dụ: "0.0.0.0:14551"
 	UdpListenAddr string
 
-	// === CẤU HÌNH GCS ROUTER (Thay thế mavlink-routerd) ===
-	// Cổng TCP Server cho QGroundControl / Mission Planner kết nối vào (tương đương TcpServerPort trong main.conf)
-	// Thiết lập bằng biến môi trường TCP_GCS_PORT, ví dụ: "10002"
-	TcpGcsPort string
-
 	// === CẤU HÌNH REDIS ===
 	RedisAddr                string // Địa chỉ Redis Server (ví dụ: "127.0.0.1:6380")
 	RedisPassword            string // Mật khẩu Redis (nếu có)
@@ -48,9 +43,7 @@ func LoadConfig() *Config {
 	cfg := &Config{
 		// Lắng nghe tại 0.0.0.0:14551 - Drone gửi MAVLink thẳng tới cổng này
 		// Khi Drone kết nối qua WireGuard VPN, gói UDP mang đúng IP nguồn VPN
-		UdpListenAddr: getEnv("UDP_LISTEN_ADDR", "0.0.0.0:14551"),
-		// Cổng TCP cho QGroundControl / Mission Planner kết nối vào
-		TcpGcsPort:               getEnv("TCP_GCS_PORT", "10002"),
+		UdpListenAddr:            getEnv("UDP_LISTEN_ADDR", "0.0.0.0:14551"),
 		RedisAddr:                getRedisAddr(),
 		RedisPassword:            getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                  getEnvAsInt("REDIS_DB", 0),

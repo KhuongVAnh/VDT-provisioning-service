@@ -38,12 +38,10 @@ services:
     restart: unless-stopped
     ports:
       - "14551:14551/udp"
-      - "10002:10002"
     depends_on:
       - redis
     environment:
       - UDP_LISTEN_ADDR=0.0.0.0:14551
-      - TCP_GCS_PORT=10002
       - REDIS_ADDR=redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379
