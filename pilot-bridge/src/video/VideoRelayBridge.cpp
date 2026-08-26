@@ -2,13 +2,12 @@
  * ============================================================================
  * DỰ ÁN: Pilot Bridge — Trạm Mặt Đất & Cầu Nối Video FPV Cho Drone
  * FILE: src/video/VideoRelayBridge.cpp
- * MÔ TẢ: Triển khai toàn bộ quy trình WebRTC WHEP:
- *       1. Sinh SDP Offer chuẩn RFC 8829.
- *       2. Bắt tay HTTP POST WHEP qua NestJS Gateway (Cổng 10004).
- *       3. Đục lỗ NAT ICE STUN & Bắt tay mã hóa DTLS 1.2 qua MediaMTX (Cổng
- * 10005).
- *       4. Giải mã SRTP -> RTP thô và bắn trực tiếp sang UDP 5600 của
- * QGroundControl.
+ * MÔ TẢ: Triển khai toàn bộ quy trình WebRTC WHEP (WebRTC HTTP Egress Protocol - RFC 8829):
+ *       1. Sinh bản tin SDP Offer cục bộ với Video Track H.264 (Payload Type 96, RecvOnly).
+ *       2. Bắt tay HTTP POST WHEP qua NestJS Gateway (Cổng 10004) để gửi SDP Offer và nhận SDP Answer.
+ *       3. Đục lỗ NAT ICE STUN & Bắt tay mã hóa bảo mật DTLS 1.2 qua MediaMTX (UDP Cổng 10005).
+ *       4. Giải mã gói tin SRTP thành RTP H.264 thô và bắn trực tiếp bằng POSIX Socket ::sendto
+ *          sang cổng UDP 5600 của QGroundControl (Zero-Transcoding, Non-blocking GUI, Trễ < 30ms).
  * ============================================================================
  */
 
@@ -31,26 +30,35 @@ VideoRelayBridge::VideoRelayBridge(QObject *parent)
     : QObject(parent), m_httpNet(new QNetworkAccessManager(this)),
       m_statsTimer(new QTimer(this)) {
 
-  // Kết nối timer 1s để cập nhật số liệu tốc độ KB/s và Keyframe request
+  // Kết nối timer 1s để cập nhật số liệu tốc độ KB/s và định kỳ yêu cầu Keyframe (RTCP PLI)
   connect(m_statsTimer, &QTimer::timeout, this,
           &VideoRelayBridge::onStatsTimer);
 
-  // Khởi tạo mức log cảnh báo cho thư viện libdatachannel
+  // Khởi tạo mức log cảnh báo cho thư viện C++ WebRTC libdatachannel
   rtc::InitLogger(rtc::LogLevel::Warning);
 }
 
 VideoRelayBridge::~VideoRelayBridge() { stopRelay(); }
 
+/**
+ * @brief Bắt đầu kích hoạt cầu nối WebRTC WHEP và chuyển tiếp video FPV.
+ * @param serverUrl Địa chỉ Base URL của NestJS Backend (vd: http://103.253.20.32:10004)
+ * @param deviceId Mã định danh duy nhất của Drone (vd: VM-DRONE-e232039...)
+ * @param jwtToken Token JWT xác thực quyền sở hữu của phi công
+ * @param localQgcPort Cổng UDP đích của QGroundControl (mặc định: 5600)
+ */
 void VideoRelayBridge::startRelay(const QString &serverUrl,
                                   const QString &deviceId,
                                   const QString &jwtToken,
                                   quint16 localQgcPort) {
-  // Nếu đang có phiên chạy trước đó, dọn dẹp sạch sẽ trước khi tạo phiên mới
+  // Nếu đang có phiên stream trước đó, dọn dẹp sạch sẽ trước khi tạo phiên mới
   if (m_isRunning) {
     stopRelay();
   }
 
-  // 1. Chuẩn hóa địa chỉ URL máy chủ
+  // -------------------------------------------------------------------------
+  // BƯỚC 1: Chuẩn hóa địa chỉ URL máy chủ Backend
+  // -------------------------------------------------------------------------
   m_serverUrl = serverUrl.trimmed();
   if (m_serverUrl.endsWith('/')) {
     m_serverUrl.chop(1);
@@ -60,7 +68,9 @@ void VideoRelayBridge::startRelay(const QString &serverUrl,
     m_serverUrl = "http://" + m_serverUrl;
   }
 
-  // 2. Lưu trữ thông số phiên bay
+  // -------------------------------------------------------------------------
+  // BƯỚC 2: Lưu trữ thông số phiên bay & Reset các bộ đếm thống kê Atomic
+  // -------------------------------------------------------------------------
   m_deviceId = deviceId.trimmed();
   m_jwtToken = jwtToken.trimmed();
   m_localQgcPort = localQgcPort;
@@ -70,10 +80,13 @@ void VideoRelayBridge::startRelay(const QString &serverUrl,
   m_offerSent = false;
   m_isRunning = true;
 
-  // 3. Khởi tạo BSD Socket UDP thuần của hệ điều hành
-  // Lý do: Các gói tin video giải mã xong sẽ được xử lý trong Worker Thread của
-  // libdatachannel. Dùng socket native ::sendto đảm bảo an toàn 100% đa luồng
-  // (Thread-safe), không bị Qt cản trở.
+  // -------------------------------------------------------------------------
+  // BƯỚC 3: Khởi tạo POSIX / BSD Socket UDP thuần của hệ điều hành
+  // LÝ DO KIẾN TRÚC: 
+  // Các gói tin video SRTP sau khi giải mã sẽ được đẩy vào Worker Thread của libdatachannel.
+  // Nếu dùng QUdpSocket của Qt, sẽ bị lỗi "Qt Thread Affinity" (thao tác QObject từ sai Thread).
+  // Dùng socket native ::sendto đảm bảo an toàn 100% đa luồng (Thread-safe), không khóa Mutex.
+  // -------------------------------------------------------------------------
   m_rawUdpSock = ::socket(AF_INET, SOCK_DGRAM, 0);
 
   // Cấu hình địa chỉ đích: Localhost (127.0.0.1:5600 cho QGroundControl)
@@ -90,25 +103,36 @@ void VideoRelayBridge::startRelay(const QString &serverUrl,
       QString("🎥 [WebRTC] Đích chuyển tiếp QGroundControl: UDP 127.0.0.1:%1")
           .arg(m_localQgcPort));
 
-  // 4. Khởi tạo PeerConnection và bắt đầu quy trình WHEP WebRTC
+  // -------------------------------------------------------------------------
+  // BƯỚC 4: Khởi tạo PeerConnection và bắt đầu quy trình bắt tay WebRTC WHEP
+  // -------------------------------------------------------------------------
   setupPeerConnection();
 
-  // 5. Kích hoạt bộ đếm thời gian
+  // -------------------------------------------------------------------------
+  // BƯỚC 5: Kích hoạt Timer cập nhật số liệu bitrate
+  // -------------------------------------------------------------------------
   m_statsTimer->start(1000);
   emit statusChanged(true, QString("Đang kết nối WebRTC..."));
 }
 
+/**
+ * @brief Cấu hình PeerConnection, STUN Server, Video Track và các Callbacks xử lý gói tin.
+ */
 void VideoRelayBridge::setupPeerConnection() {
-  // 1. Cấu hình WebRTC & STUN Server
+  // -------------------------------------------------------------------------
+  // 1. Cấu hình WebRTC & STUN Server (Hỗ trợ đục lỗ NAT)
+  // -------------------------------------------------------------------------
   rtc::Configuration config;
   config.iceServers.emplace_back(
-      "stun:stun.l.google.com:19302"); // Hỗ trợ tìm IP Public NAT
+      "stun:stun.l.google.com:19302"); // Máy chủ STUN công cộng của Google
   config.enableIceUdpMux = true;
 
-  // 2. Tạo đối tượng kết nối PeerConnection
+  // 2. Tạo đối tượng kết nối PeerConnection từ libdatachannel
   m_peerConnection = std::make_shared<rtc::PeerConnection>(config);
 
+  // -------------------------------------------------------------------------
   // 3. Lắng nghe trạng thái thay đổi của kết nối WebRTC (State Machine)
+  // -------------------------------------------------------------------------
   m_peerConnection->onStateChange([this](rtc::PeerConnection::State state) {
     if (!m_isRunning)
       return;
@@ -131,9 +155,11 @@ void VideoRelayBridge::setupPeerConnection() {
     }
   });
 
-  // 4. Lắng nghe quá trình thu thập địa chỉ ứng viên ICE (ICE Candidate
-  // Gathering) Khi hoàn tất (Complete) -> Toàn bộ candidate đã có trong
-  // localDescription -> Gửi SDP Offer
+  // -------------------------------------------------------------------------
+  // 4. Lắng nghe quá trình thu thập địa chỉ ứng viên ICE (ICE Candidate Gathering)
+  // Khi đạt trạng thái 'Complete' -> Tất cả candidate đã có trong localDescription
+  // -> Tiến hành gửi SDP Offer lên WHEP Gateway qua HTTP POST
+  // -------------------------------------------------------------------------
   m_peerConnection->onGatheringStateChange(
       [this, weakPc = std::weak_ptr<rtc::PeerConnection>(m_peerConnection)](
           rtc::PeerConnection::GatheringState state) {
@@ -145,7 +171,10 @@ void VideoRelayBridge::setupPeerConnection() {
                 m_offerSent = true;
                 QString sdp =
                     QString::fromStdString(std::string(localDesc.value()));
-                // Gọi hàm gửi HTTP qua Main GUI Thread
+                
+                // ĐẨY VỀ MAIN THREAD: Vì callback này chạy trên Worker Thread của WebRTC,
+                // ta dùng QMetaObject::invokeMethod (QueuedConnection) để gọi hàm gửi HTTP
+                // trên Main GUI Thread một cách an toàn.
                 QMetaObject::invokeMethod(
                     this, [this, sdp]() { sendWhepOffer(sdp); },
                     Qt::QueuedConnection);
@@ -155,15 +184,16 @@ void VideoRelayBridge::setupPeerConnection() {
         }
       });
 
-  // 5. Thiết lập hàm xử lý nhận gói tin Video RTP (Data Plane Callback)
+  // -------------------------------------------------------------------------
+  // 5. Thiết lập Callback nhận gói tin Video RTP (Data Plane Callback)
+  // -------------------------------------------------------------------------
   auto setupTrackCallbacks = [this](std::shared_ptr<rtc::Track> track) {
     if (!track)
       return;
     emit logMessage("INFO",
                     "🎥 [WebRTC] Đã thiết lập bộ nhận Video RTP cho Track!");
 
-    // Khi libdatachannel nhận gói tin SRTP, giải mã bảo mật xong -> Bắn vào
-    // onMessage dưới dạng RTP thô:
+    // Khi libdatachannel nhận gói tin SRTP qua UDP 10005, giải mã bảo mật xong -> Bắn vào onMessage:
     track->onMessage(
         [this](rtc::binary rtpPacket) {
           if (!m_isRunning || m_rawUdpSock < 0 || rtpPacket.empty())
@@ -177,11 +207,11 @@ void VideoRelayBridge::setupPeerConnection() {
                     .arg(rtpPacket.size()));
           }
 
-          // Bắn gói tin RTP sang Localhost:5600 cho QGroundControl
+          // Bắn trực tiếp mảng byte RTP sang Localhost:5600 cho QGroundControl (Zero-copy, Zero-transcode)
           ::sendto(m_rawUdpSock, rtpPacket.data(), rtpPacket.size(), 0,
                    (struct sockaddr *)&m_localQgcAddr, sizeof(m_localQgcAddr));
 
-          // Cập nhật số liệu thống kê truyền tải
+          // Cập nhật các biến đếm atomic an toàn đa luồng
           m_totalBytesTransferred += rtpPacket.size();
           m_totalPacketsReceived++;
           m_packetsInLastSec++;
@@ -193,7 +223,9 @@ void VideoRelayBridge::setupPeerConnection() {
     });
   };
 
+  // -------------------------------------------------------------------------
   // 6. Khởi tạo mô tả Video Track nhận H.264 (Payload Type 96, RecvOnly)
+  // -------------------------------------------------------------------------
   rtc::Description::Video videoDesc("video",
                                     rtc::Description::Direction::RecvOnly);
   videoDesc.addH264Codec(96);
@@ -210,11 +242,14 @@ void VideoRelayBridge::setupPeerConnection() {
     }
   });
 
+  // -------------------------------------------------------------------------
   // 7. Yêu cầu PeerConnection sinh bản tin SDP Offer cục bộ
+  // -------------------------------------------------------------------------
   m_peerConnection->setLocalDescription();
 
-  // 8. Fallback Timer 300ms đề phòng trường hợp mạng không kích hoạt sự kiện
-  // GatheringState::Complete
+  // -------------------------------------------------------------------------
+  // 8. Fallback Timer 300ms đề phòng mạng cục bộ không kích hoạt GatheringState::Complete
+  // -------------------------------------------------------------------------
   QTimer::singleShot(300, this, [this]() {
     if (!m_offerSent && m_isRunning && m_peerConnection) {
       auto localDesc = m_peerConnection->localDescription();
@@ -227,19 +262,27 @@ void VideoRelayBridge::setupPeerConnection() {
   });
 }
 
+/**
+ * @brief Gửi bản tin SDP Offer chuẩn RFC 8829 (WHEP) lên NestJS Gateway qua HTTP POST.
+ * @param sdpOffer Chuỗi SDP Offer do libdatachannel sinh ra
+ */
 void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
   if (m_deviceId.isEmpty() || !m_isRunning)
     return;
 
+  // -------------------------------------------------------------------------
   // 1. Tạo đường dẫn WHEP Proxy qua NestJS Gateway
+  // Endpoint: POST /api/v1/video/:id/whep
+  // -------------------------------------------------------------------------
   QString whepUrlStr =
       QString("%1/api/v1/video/%2/whep").arg(m_serverUrl, m_deviceId);
   emit logMessage(
       "INFO",
       QString("🎥 [WebRTC] Gửi SDP Offer WHEP lên Cloud: %1").arg(whepUrlStr));
 
-  // 2. Thiết lập Header HTTP theo chuẩn IETF WHEP (Content-Type:
-  // application/sdp)
+  // -------------------------------------------------------------------------
+  // 2. Thiết lập Header HTTP theo chuẩn IETF WHEP (Content-Type: application/sdp)
+  // -------------------------------------------------------------------------
   QUrl whepUrl(whepUrlStr);
   QNetworkRequest request(whepUrl);
   request.setHeader(QNetworkRequest::ContentTypeHeader, "application/sdp");
@@ -248,14 +291,18 @@ void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
                          QString("Bearer %1").arg(m_jwtToken).toUtf8());
   }
 
-  // 3. Thực hiện gửi bản tin SDP Offer bằng HTTP POST
+  // -------------------------------------------------------------------------
+  // 3. Thực hiện gửi bản tin SDP Offer bằng HTTP POST bất đồng bộ
+  // -------------------------------------------------------------------------
   QNetworkReply *reply = m_httpNet->post(request, sdpOffer.toUtf8());
   connect(reply, &QNetworkReply::finished, this, [this, reply]() {
     reply->deleteLater();
     if (!m_isRunning || !m_peerConnection)
       return;
 
-    // 4. Tiếp nhận phản hồi SDP Answer từ MediaMTX
+    // -----------------------------------------------------------------------
+    // 4. Tiếp nhận phản hồi SDP Answer từ MediaMTX (HTTP 200 OK)
+    // -----------------------------------------------------------------------
     if (reply->error() == QNetworkReply::NoError) {
       QByteArray rawAnswer = reply->readAll();
       QString sdpAnswer = QString::fromUtf8(rawAnswer);
@@ -265,8 +312,8 @@ void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
                       "đầu kết nối PeerConnection...");
 
       try {
-        // Nạp SDP Answer vào PeerConnection -> Kích hoạt đục lỗ ICE và DTLS
-        // Handshake
+        // NẠP SDP ANSWER: Kích hoạt quá trình đục lỗ NAT ICE và bắt tay DTLS 1.2 Handshake
+        // trên cổng UDP 10005 của VPS
         m_peerConnection->setRemoteDescription(
             rtc::Description(sdpAnswer.toStdString(), "answer"));
       } catch (const std::exception &e) {
@@ -275,7 +322,7 @@ void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
             QString("🔴 [WebRTC] Lỗi nạp SDP Answer: %1").arg(e.what()));
       }
     } else {
-      // Xử lý lỗi nếu Token sai hoặc Drone chưa bật camera
+      // Xử lý lỗi nếu Token sai hoặc Drone chưa bật camera RTSP
       QString errStr = reply->errorString();
       QByteArray resBody = reply->readAll();
       int statusCode =
@@ -294,6 +341,9 @@ void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
   });
 }
 
+/**
+ * @brief Slot timer định kỳ mỗi giây: Cập nhật bitrate và gửi yêu cầu Keyframe.
+ */
 void VideoRelayBridge::onStatsTimer() {
   if (!m_isRunning)
     return;
@@ -302,13 +352,17 @@ void VideoRelayBridge::onStatsTimer() {
   emit statsUpdated(m_totalBytesTransferred, m_packetsInLastSec);
   m_packetsInLastSec = 0;
 
-  // Định kỳ yêu cầu Keyframe (RTCP PLI / SPS / PPS) để QGroundControl hiển thị
-  // ngay lập tức
+  // ĐỊNH KỲ YÊU CẦU KEYFRAME (RTCP PLI / Picture Loss Indication):
+  // Giúp QGroundControl ngay khi vừa kết nối nhận được ngay khung hình IDR/Keyframe (SPS/PPS)
+  // để bắt đầu vẽ video tức thì mà không phải chờ đợi.
   if (m_videoTrack && m_videoTrack->isOpen()) {
     m_videoTrack->requestKeyframe();
   }
 }
 
+/**
+ * @brief Dừng toàn bộ phiên WebRTC, đóng socket và dọn dẹp bộ nhớ.
+ */
 void VideoRelayBridge::stopRelay() {
   if (!m_isRunning)
     return;
@@ -317,19 +371,19 @@ void VideoRelayBridge::stopRelay() {
   m_offerSent = false;
   m_statsTimer->stop();
 
-  // Đóng socket UDP hệ điều hành
+  // 1. Đóng socket UDP hệ điều hành
   if (m_rawUdpSock >= 0) {
     ::close(m_rawUdpSock);
     m_rawUdpSock = -1;
   }
 
-  // Đóng Video Track
+  // 2. Đóng Video Track
   if (m_videoTrack) {
     m_videoTrack->close();
     m_videoTrack.reset();
   }
 
-  // Đóng phiên PeerConnection
+  // 3. Đóng phiên WebRTC PeerConnection
   if (m_peerConnection) {
     m_peerConnection->close();
     m_peerConnection.reset();
@@ -338,3 +392,4 @@ void VideoRelayBridge::stopRelay() {
   emit logMessage("INFO", "⏹ [WebRTC] Đã dừng chuyển tiếp Video FPV.");
   emit statusChanged(false, "⚪ Đã tắt Video");
 }
+

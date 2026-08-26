@@ -2,8 +2,12 @@
  * ============================================================================
  * DỰ ÁN: Pilot Bridge — Trạm Mặt Đất & Cầu Nối Video FPV Cho Drone
  * FILE: src/api/AuthService.cpp
- * MÔ TẢ: Triển khai logic gửi HTTP REST API tới NestJS Backend để đăng nhập,
- *       lưu trữ Access Token và đồng bộ hóa danh sách Drone.
+ * MÔ TẢ: Triển khai logic gọi HTTP/HTTPS REST API lên NestJS Backend:
+ *       1. Gửi thông tin đăng nhập (Email + Mật khẩu) lên /api/v1/auth/login.
+ *       2. Nhận JWT Token (Bearer) và trích xuất thông tin UserProfile.
+ *       3. Tự động gọi endpoint /api/v1/dashboard/devices để tải danh sách Drone
+ *          được gán quyền điều khiển cho tài khoản phi công.
+ *       4. Quản lý vòng đời Token trong RAM và xử lý đăng xuất an toàn.
  * ============================================================================
  */
 
@@ -12,14 +16,25 @@
 #include <QUrl>
 
 AuthService::AuthService(QObject *parent)
-    : QObject(parent), m_netManager(new QNetworkAccessManager(this)) {}
+    : QObject(parent), m_netManager(new QNetworkAccessManager(this)) {
+  // m_netManager: Quản lý hàng đợi HTTP Requests bất đồng bộ của Qt (Non-blocking I/O).
+  // Đặt parent là 'this' để tự động giải phóng bộ nhớ khi AuthService bị hủy.
+}
 
 /**
  * @brief Gửi HTTP POST JSON đăng nhập lên NestJS Backend (/api/v1/auth/login).
+ * @param serverUrl Địa chỉ máy chủ (vd: "http://103.253.20.32:10004" hoặc "localhost:10004")
+ * @param email Địa chỉ email của phi công
+ * @param password Mật khẩu tài khoản
  */
 void AuthService::login(const QString &serverUrl, const QString &email,
                         const QString &password) {
-  // 1. Chuẩn hóa địa chỉ máy chủ (loại bỏ dấu '/' ở cuối và thêm http/https)
+  // -------------------------------------------------------------------------
+  // BƯỚC 1: Chuẩn hóa Base URL của máy chủ
+  // - Loại bỏ khoảng trắng thừa hai đầu bằng .trimmed()
+  // - Loại bỏ dấu gạch chéo '/' ở cuối URL nếu có
+  // - Tự động bổ sung scheme "http://" nếu người dùng chỉ nhập IP:Port
+  // -------------------------------------------------------------------------
   m_serverUrl = serverUrl.trimmed();
   if (m_serverUrl.endsWith('/')) {
     m_serverUrl.chop(1);
@@ -34,19 +49,29 @@ void AuthService::login(const QString &serverUrl, const QString &email,
       QString("[AUTH] Đang gửi yêu cầu đăng nhập tới %1/api/v1/auth/login...")
           .arg(m_serverUrl));
 
-  // 2. Thiết lập Header HTTP JSON
+  // -------------------------------------------------------------------------
+  // BƯỚC 2: Xây dựng Request HTTP và cấu hình Header JSON
+  // -------------------------------------------------------------------------
   QUrl loginUrl(m_serverUrl + "/api/v1/auth/login");
   QNetworkRequest request(loginUrl);
+  // Khai báo kiểu nội dung gửi lên là JSON để NestJS Body Parser xử lý
   request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
-  // 3. Đóng gói JSON Payload: { "email": "...", "password": "..." }
+  // -------------------------------------------------------------------------
+  // BƯỚC 3: Đóng gói JSON Payload: { "email": "...", "password": "..." }
+  // -------------------------------------------------------------------------
   QJsonObject body;
   body["email"] = email.trimmed();
   body["password"] = password;
 
+  // Chuyển đối tượng QJsonObject thành mảng byte QByteArray định dạng Compact (không thụt lề thừa)
   QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
-  // 4. Gửi HTTP POST bất đồng bộ qua QNetworkAccessManager
+  // -------------------------------------------------------------------------
+  // BƯỚC 4: Thực hiện gửi HTTP POST bất đồng bộ qua QNetworkAccessManager
+  // - Hàm post() trả về ngay một con trỏ QNetworkReply và không làm treo GUI (Non-blocking).
+  // - Khi server phản hồi xong (hoặc lỗi), Signal &QNetworkReply::finished sẽ kích hoạt callback.
+  // -------------------------------------------------------------------------
   QNetworkReply *reply = m_netManager->post(request, postData);
   connect(reply, &QNetworkReply::finished, this,
           [this, reply]() { onLoginReplyFinished(reply); });
@@ -54,15 +79,21 @@ void AuthService::login(const QString &serverUrl, const QString &email,
 
 /**
  * @brief Xử lý kết quả phản hồi đăng nhập từ Cloud.
+ * @param reply Đối tượng chứa phản hồi từ server
  */
 void AuthService::onLoginReplyFinished(QNetworkReply *reply) {
-  // Luôn dọn dẹp bộ nhớ của reply sau khi xử lý xong
+  // QUAN TRỌNG: deleteLater() đưa đối tượng reply vào hàng đợi hủy của Qt Event Loop,
+  // tránh rò rỉ bộ nhớ RAM sau mỗi request HTTP mà không gây crash do xóa sớm.
   reply->deleteLater();
 
-  // 1. Xử lý trường hợp lỗi mạng hoặc sai thông tin đăng nhập
+  // -------------------------------------------------------------------------
+  // TRƯỜNG HỢP 1: Xử lý lỗi mạng hoặc lỗi xác thực từ Server (HTTP 4xx / 5xx)
+  // -------------------------------------------------------------------------
   if (reply->error() != QNetworkReply::NoError) {
     QString errorMsg = reply->errorString();
     QByteArray responseBody = reply->readAll();
+    
+    // Nếu NestJS trả về thông báo lỗi chi tiết dạng JSON (ví dụ: { "message": "Sai mật khẩu" })
     if (!responseBody.isEmpty()) {
       QJsonDocument doc = QJsonDocument::fromJson(responseBody);
       if (doc.isObject() && doc.object().contains("message")) {
@@ -70,6 +101,7 @@ void AuthService::onLoginReplyFinished(QNetworkReply *reply) {
         if (msgVal.isString()) {
           errorMsg = msgVal.toString();
         } else if (msgVal.isArray()) {
+          // Trường hợp ValidationPipe trả về mảng các lỗi validation
           QStringList list;
           for (const auto &v : msgVal.toArray())
             list.append(v.toString());
@@ -83,7 +115,9 @@ void AuthService::onLoginReplyFinished(QNetworkReply *reply) {
     return;
   }
 
-  // 2. Parse dữ liệu JSON thành công
+  // -------------------------------------------------------------------------
+  // TRƯỜNG HỢP 2: Đăng nhập thành công (HTTP 200/201 OK) -> Parse dữ liệu JSON
+  // -------------------------------------------------------------------------
   QByteArray responseData = reply->readAll();
   QJsonDocument doc = QJsonDocument::fromJson(responseData);
   if (!doc.isObject()) {
@@ -94,16 +128,18 @@ void AuthService::onLoginReplyFinished(QNetworkReply *reply) {
   }
 
   QJsonObject root = doc.object();
-  // Trích xuất JWT Access Token
+  
+  // 1. Trích xuất và lưu Access Token JWT (dùng để xác thực WebSocket & WebRTC sau này)
   m_accessToken = root["accessToken"].toString();
 
-  // Trích xuất thông tin người dùng
+  // 2. Trích xuất thông tin hồ sơ người dùng (UserProfile)
   QJsonObject userObj = root["user"].toObject();
   m_currentUser.id = userObj["id"].toString();
   m_currentUser.email = userObj["email"].toString();
   m_currentUser.fullName = userObj["fullName"].toString();
   m_currentUser.role = userObj["role"].toString("PILOT");
 
+  // 3. Nếu server gửi kèm danh sách Drone đã gán trong assignedDevices
   m_devices.clear();
   if (root.contains("assignedDevices") && root["assignedDevices"].isArray()) {
     parseDevices(root["assignedDevices"].toArray());
@@ -114,17 +150,19 @@ void AuthService::onLoginReplyFinished(QNetworkReply *reply) {
                       .arg(m_currentUser.email)
                       .arg(m_currentUser.role));
 
-  // Phát Signal thông báo đăng nhập thành công cho MainWindow
+  // Phát Signal thông báo đăng nhập thành công cho MainWindow chuyển màn hình
   emit loginSuccess(m_currentUser, m_devices);
 
-  // Tự động tải danh mục Drone chi tiết từ Endpoint Dashboard
+  // 4. Tự động gọi tiếp endpoint Dashboard để cập nhật danh mục Drone mới nhất
   fetchDevices();
 }
 
 /**
  * @brief Gửi HTTP GET để tải toàn bộ danh mục Drone phi công sở hữu.
+ * Endpoint: GET /api/v1/dashboard/devices với Bearer JWT Header.
  */
 void AuthService::fetchDevices() {
+  // Nếu chưa có Token JWT thì không thể thực hiện request có bảo mật
   if (m_accessToken.isEmpty())
     return;
 
@@ -135,17 +173,19 @@ void AuthService::fetchDevices() {
 
   QUrl url(endpoint);
   QNetworkRequest request(url);
-  // Gắn Bearer Token JWT vào Header xác thực
+  
+  // Gắn Bearer Token JWT vào HTTP Header "Authorization" để Guard phía NestJS kiểm tra
   request.setRawHeader("Authorization",
                        QString("Bearer %1").arg(m_accessToken).toUtf8());
 
+  // Thực hiện HTTP GET bất đồng bộ
   QNetworkReply *reply = m_netManager->get(request);
   connect(reply, &QNetworkReply::finished, this,
           [this, reply]() { onFetchDevicesReplyFinished(reply); });
 }
 
 /**
- * @brief Xử lý kết quả trả về của danh mục Drone.
+ * @brief Xử lý kết quả trả về của danh mục Drone từ Dashboard Endpoint.
  */
 void AuthService::onFetchDevicesReplyFinished(QNetworkReply *reply) {
   reply->deleteLater();
@@ -159,6 +199,7 @@ void AuthService::onFetchDevicesReplyFinished(QNetworkReply *reply) {
   QByteArray data = reply->readAll();
   QJsonDocument doc = QJsonDocument::fromJson(data);
 
+  // Hỗ trợ cả 2 định dạng trả về: Mảng JSON thuần [...] hoặc Object bọc { "data": [...] }
   QJsonArray arr;
   if (doc.isArray()) {
     arr = doc.array();
@@ -167,7 +208,7 @@ void AuthService::onFetchDevicesReplyFinished(QNetworkReply *reply) {
     arr = doc.object()["data"].toArray();
   }
 
-  // Parse danh sách Drone vào m_devices
+  // Parse danh sách Drone vào m_devices và phát Signal cập nhật ComboBox trên UI
   parseDevices(arr);
   emit logMessage(
       "SUCCESS",
@@ -177,7 +218,7 @@ void AuthService::onFetchDevicesReplyFinished(QNetworkReply *reply) {
 }
 
 /**
- * @brief Chuyển đổi mảng JSON thành danh sách struct DroneInfo.
+ * @brief Chuyển đổi mảng JSON thành danh sách struct DroneInfo an toàn kiểu dữ liệu.
  */
 void AuthService::parseDevices(const QJsonArray &arr) {
   m_devices.clear();
@@ -195,7 +236,7 @@ void AuthService::parseDevices(const QJsonArray &arr) {
 }
 
 /**
- * @brief Đăng xuất và xóa sạch Token khỏi bộ nhớ RAM.
+ * @brief Đăng xuất và xóa sạch Token khỏi bộ nhớ RAM để đảm bảo an toàn.
  */
 void AuthService::logout() {
   m_accessToken.clear();
@@ -204,3 +245,4 @@ void AuthService::logout() {
   emit logMessage("INFO", "[AUTH] Đã đăng xuất khỏi tài khoản.");
   emit loggedOut();
 }
+
