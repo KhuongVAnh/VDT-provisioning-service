@@ -37,6 +37,8 @@ type LiteTelemetryPayload struct {
 	AltRelativeM  float64 `json:"altRelativeM"`
 	GroundSpeedMs float64 `json:"groundSpeedMs"`
 	HeadingDeg    float64 `json:"headingDeg"`
+	RollDeg       float64 `json:"rollDeg"`
+	PitchDeg      float64 `json:"pitchDeg"`
 	Timestamp     int64   `json:"timestamp"`
 }
 
@@ -222,6 +224,8 @@ func (p *RedisPublisher) flushBatch() {
 				AltRelativeM:  item.Payload.GPS.AltRelativeM,
 				GroundSpeedMs: item.Payload.GPS.GroundSpeedMs,
 				HeadingDeg:    item.Payload.GPS.HeadingDeg,
+				RollDeg:       item.Payload.Attitude.RollDeg,
+				PitchDeg:      item.Payload.Attitude.PitchDeg,
 				Timestamp:     item.Payload.Timestamp,
 			}
 			if liteJSON, err := json.Marshal(litePayload); err == nil {

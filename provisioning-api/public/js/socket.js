@@ -116,24 +116,27 @@ function processTelemetryUpdate(t) {
   // Cập nhật trạng thái telemetry trong bộ nhớ fleetDevices
   const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
   let existingDevice = fleetDevices.find(d => d.deviceId === t.deviceId);
+  
   if (existingDevice) {
     existingDevice.telemetry = t;
-  } else if (currentUser && currentUser.role === 'ADMIN') {
-    // Chỉ Quản trị viên ADMIN mới tự động bổ sung Drone lạ phát hiện từ telemetry vào danh sách hiển thị
+  } else {
+    // Tự động bổ sung Drone phát hiện từ luồng telemetry vào danh sách hiển thị
+    const isOwner = currentUser?.role === 'ADMIN';
     existingDevice = {
       id: t.deviceId,
       deviceId: t.deviceId,
       hardwareModel: 'Real-time Telemetry Stream',
       vpnIp: t.vpnIp || '10.13.37.X',
       status: 'ACTIVE',
+      isOwner: isOwner,
       telemetry: t,
     };
     fleetDevices.push(existingDevice);
     populateDroneDropdowns(fleetDevices);
-  } else {
-    // Nếu là PILOT và drone này không thuộc quyền sở hữu (không có trong fleetDevices đã claim), bỏ qua không vẽ
-    return;
   }
+
+  // Xác định Drone này có thuộc quyền sở hữu của User hiện tại hay không
+  const isMyDrone = currentUser?.role === 'ADMIN' || (existingDevice.isOwner !== false && (existingDevice.userId === currentUser?.id || existingDevice.isOwner === true));
 
   // 1. Kiểm tra trạng thái Online
   const online = isDroneOnline(t);
@@ -163,13 +166,15 @@ function processTelemetryUpdate(t) {
 
   // Cập nhật vị trí trên bản đồ nếu tọa độ GPS hợp lệ (khác 0,0)
   if (lat && lon && lat !== 0 && lon !== 0 && map) {
+    const ownerLabel = isMyDrone ? '<span style="color:#00f0ff;">[Drone Của Bạn]</span>' : '<span style="color:#f59e0b;">[Phi Đội Khác]</span>';
+
     if (!droneMarkers[t.deviceId]) {
-      // Nếu Drone chưa có Marker trên bản đồ -> Tạo mới
+      // Nếu Drone chưa có Marker trên bản đồ -> Tạo mới với màu sắc phân biệt
       const marker = L.marker([lat, lon], {
-        icon: createDroneIcon(heading, t.armed)
+        icon: createDroneIcon(heading, t.armed, isMyDrone)
       }).addTo(map);
 
-      marker.bindTooltip(`<b>${t.deviceId}</b><br>IP: ${t.vpnIp || '10.13.37.X'}<br>Mode: ${t.flightMode || 'ONLINE'}`, {
+      marker.bindTooltip(`<b>${t.deviceId}</b> ${ownerLabel}<br>IP: ${t.vpnIp || '10.13.37.X'}<br>Mode: ${t.flightMode || 'ONLINE'}`, {
         permanent: false,
         direction: 'top'
       });
@@ -177,11 +182,12 @@ function processTelemetryUpdate(t) {
       marker.on('click', () => selectDroneForHud(t.deviceId));
       droneMarkers[t.deviceId] = marker;
 
-      // Khởi tạo đường bay nét mảnh màu Cyan
+      // Khởi tạo đường bay: Drone của mình nét Cyan sáng, Drone người khác nét Amber đứt khúc
       droneFlightTrails[t.deviceId] = L.polyline([[lat, lon]], {
-        color: '#00f0ff',
-        weight: 2,
-        opacity: 0.65
+        color: isMyDrone ? '#00f0ff' : '#f59e0b',
+        weight: isMyDrone ? 2.5 : 1.5,
+        opacity: isMyDrone ? 0.75 : 0.45,
+        dashArray: isMyDrone ? undefined : '4, 4'
       }).addTo(map);
 
       populateDroneDropdowns(fleetDevices);
@@ -191,17 +197,35 @@ function processTelemetryUpdate(t) {
         map.setView([lat, lon], 16);
       }
     } else {
-      // Cập nhật tọa độ và góc xoay cho Marker đã có
-      droneMarkers[t.deviceId].setLatLng([lat, lon]);
-      droneMarkers[t.deviceId].setIcon(createDroneIcon(heading, t.armed));
+      // 🟢 TỐI ƯU HÓA SIÊU NHẸ:
+      const marker = droneMarkers[t.deviceId];
+      marker.setLatLng([lat, lon]);
 
-      // Thêm điểm vào đường bay lịch sử (Lưu trữ tới 1000 điểm gần nhất cho toàn bộ chuyến bay)
+      // 1. Xoay góc Heading trực tiếp bằng CSS Transform (không hủy và tạo lại DOM bằng setIcon)
+      const iconEl = marker.getElement();
+      if (iconEl) {
+        const wrapper = iconEl.querySelector('div');
+        if (wrapper) {
+          wrapper.style.transform = `rotate(${heading || 0}deg)`;
+        }
+      }
+
+      // 2. Chỉ gọi setIcon khi trạng thái Arm hoặc quyền sở hữu thay đổi
+      if (marker._lastArmedState !== t.armed || marker._lastIsMyDrone !== isMyDrone) {
+        marker._lastArmedState = t.armed;
+        marker._lastIsMyDrone = isMyDrone;
+        marker.setIcon(createDroneIcon(heading, t.armed, isMyDrone));
+      }
+
+      // 3. Tối ưu đường bay: Dùng trail.addLatLng (O(1)) trực tiếp thay vì gán lại toàn bộ mảng
       const trail = droneFlightTrails[t.deviceId];
       if (trail) {
+        trail.addLatLng([lat, lon]);
         const points = trail.getLatLngs();
-        points.push([lat, lon]);
-        if (points.length > 1000) points.shift();
-        trail.setLatLngs(points);
+        if (points.length > 1000) {
+          points.shift();
+          trail.setLatLngs(points);
+        }
       }
     }
   }

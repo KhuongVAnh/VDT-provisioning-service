@@ -147,6 +147,7 @@ function populateDroneDropdowns(devices) {
 
   // Lọc chỉ lấy những Drone đang Online thời gian thực
   const onlineDevices = devices.filter(d => isDroneOnline(d.telemetry));
+  const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
 
   let mapOptions = '';
   if (onlineDevices.length === 0) {
@@ -154,7 +155,9 @@ function populateDroneDropdowns(devices) {
   } else {
     mapOptions = `<option value="all">-- Theo dõi tất cả (${onlineDevices.length} Drone Đang Bay) --</option>` + 
       onlineDevices.map(d => {
-        return `<option value="${d.deviceId}">🟢 ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
+        const isMine = currentUser?.role === 'ADMIN' || d.isOwner !== false;
+        const iconBadge = isMine ? '🟢 [Của bạn]' : '🟡 [Khác]';
+        return `<option value="${d.deviceId}">${iconBadge} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
       }).join('');
   }
 

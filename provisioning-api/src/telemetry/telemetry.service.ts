@@ -127,36 +127,38 @@ export class TelemetryService implements OnModuleInit {
    */
   private normalizeTelemetryPayload(raw: any): any {
     // Nếu đã là Full format (đầy đủ các trường GPS, Battery, Attitude)
-    if (raw.gps && raw.battery) {
+    if (raw.gps && raw.battery && raw.attitude) {
       return raw;
     }
 
-    // Nếu là Lite format (thu gọn): Bổ sung các giá trị mặc định để Frontend không bị lỗi undefined
+    const prev = this.inMemoryCache.get(raw.deviceId);
+
+    // Nếu là Lite format (thu gọn): Bổ sung các giá trị và bảo toàn góc nghiêng Attitude
     return {
       deviceId: raw.deviceId,
-      sysid: raw.sysid || 1,
-      vpnIp: raw.vpnIp || '',
-      connected: raw.connected ?? true,
-      armed: raw.armed ?? false,
-      flightMode: raw.flightMode || 'UNKNOWN',
+      sysid: raw.sysid || prev?.sysid || 1,
+      vpnIp: raw.vpnIp || prev?.vpnIp || '',
+      connected: raw.connected ?? prev?.connected ?? true,
+      armed: raw.armed ?? prev?.armed ?? false,
+      flightMode: raw.flightMode || prev?.flightMode || 'UNKNOWN',
       battery: {
-        percentage: raw.batteryPct ?? 0,
-        voltageMv: raw.voltageMv ?? 0,
-        currentCa: 0,
+        percentage: raw.batteryPct ?? raw.battery?.percentage ?? prev?.battery?.percentage ?? 0,
+        voltageMv: raw.voltageMv ?? raw.battery?.voltageMv ?? prev?.battery?.voltageMv ?? 0,
+        currentCa: raw.battery?.currentCa ?? prev?.battery?.currentCa ?? 0,
       },
       gps: {
-        lat: raw.lat ?? 0,
-        lon: raw.lon ?? 0,
-        altRelativeM: raw.altRelativeM ?? 0,
-        groundSpeedMs: raw.groundSpeedMs ?? 0,
-        headingDeg: raw.headingDeg ?? 0,
-        fixType: 3,
-        satellites: 10,
+        lat: raw.lat ?? raw.gps?.lat ?? prev?.gps?.lat ?? 0,
+        lon: raw.lon ?? raw.gps?.lon ?? prev?.gps?.lon ?? 0,
+        altRelativeM: raw.altRelativeM ?? raw.gps?.altRelativeM ?? prev?.gps?.altRelativeM ?? 0,
+        groundSpeedMs: raw.groundSpeedMs ?? raw.gps?.groundSpeedMs ?? prev?.gps?.groundSpeedMs ?? 0,
+        headingDeg: raw.headingDeg ?? raw.gps?.headingDeg ?? prev?.gps?.headingDeg ?? 0,
+        fixType: raw.gps?.fixType ?? prev?.gps?.fixType ?? 3,
+        satellites: raw.gps?.satellites ?? prev?.gps?.satellites ?? 10,
       },
       attitude: {
-        rollDeg: raw.rollDeg ?? 0,
-        pitchDeg: raw.pitchDeg ?? 0,
-        yawDeg: raw.headingDeg ?? 0,
+        rollDeg: raw.rollDeg ?? raw.attitude?.rollDeg ?? prev?.attitude?.rollDeg ?? 0,
+        pitchDeg: raw.pitchDeg ?? raw.attitude?.pitchDeg ?? prev?.attitude?.pitchDeg ?? 0,
+        yawDeg: raw.headingDeg ?? raw.attitude?.yawDeg ?? prev?.attitude?.yawDeg ?? 0,
       },
       timestamp: raw.timestamp || Date.now(),
     };
@@ -284,13 +286,15 @@ export class TelemetryService implements OnModuleInit {
   }
 
   /**
-   * Lọc danh sách thiết bị trả về theo quyền sở hữu của User (ADMIN xem tất cả, PILOT chỉ xem của mình)
+   * Chuẩn hóa danh sách thiết bị trả về cho User:
+   *  - Cả ADMIN và PILOT đều nhận toàn bộ thiết bị để hiển thị vị trí trên bản đồ tác chiến tổng quan (Air Traffic Awareness).
+   *  - Đánh dấu cờ `isOwner`: TRUE nếu là ADMIN hoặc Drone thuộc quyền sở hữu của PILOT, FALSE nếu là Drone của người khác.
    */
   private filterDevicesForUser(allDevices: any[], user?: any): any[] {
-    if (!user || user.role === 'ADMIN') {
-      return allDevices;
-    }
-    return allDevices.filter((dev) => dev.userId === user.id);
+    return allDevices.map((dev) => ({
+      ...dev,
+      isOwner: !user || user.role === 'ADMIN' || (dev.userId && dev.userId === user.id),
+    }));
   }
 
   /**

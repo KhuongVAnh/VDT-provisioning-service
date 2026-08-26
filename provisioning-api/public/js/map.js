@@ -37,27 +37,41 @@ function initTacticalMap() {
 /**
  * Tạo Icon hiển thị Drone dưới dạng hình mũi tên máy bay SVG:
  *  - Tự động xoay góc theo thông số Heading (0° - 360°).
- *  - Đổi màu và hiệu ứng phát sáng (Glow): Xanh lá (ARMED) hoặc Xanh dương (DISARMED).
+ *  - Phân biệt màu sắc:
+ *    + Drone của mình (isMyDrone = true): Xanh Lục Neon (ARMED) hoặc Xanh Cyan Sáng (DISARMED) với hào quang nổi bật.
+ *    + Drone người khác (isMyDrone = false): Vàng Cam Hổ Phách (ARMED) hoặc Xám Bạc (DISARMED) để dễ nhận diện.
  * 
  * @param {number} headingDeg Góc phương vị la bàn (0 - 360 độ)
  * @param {boolean} armed Trạng thái khóa động cơ (True: Đã Arm, False: Chưa Arm)
+ * @param {boolean} isMyDrone Có phải là Drone do tài khoản này sở hữu hay không
  * @returns {any} Leaflet DivIcon
  */
-function createDroneIcon(headingDeg, armed) {
-  const color = armed ? '#10b981' : '#38bdf8';
-  const glow = armed ? 'rgba(16,185,129,0.5)' : 'rgba(56,189,248,0.5)';
+function createDroneIcon(headingDeg, armed, isMyDrone = true) {
+  let color, glow, badgeBorder;
+
+  if (isMyDrone) {
+    // 🟢 DRONE CỦA MÌNH: Màu sáng công nghệ nổi bật (Emerald / Cyan)
+    color = armed ? '#10b981' : '#00f0ff';
+    glow = armed ? 'rgba(16,185,129,0.85)' : 'rgba(0,240,255,0.85)';
+    badgeBorder = 'border: 1px solid rgba(0,240,255,0.4); border-radius: 50%;';
+  } else {
+    // 🟡 DRONE NGƯỜI KHÁC / NGOẠI LAI: Màu Vàng Cam Amber / Xám Bạc
+    color = armed ? '#f59e0b' : '#94a3b8';
+    glow = armed ? 'rgba(245,158,11,0.6)' : 'rgba(148,163,184,0.4)';
+    badgeBorder = 'border: 1px dashed rgba(245,158,11,0.3); border-radius: 50%;';
+  }
 
   return L.divIcon({
     className: 'custom-drone-icon',
     html: `
-      <div style="transform: rotate(${headingDeg || 0}deg); transition: transform 0.1s linear; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="${color}" style="filter: drop-shadow(0 0 8px ${glow});">
+      <div style="transform: rotate(${headingDeg || 0}deg); transition: transform 0.1s linear; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; ${badgeBorder}">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="${color}" style="filter: drop-shadow(0 0 8px ${glow});">
           <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z"/>
         </svg>
       </div>
     `,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18]
+    iconSize: [38, 38],
+    iconAnchor: [19, 19]
   });
 }
 
