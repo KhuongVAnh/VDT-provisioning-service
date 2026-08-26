@@ -144,38 +144,82 @@ function updateIpMatrixRealtime(deviceId, vpnIp, isOnline) {
 function populateDroneDropdowns(devices) {
   if (!devices) return;
   const currentMapVal = DOM.mapSelect ? DOM.mapSelect.value : 'all';
-
-  // Lọc chỉ lấy những Drone đang Online thời gian thực
-  const onlineDevices = devices.filter(d => isDroneOnline(d.telemetry));
   const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
 
+  // Lọc chỉ lấy những Drone thuộc quyền sở hữu của User hiện tại (ADMIN xem tất cả)
+  const isOwnerDevice = (d) => currentUser?.role === 'ADMIN' || (d.isOwner !== false && (d.userId === currentUser?.id || d.isOwner === true));
+
+  // 1. Dropdown Mục tiêu trên Bản đồ Tác chiến: Chỉ lọc Drone của mình đang ONLINE
+  const myOnlineDevices = devices.filter(d => isOwnerDevice(d) && isDroneOnline(d.telemetry));
+
   let mapOptions = '';
-  if (onlineDevices.length === 0) {
-    mapOptions = '<option value="">-- Không có Drone nào đang bay --</option>';
+  if (myOnlineDevices.length === 0) {
+    mapOptions = '<option value="">-- Không có Drone nào của bạn đang bay --</option>';
   } else {
-    mapOptions = `<option value="all">-- Theo dõi tất cả (${onlineDevices.length} Drone Đang Bay) --</option>` + 
-      onlineDevices.map(d => {
-        const isMine = currentUser?.role === 'ADMIN' || d.isOwner !== false;
-        const iconBadge = isMine ? '🟢 [Của bạn]' : '🟡 [Khác]';
-        return `<option value="${d.deviceId}">${iconBadge} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
+    mapOptions = `<option value="all">-- Theo dõi tất cả (${myOnlineDevices.length} Drone của bạn) --</option>` + 
+      myOnlineDevices.map(d => {
+        return `<option value="${d.deviceId}">🟢 ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
       }).join('');
   }
 
   if (DOM.mapSelect) {
     DOM.mapSelect.innerHTML = mapOptions;
-    if (currentMapVal && (currentMapVal === 'all' || onlineDevices.some(d => d.deviceId === currentMapVal))) {
+    if (currentMapVal && (currentMapVal === 'all' || myOnlineDevices.some(d => d.deviceId === currentMapVal))) {
       DOM.mapSelect.value = currentMapVal;
-    } else if (onlineDevices.length > 0) {
-      DOM.mapSelect.value = onlineDevices[0].deviceId;
+    } else if (myOnlineDevices.length > 0) {
+      DOM.mapSelect.value = myOnlineDevices[0].deviceId;
     }
   }
 
+  // 2. Dropdown Web SSH: Chỉ lọc Drone của mình
+  const myDevices = devices.filter(isOwnerDevice);
   if (DOM.sshSelect) {
     DOM.sshSelect.innerHTML = '<option value="">-- Chọn Drone để SSH --</option>' + 
-      devices.map(d => {
+      myDevices.map(d => {
         const isOnline = isDroneOnline(d.telemetry);
         return `<option value="${d.deviceId}">${isOnline ? '🟢' : '⚪'} ${d.deviceId} (${d.vpnIp || '10.13.37.X'})</option>`;
       }).join('');
+  }
+}
+
+/**
+ * Cập nhật trạng thái bật/tắt (Disable) của nút xem Live Video FPV theo quyền sở hữu Drone
+ */
+function updateVideoControlPermission(deviceId) {
+  const btnVideo = document.getElementById('btn-toggle-video');
+  const btnLabel = document.getElementById('btn-video-label');
+  if (!btnVideo) return;
+
+  if (!deviceId || deviceId === 'all') {
+    btnVideo.disabled = false;
+    btnVideo.style.opacity = '1';
+    btnVideo.style.cursor = 'pointer';
+    btnVideo.title = 'Bật/Tắt Live FPV';
+    if (btnLabel && !isFpvVideoActive()) btnLabel.innerText = 'Bật Live FPV';
+    return;
+  }
+
+  const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
+  const drone = fleetDevices.find(d => d.deviceId === deviceId);
+  const isMine = currentUser?.role === 'ADMIN' || (drone && drone.isOwner !== false && (drone.userId === currentUser?.id || drone.isOwner === true));
+
+  if (!isMine) {
+    // Nếu là Drone của người khác -> Tự động đóng Video và Khóa nút
+    if (typeof isFpvVideoActive === 'function' && isFpvVideoActive()) {
+      closeFpvVideoStream(true);
+    }
+    btnVideo.disabled = true;
+    btnVideo.style.opacity = '0.4';
+    btnVideo.style.cursor = 'not-allowed';
+    btnVideo.title = '⚠️ Bạn không có quyền truy cập Live Camera của Drone này';
+    if (btnLabel) btnLabel.innerText = 'Khóa Live FPV';
+  } else {
+    // Drone của mình -> Mở khóa nút bình thường
+    btnVideo.disabled = false;
+    btnVideo.style.opacity = '1';
+    btnVideo.style.cursor = 'pointer';
+    btnVideo.title = 'Bật/Tắt Live FPV';
+    if (btnLabel && !isFpvVideoActive()) btnLabel.innerText = 'Bật Live FPV';
   }
 }
 
@@ -190,8 +234,15 @@ function selectDroneForHud(deviceId) {
   const prevDroneId = activeDroneId;
   activeDroneId = deviceId;
   if (DOM.mapSelect && DOM.mapSelect.value !== deviceId) {
-    DOM.mapSelect.value = deviceId;
+    // Chỉ set dropdown nếu drone này có trong danh sách dropdown của mình
+    const hasOption = Array.from(DOM.mapSelect.options).some(opt => opt.value === deviceId);
+    if (hasOption) {
+      DOM.mapSelect.value = deviceId;
+    }
   }
+
+  // Cập nhật quyền xem Video FPV
+  updateVideoControlPermission(deviceId);
 
   // ==============================================================================
   // KÍCH HOẠT FOCUS MODE 10Hz QUA WEBSOCKET ROOMS & REDIS FOCUS SET
@@ -214,9 +265,12 @@ function selectDroneForHud(deviceId) {
     updateHudDisplay(drone.telemetry);
   }
 
-  // Nếu đang mở xem camera, tự động ngắt kết nối drone cũ và bật xem drone mới
+  // Nếu đang mở xem camera, tự động ngắt kết nối drone cũ và bật xem drone mới (nếu có quyền)
+  const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
+  const isMine = currentUser?.role === 'ADMIN' || (drone && drone.isOwner !== false);
   const isVideoOpen = typeof isFpvVideoActive === 'function' ? isFpvVideoActive() : !!activeFpvDroneId;
-  if (isVideoOpen && deviceId !== 'all') {
+
+  if (isVideoOpen && deviceId !== 'all' && isMine) {
     if (activeFpvDroneId !== deviceId) {
       console.log(`[FPV] Chuyển đổi camera: Ngắt luồng ${activeFpvDroneId || prevDroneId} -> Tự động bật xem ${deviceId}...`);
       startFpvVideoStream(deviceId);

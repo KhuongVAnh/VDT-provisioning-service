@@ -286,15 +286,15 @@ export class TelemetryService implements OnModuleInit {
   }
 
   /**
-   * Chuẩn hóa danh sách thiết bị trả về cho User:
-   *  - Cả ADMIN và PILOT đều nhận toàn bộ thiết bị để hiển thị vị trí trên bản đồ tác chiến tổng quan (Air Traffic Awareness).
-   *  - Đánh dấu cờ `isOwner`: TRUE nếu là ADMIN hoặc Drone thuộc quyền sở hữu của PILOT, FALSE nếu là Drone của người khác.
+   * Phân quyền triệt để phía Server (Server-Side Ownership Enforcement):
+   *  - ADMIN: Nhận toàn bộ thiết bị trong toàn hệ thống.
+   *  - PILOT: CHỈ nhận danh sách các Drone do chính tài khoản này sở hữu (dev.userId === user.id).
    */
   private filterDevicesForUser(allDevices: any[], user?: any): any[] {
-    return allDevices.map((dev) => ({
-      ...dev,
-      isOwner: !user || user.role === 'ADMIN' || (dev.userId && dev.userId === user.id),
-    }));
+    if (!user || user.role === 'ADMIN') {
+      return allDevices;
+    }
+    return allDevices.filter((dev) => dev.userId && dev.userId === user.id);
   }
 
   /**

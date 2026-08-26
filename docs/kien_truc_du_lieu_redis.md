@@ -24,7 +24,7 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 │   │ • drone:sys_map (Tra cứu System ID)    │  │ • channel:drone:telemetry:lite:<id> │   │
 │   │ • drone:states (Snapshot trạng thái)   │  │ • channel:drone:raw:full:<id>       │   │
 │   │ • drone:heartbeats (ZSET Liveness 10s) │  │ • channel:drone:raw:lite:<id>       │   │
-│   │ • drone:focus_set (Set Drone xem 10Hz) │  │                                     │   │
+│   │ • drone:focus_set (Set Drone xem 20Hz) │  │                                     │   │
 │   └───────────────────┬────────────────────┘  └─────────────────┬───────────────────┘   │
 └───────────────────────┼─────────────────────────────────────────┼───────────────────────┘
                         │ HGETALL / SADD / SREM / ZRANGE          │ SUBSCRIBE (On-Demand)

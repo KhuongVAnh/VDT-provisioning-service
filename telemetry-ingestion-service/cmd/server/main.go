@@ -77,12 +77,12 @@ func main() {
 	// 3. Khởi tạo các module nội bộ
 	ipResolver := resolver.NewIPResolver(redisClient, cfg.VpnSubnetPrefix)
 	stateAggregator := state.NewStateAggregator()
-	deadbandFilter := state.NewDeadbandFilter()
+	deadbandFilter := state.NewDeadbandFilter(cfg.MaxPublishRateHz)
 	redisPublisher := publisher.NewRedisPublisher(redisClient)
 	defer redisPublisher.Close()
 
 	log.Printf("[INFO] ✅ IP Resolver đã kích hoạt (VPN Subnet Prefix: %s)", cfg.VpnSubnetPrefix)
-	log.Println("[INFO] ✅ Telemetry Deadband & Threshold Filter đã kích hoạt (Tiết kiệm 90% tải)")
+	log.Printf("[INFO] ✅ Telemetry Filter đã kích hoạt (Tần số Focus tối đa: %dHz / %dms, Tiết kiệm 90%% tải)", cfg.MaxPublishRateHz, 1000/cfg.MaxPublishRateHz)
 
 	// 4. Khởi tạo MAVLink Node đa Endpoint - thay thế hoàn toàn mavlink-routerd:
 	tcpGcsAddr := fmt.Sprintf("0.0.0.0:%s", cfg.TcpGcsPort)

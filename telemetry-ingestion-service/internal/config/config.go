@@ -27,6 +27,7 @@ type Config struct {
 	RedisDB                  int    // Database index trong Redis (mặc định 0)
 	StateTtlSeconds          int    // Thời gian sống (TTL) của trạng thái tức thời trong Redis (giây)
 	PublishIntervalMs        int    // Tần suất đẩy dữ liệu tổng hợp ra Redis Pub/Sub (mili-giây)
+	MaxPublishRateHz         int    // Tần số phát Telemetry chi tiết tối đa cho Drone Focus (Hz, mặc định: 20Hz = 50ms)
 	DefaultMavlinkDial       string // Phương ngữ MAVLink mặc định
 	VpnSubnetPrefix          string // Tiền tố dải mạng VPN (ví dụ: "10.13.37.")
 	UdpChannelTimeoutSeconds int    // Thời gian timeout thu hồi kênh UDP không hoạt động (giây)
@@ -54,7 +55,8 @@ func LoadConfig() *Config {
 		RedisPassword:            getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                  getEnvAsInt("REDIS_DB", 0),
 		StateTtlSeconds:          getEnvAsInt("STATE_TTL_SECONDS", 30),
-		PublishIntervalMs:        getEnvAsInt("PUBLISH_INTERVAL_MS", 100),
+		PublishIntervalMs:        getEnvAsInt("PUBLISH_INTERVAL_MS", 50),
+		MaxPublishRateHz:         getEnvAsInt("MAX_PUBLISH_RATE_HZ", getEnvAsInt("TELEMETRY_FOCUS_RATE_HZ", 20)),
 		DefaultMavlinkDial:       getEnv("MAVLINK_DIALECT", "ardupilotmega"),
 		VpnSubnetPrefix:          getEnv("VPN_SUBNET_PREFIX", "10.13.37."),
 		UdpChannelTimeoutSeconds: getEnvAsInt("UDP_CHANNEL_TIMEOUT_SECONDS", 30),

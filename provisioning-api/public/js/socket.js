@@ -119,20 +119,22 @@ function processTelemetryUpdate(t) {
   
   if (existingDevice) {
     existingDevice.telemetry = t;
-  } else {
-    // Tự động bổ sung Drone phát hiện từ luồng telemetry vào danh sách hiển thị
-    const isOwner = currentUser?.role === 'ADMIN';
+  } else if (currentUser && currentUser.role === 'ADMIN') {
+    // Chỉ Quản trị viên ADMIN mới tự động bổ sung Drone lạ phát hiện từ telemetry vào danh sách quản trị
     existingDevice = {
       id: t.deviceId,
       deviceId: t.deviceId,
       hardwareModel: 'Real-time Telemetry Stream',
       vpnIp: t.vpnIp || '10.13.37.X',
       status: 'ACTIVE',
-      isOwner: isOwner,
+      isOwner: true,
       telemetry: t,
     };
     fleetDevices.push(existingDevice);
     populateDroneDropdowns(fleetDevices);
+  } else {
+    // Nếu là PILOT và drone này không thuộc quyền sở hữu, TUYỆT ĐỐI KHÔNG đưa vào fleetDevices
+    return;
   }
 
   // Xác định Drone này có thuộc quyền sở hữu của User hiện tại hay không

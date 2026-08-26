@@ -43,6 +43,15 @@ function toggleFpvVideoFromHud() {
     return;
   }
 
+  const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
+  const drone = fleetDevices.find(d => d.deviceId === selectedDropdownDrone);
+  const isMine = currentUser?.role === 'ADMIN' || (drone && drone.isOwner !== false && (drone.userId === currentUser?.id || drone.isOwner === true));
+
+  if (!isMine) {
+    alert('⚠️ Bạn không có quyền truy cập luồng Live Camera của Drone này!');
+    return;
+  }
+
   startFpvVideoStream(selectedDropdownDrone);
 }
 

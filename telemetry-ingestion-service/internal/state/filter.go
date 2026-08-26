@@ -27,19 +27,25 @@ type DeadbandFilter struct {
 	maxInterval time.Duration // 2s (Heartbeat Liveness bắt buộc)
 }
 
-// NewDeadbandFilter khởi tạo bộ lọc Deadband
-func NewDeadbandFilter() *DeadbandFilter {
+// NewDeadbandFilter khởi tạo bộ lọc Deadband với tần số phát tối đa (Hz)
+func NewDeadbandFilter(maxRateHz ...int) *DeadbandFilter {
+	hz := 20
+	if len(maxRateHz) > 0 && maxRateHz[0] > 0 {
+		hz = maxRateHz[0]
+	}
+	minInterval := time.Duration(1000/hz) * time.Millisecond
+
 	return &DeadbandFilter{
 		lastSent:      make(map[string]*models.TelemetryPayload),
 		lastSentTime:  make(map[string]time.Time),
-		minDistanceM:  0.5,
-		minAltM:       0.3,
-		minHeadingDeg: 2.0,
-		minAngleDeg:   1.5,
+		minDistanceM:  0.2, // 0.2 mét (tăng độ nhạy cho luồng 20Hz mượt mà)
+		minAltM:       0.1, // 0.1 mét
+		minHeadingDeg: 1.0, // 1.0 độ
+		minAngleDeg:   0.8, // 0.8 độ (Roll/Pitch)
 		minBatteryPct: 1,
 		minVoltageMv:  100, // 100 mV = 0.1V
-		minSpeedMs:    0.5,
-		minInterval:   250 * time.Millisecond,
+		minSpeedMs:    0.2, // 0.2 m/s
+		minInterval:   minInterval,
 		maxInterval:   2 * time.Second,
 	}
 }

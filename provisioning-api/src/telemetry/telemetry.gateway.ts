@@ -81,16 +81,15 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
       client.data.user = payload;
       client.data.focusedDrones = new Set<string>(); // Lưu danh sách Drone mà Socket này đang Focus
 
-      // 3. Cho TẤT CẢ người dùng (cả ADMIN và PILOT) gia nhập phòng 'all' để xem vị trí toàn cảnh
-      client.join('all');
-
+      // 3. Phân chia phòng theo quyền hạn người dùng (Server-Side Room Isolation):
       if (payload.role === 'ADMIN') {
         client.join('admin');
+        client.join('all');
         this.logger.log(`👑 [ADMIN] Client ${client.id} (${payload.email}) đã tham gia phòng 'admin' / 'all'`);
       } else {
         const userRoom = `user:${payload.sub}`;
         client.join(userRoom);
-        this.logger.log(`👤 [PILOT] Client ${client.id} (${payload.email}) đã tham gia phòng cá nhân '${userRoom}' và 'all'`);
+        this.logger.log(`👤 [PILOT] Client ${client.id} (${payload.email}) đã tham gia phòng cá nhân '${userRoom}'`);
       }
     } catch (err) {
       this.logger.warn(`Client WebSocket [${client.id}] token không hợp lệ: ${err.message}`);
@@ -204,12 +203,12 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('subscribe:all')
   handleSubscribeAll(@ConnectedSocket() client: Socket) {
     const user = client.data?.user;
-    if (user) {
+    if (user && user.role === 'ADMIN') {
+      client.join('admin');
       client.join('all');
-      if (user.role === 'ADMIN') client.join('admin');
-      return { status: 'subscribed', room: 'all' };
+      return { status: 'subscribed', room: 'admin' };
     }
-    return { status: 'error', message: 'Yêu cầu đăng nhập trước khi theo dõi phi đội' };
+    return { status: 'error', message: 'Chỉ Quản trị viên (ADMIN) mới có quyền theo dõi toàn bộ phi đội' };
   }
 
   /**
@@ -227,8 +226,8 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
     // 1. Gửi tới phòng riêng của Drone đó (Dành cho Dashboard đang Focus lái con này: 10Hz Full)
     this.server.to(deviceRoom).emit('telemetry:update', telemetryData);
 
-    // 2. Gửi tới phòng 'all' (Dành cho TẤT CẢ User/Pilot/Admin xem bản đồ tổng quan)
-    this.server.to('all').emit('telemetry:update', telemetryData);
+    // 2. Gửi tới phòng Quản trị viên (Super Admin xem toàn cảnh hệ thống)
+    this.server.to('admin').emit('telemetry:update', telemetryData);
 
     // 3. Tra cứu chủ sở hữu (userId) từ RAM cache hoặc DB
     let ownerId = this.deviceOwnerCache.get(deviceId);
@@ -241,7 +240,13 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
       this.deviceService.findByDeviceId(deviceId).then((dev) => {
         const userId = dev?.userId || null;
         this.deviceOwnerCache.set(deviceId, userId);
+        if (userId) {
+          this.server.to(`user:${userId}`).emit('telemetry:update', telemetryData);
+        }
       }).catch(() => {});
+    } else if (ownerId) {
+      // 4. Bắn tới phòng cá nhân của Phi công sở hữu Drone (để cập nhật vị trí tiểu đội trên bản đồ)
+      this.server.to(`user:${ownerId}`).emit('telemetry:update', telemetryData);
     }
   }
 }

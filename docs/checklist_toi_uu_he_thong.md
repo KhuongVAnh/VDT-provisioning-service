@@ -9,10 +9,11 @@
 | :--- | :---: | :--- | :--- |
 | **1. Lọc dữ liệu Telemetry theo ngưỡng (Deadband Filtering)** | 🔴 **Cao** | `telemetry-ingestion-service` (Go) | Giảm **85% – 90%** tải Redis & CPU trình duyệt. |
 | **2. Tối ưu Đọc/Ghi & Hạ tầng Redis Quy Mô Lớn** | 🔴 **Cao** | Redis Server, Go Ingest & NestJS API | Giảm **90% – 95%** I/O Redis, triệt tiêu Stampede khi hàng ngàn User truy cập. |
-| **3. Nâng cấp Video sang WebRTC WHEP** | 🔴 **Cao** | MediaMTX & `public/index.html` | Giảm độ trễ Video từ **1.2s xuống < 200ms**. |
-| **4. Tối ưu Rendering trên Web Dashboard** | 🟡 **Trung bình** | `public/index.html` (Leaflet / HUD) | Giao diện mượt mà 60 FPS, không đơ khi có 50+ Drone. |
-| **5. Tinh chỉnh Kernel Linux & WireGuard VPN** | 🟡 **Trung bình** | OS Linux VPS & WireGuard | Chống phân mảnh gói tin, tối đa hóa thông lượng 4G. |
-| **6. Chuyển đổi Database & Lưu trữ Time-Series** | 🟢 **Dài hạn** | PostgreSQL / TimescaleDB / Prisma | Phục vụ lưu lịch sử đường bay (Blackbox) lâu dài. |
+| **3. Lọc Không Gian & Quản Lý Không Phận (Redis GEO Proximity)** | 🟡 **Trung bình** | Redis GEO, Go Ingest & NestJS Gateway | Giảm **99%** tải khi scale 1,000+ Drone, bảo mật không phận cục bộ. |
+| **4. Nâng cấp Video sang WebRTC WHEP** | 🔴 **Cao** | MediaMTX & `public/index.html` | Giảm độ trễ Video từ **1.2s xuống < 200ms**. |
+| **5. Tối ưu Rendering trên Web Dashboard** | 🟡 **Trung bình** | `public/index.html` (Leaflet / HUD) | Giao diện mượt mà 60 FPS, không đơ khi có 50+ Drone. |
+| **6. Tinh chỉnh Kernel Linux & WireGuard VPN** | 🟡 **Trung bình** | OS Linux VPS & WireGuard | Chống phân mảnh gói tin, tối đa hóa thông lượng 4G. |
+| **7. Chuyển đổi Database & Lưu trữ Time-Series** | 🟢 **Dài hạn** | PostgreSQL / TimescaleDB / Prisma | Phục vụ lưu lịch sử đường bay (Blackbox) lâu dài. |
 
 ---
 
@@ -81,6 +82,23 @@
   - **Mô hình Master - Read Replicas:** Node Master chỉ nhận luồng Ghi từ Go Ingestion Service; các Node Read Replicas nhận đồng bộ không đồng bộ để phục vụ hàng loạt NestJS Gateway Đọc và Subscribe, chia nhỏ tải mạng.
   - **Nâng cấp Sharded Pub/Sub (Redis 7.x `SSUBSCRIBE` / `SPUBLISH`):** Giới hạn phạm vi phát tin nhắn trong đúng slot quản lý của từng Drone, triệt tiêu 100% bão broadcast liên node trong cụm Cluster.
 - **Lợi ích đạt được:** Cho phép hệ thống mở rộng quy mô phục vụ **50,000+ người dùng và hàng ngàn Drone đồng thời**.
+
+### [ ] Task 1.10: Lọc Không Gian & Quản Lý Không Phận Theo Bán Kính Chiến Thuật (Redis Geospatial / AOI Proximity Filter cho 1,000+ Drone)
+- **Hạn chế hiện tại khi mở rộng quy mô lớn (1,000+ Drone):**
+  1. **Nghẽn băng thông mạng:** Nếu hệ thống có 1,000 Drone trên cả nước, việc phát toàn bộ 1,000 vị trí (1,000 gói/giây) xuống từng Client sẽ gây nghẽn đường truyền WebSocket và tràn bộ nhớ RAM trình duyệt.
+  2. **Trải nghiệm người dùng bị phân mảnh:** Bản đồ tác chiến bị rối mắt (Cluttered UI) do Marker máy bay dày đặc, che khuất tầm nhìn của phi công.
+  3. **Bảo mật không phận tác chiến:** Phi công tại Hà Nội không nên và không được phép theo dõi vị trí các phi đội đang làm nhiệm vụ tại TP.HCM hay Cần Thơ.
+- **Ý tưởng khắc phục cụ thể:**
+  - **Tầng Lưu Trữ Vị Trí (Redis GEO Data Structure):**
+    Go Ingestion Service khi bóc tách tọa độ GPS sẽ ghi thêm một lệnh `GEOADD drone:geo_positions <lon> <lat> <deviceId>` vào Redis (sử dụng thuật toán Geohash / Sorted Set độ phức tạp $O(\log N)$).
+  - **Tầng Truy Vấn Lân Cận Chiến Thuật (Tactical Proximity Query):**
+    Khi Pilot theo dõi Drone của mình, NestJS Backend gọi lệnh `GEOSEARCH drone:geo_positions FROMMEMBER <myDroneId> BYRADIUS <R> km WITHCOORD WITHDIST` để chỉ lấy danh sách các Drone nằm trong bán kính an toàn/chiến thuật (ví dụ: $R = 5\text{km}$ hoặc $10\text{km}$). Tốc độ tính toán của Redis GEO đạt mức siêu tốc **$< 0.2\text{ms}$** cho hàng trăm ngàn điểm.
+  - **Tầng Phân Phối WebSocket Không Gian (Spatial Room Sharding):**
+    Backend chỉ phát luồng tin tức thời của các Drone nằm trong bán kính quan tâm (Area of Interest - AOI) tới phòng cá nhân `user:<pilotId>` thay vì broadcast toàn mạng.
+- **Lợi ích đạt được:**
+  - Giảm **99% băng thông WebSocket** và tải CPU render của Leaflet Map khi hệ thống đạt quy mô 1,000 – 10,000 Drone.
+  - Bản đồ tác chiến thoáng đãng, phi công tập trung 100% vào không phận cục bộ để phòng chống va chạm chính xác.
+  - Bảo mật không phận tuyệt đối giữa các đơn vị tác chiến ở các khu vực địa lý khác nhau.
 
 ---
 
