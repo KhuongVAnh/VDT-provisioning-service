@@ -34,49 +34,28 @@
 - **Mục tiêu:** Giảm thời gian chờ I/O mạng giữa Go Service và Redis.
 - **Trạng thái:** ✅ **ĐÃ HOÀN THÀNH** (`pipe := p.client.Pipeline()` thực thi HSet + Publish trong 1 network roundtrip).
 
-### [ ] Task 1.4: Triệt tiêu ghi thừa & Gom Micro-Batching Pipeline trong Go Ingestion
-- **Hạn chế hiện tại:**
-  1. Ghi đúp dữ liệu vào 2 key khác nhau: vừa ghi Hash `drone:states`, vừa tạo thêm key String TTL `drone:state:<deviceId>`, khiến Redis tốn thêm CPU quản lý hàng ngàn timer hết hạn.
-  2. Gửi lệnh Pipeline ngay lập tức cho từng frame đơn lẻ thay vì gom nhiều frame của các Drone trong một khung thời gian ngắn, gây lãng phí Syscall và Network roundtrips.
-- **Ý tưởng khắc phục cụ thể:**
-  - **Thay thế key String TTL bằng Sorted Set (`ZSET drone:heartbeats`):**
-    - Loại bỏ hoàn toàn key String riêng lẻ `drone:state:<id>`.
-    - Go Ingestion chỉ cập nhật 1 trường số (Score = Unix timestamp) vào `ZSET drone:heartbeats` (Member: `deviceId`, Score: `time.Now().Unix()`).
-    - **Ưu điểm vượt trội:** Backend có thể lọc nhanh danh sách Drone Online (`ZRANGEBYSCORE drone:heartbeats (Now - 10) +inf`), đếm số lượng Drone đang bay (`ZCOUNT`), và dọn rác Drone ngắt kết nối lâu ngày (`ZREMRANGEBYSCORE`) chỉ bằng **1 câu lệnh duy nhất** trong nano-giây mà **không cần parse chuỗi JSON**, giảm ngay **50% tải ghi** cho Redis.
-  - **Gom Micro-Batching tại Go Service:** Dùng bộ đệm hàng đợi (Buffered Channel) kết hợp Background Worker gom tất cả các frame nhận được trong chu kỳ **20ms – 30ms** (hoặc đủ 50 frames) rồi mới thực thi `pipe.Exec()` một lần duy nhất.
-- **Lợi ích đạt được:** Giảm số lần gọi Pipeline từ **2,000 lần/giây xuống còn ~50 lần/giây** (với 200 Drone 10Hz), giải phóng 90% CPU I/O của Redis.
+### [x] Task 1.4: Triệt tiêu ghi thừa & Gom Micro-Batching Pipeline trong Go Ingestion
+- **Mục tiêu:** Giảm 95% số lần gọi lệnh qua mạng sang Redis, loại bỏ key String TTL và quản lý liveness qua ZSET.
+- **Trạng thái:** ✅ **ĐÃ HOÀN THÀNH** trong `telemetry-ingestion-service/internal/publisher/redis.go`.
+- **Cơ chế hoạt động:**
+  - [x] Thay thế key String TTL bằng Sorted Set (`ZSET drone:heartbeats` - Score: Unix Timestamp).
+  - [x] Bộ đệm RAM Channel (2,000 items) gom Micro-Batching 20ms trước khi `pipe.Exec()` 1 lần duy nhất.
 
+### [x] Task 1.5: Phân luồng kênh Đa tầng (Kênh Focus 10Hz vs Kênh Lite 1Hz) & L1 Cache chống Cache Stampede
+- **Mục tiêu:** Tối ưu hóa tải CPU Node.js và triệt tiêu nghẽn Redis khi hàng ngàn User cùng F5 Web Dashboard.
+- **Trạng thái:** ✅ **ĐÃ HOÀN THÀNH** trong `telemetry-ingestion-service` và `provisioning-api/src/telemetry/`.
+- **Cơ chế hoạt động:**
+  - [x] Quản lý phân tầng tần số qua Redis Set `drone:focus_set`: Drone đang Focus phát 10Hz Full, Drone nền/tiểu đội phát 1Hz Lite.
+  - [x] L1 In-Memory Cache (RAM Node.js 500ms) kết hợp SingleFlight Mutex trong `TelemetryService.getAllFleetStates()`.
 
-### [ ] Task 1.5: Phân luồng kênh Đa tầng (Kênh Focus 10Hz vs Kênh Lite 1Hz) & L1 Cache chống Cache Stampede
-- **Hạn chế hiện tại:**
-  1. Đổ chung toàn bộ dữ liệu 1,000 Drone vào 1 kênh `channel:drone:telemetry:all`, khiến NestJS đơn luồng phải nhận 10,000 tin/s và chạy `JSON.parse()` liên tục chỉ để lọc cho một vài User, gây quá tải CPU Node.js.
-  2. Khi hàng ngàn User cùng F5 trang Web Dashboard (Thundering Herd / Cache Stampede), NestJS nã hàng ngàn lệnh `HGETALL drone:states` vào Redis đơn luồng, làm gián đoạn luồng stream thời gian thực.
-- **Ý tưởng khắc phục cụ thể:**
-  - **Quản lý phân tầng tần số qua Redis Set (`drone:focus_set`):**
-    - Khi Pilot click chọn Focus 1 Drone trên Web Dashboard: Gateway thêm ID vào tập hợp Redis `SADD drone:focus_set "DRONE-001"` (khi bỏ chọn hoặc ngắt kết nối: `SREM`).
-    - Go Ingestion Service đồng bộ `drone:focus_set` trong RAM:
-      - *Nếu Drone nằm trong `focus_set`:* Go nuốt và phát ra **Kênh chi tiết tốc độ cao (`channel:drone:telemetry:full:<id>`) ở tần số 10Hz** (gồm đầy đủ góc nghiêng 3D, vận tốc, MAVLink).
-      - *Nếu Drone KHÔNG nằm trong `focus_set`:* Go tự động bóp xuống **Kênh tóm tắt nhẹ (`channel:drone:telemetry:lite:<id>`) ở tần số 1Hz** (chỉ gửi tọa độ GPS, % pin và cờ cảnh báo cho tiểu đội / Drone nền).
-  - **L1 In-Memory Cache (RAM Node.js) kết hợp SingleFlight Mutex tại NestJS:**
-    - Lưu snapshot trạng thái trong RAM Node.js (TTL 500ms) được cập nhật liên tục từ Pub/Sub.
-    - Khi có hàng ngàn User cùng F5 trang, **99.9% request đọc trực tiếp từ RAM Node.js (0ms Redis Latency)** thay vì gửi lệnh `HGETALL` vào Redis.
-- **Lợi ích đạt được:** Triệt tiêu hoàn toàn nghẽn CPU Node.js và Go Service, tiết kiệm băng thông mạng và bảo vệ Redis an toàn tuyệt đối khi lưu lượng truy cập tăng đột biến.
+### [x] Task 1.6: Kiến trúc Đăng ký Kênh Động theo Nhu cầu & Phân quyền Admin / Pilot (On-Demand Dynamic Subscription)
+- **Mục tiêu:** Tiết kiệm tài nguyên socket và CPU Redis Pub/Sub, triệt tiêu lãng phí của các Drone không có người xem.
+- **Trạng thái:** ✅ **ĐÃ HOÀN THÀNH** trong `provisioning-api/src/telemetry/mavlink-relay.gateway.ts` & `telemetry.gateway.ts`.
+- **Cơ chế hoạt động:**
+  - [x] Chuẩn hóa cặp kênh Raw MAVLink nhị phân (`channel:drone:raw:full:<id>` và `channel:drone:raw:lite:<id>`) ánh xạ 1-1 với kênh JSON.
+  - [x] On-Demand Subscribe: Chỉ đăng ký Redis channel khi có Pilot kết nối điều khiển, tự động Unsubscribe khi phòng rỗng.
+  - [x] Web Dashboard tự động kích hoạt `subscribe:drone` Focus khi click chọn Drone.
 
-
-### [ ] Task 1.6: Kiến trúc Đăng ký Kênh Động theo Nhu cầu & Phân quyền Admin / Pilot (On-Demand Dynamic Subscription)
-- **Hạn chế hiện tại:**
-  1. `MavlinkRelayGateway` đang dùng `psubscribe('channel:drone:raw:*')` để bắt toàn bộ byte nhị phân của mọi Drone kể cả khi không có ai xem, gây lãng phí tài nguyên socket và CPU Redis.
-  2. Chưa có cơ chế phân luồng linh hoạt giữa chế độ xem toàn tiểu đội và xem chi tiết từng Drone cho cả luồng JSON lẫn luồng Raw Binary MAVLink.
-- **Ý tưởng khắc phục cụ thể:**
-  - **Chuẩn hóa kênh Raw MAVLink ánh xạ 1-1 với kênh JSON:**
-    - Kênh MAVLink nhị phân được chia thành: `channel:drone:raw:full:<id>` (10–20Hz đầy đủ gói bay/cần lái) và `channel:drone:raw:lite:<id>` (1Hz chỉ lọc Heartbeat & GPS vị trí cho QGroundControl Multi-Vehicle).
-  - **Định tuyến thông minh tại NestJS Gateway (On-Demand Sub):**
-    - **Khi Pilot xem cả tiểu đội (Squad Mode trên Web & QGC):** Gateway gửi lệnh gom nhóm `SUBSCRIBE` các kênh `lite` ($D1, D2, D3$) cả bản JSON lẫn Raw MAVLink Lite. QGC và Web nhận tọa độ nhẹ để vẽ đồng thời 3 máy bay, tắt Video FPV và Raw Full để tiết kiệm 95% băng thông.
-    - **Khi Pilot xem riêng 1 Drone (Focus / Cockpit Mode):**
-      - *Với Drone Focus ($D1$):* Gateway `SUBSCRIBE` kênh `telemetry:full:D1` + kênh Raw MAVLink thô `raw:full:D1` (cho cần lái joystick) + bắt tay WebRTC WHEP phát Video Live FPV (< 200ms).
-      - *Với các Drone nền ($D2, D3$):* Vẫn duy trì kênh `telemetry:lite` và `raw:lite` (1Hz) để cập nhật tọa độ nền, pin và kích hoạt còi báo động khẩn cấp nếu có sự cố.
-    - **Khi Admin xem toàn bộ hệ thống (1,000+ Drone):** Gateway dùng `PSUBSCRIBE channel:drone:telemetry:lite:*` (cho Web) hoặc `PSUBSCRIBE channel:drone:raw:lite:*` (cho QGC) để giám sát toàn cảnh vùng trời ở mức tải nhẹ nhất.
-- **Lợi ích đạt được:** Tiết kiệm tối đa băng thông mạng 4G, triệt tiêu việc xử lý tin nhắn thừa và cho phép hệ thống mở rộng lên hàng chục ngàn Drone.
 
 
 ### [ ] Task 1.7: Tinh chỉnh Cấu hình Lưu trữ & Quản lý Bộ nhớ Redis (Disable AOF & Memory Eviction)

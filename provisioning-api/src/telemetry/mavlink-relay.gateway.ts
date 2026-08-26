@@ -8,7 +8,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger, Injectable, OnModuleInit } from '@nestjs/common';
+import { Logger, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
@@ -17,10 +17,20 @@ import { RedisService } from '../redis/redis.service';
 import { DeviceService } from '../device/device.service';
 
 /**
- * MavlinkRelayGateway chịu trách nhiệm làm cầu nối nhị phân 2 chiều (Binary MAVLink Relay):
- * 1. Downlink (Drone -> QGC): Nhận byte MAVLink thô từ Redis `channel:drone:raw:<droneId>` và bắn xuống WebSocket.
- * 2. Uplink (QGC -> Drone): Nhận byte điều khiển từ WebSocket và bắn UDP Socket xuống `10.13.37.X:14550`.
- * 3. Bảo mật: Yêu cầu JWT token xác thực quyền sở hữu Drone trước khi cho phép kết nối điều khiển.
+ * ==============================================================================
+ * MAVLINK BINARY RELAY GATEWAY (PILOT BRIDGE & QGROUNDCONTROL)
+ * ==============================================================================
+ * Cầu nối truyền thông nhị phân 2 chiều (Bi-directional Binary MAVLink Relay):
+ * 
+ * 1. [Downlink (Drone -> QGroundControl)]:
+ *    - Nhận byte nhị phân MAVLink v2 thô từ Redis Pub/Sub và chuyển tiếp xuống WebSocket (Cổng 10004).
+ * 
+ * 2. [Uplink (QGroundControl / Cần lái -> Drone)]:
+ *    - Nhận byte lệnh điều khiển từ WebSocket và bắn UDP Socket trực tiếp vào IP WireGuard của Drone (`10.13.37.X:14551`).
+ * 
+ * 3. [On-Demand Dynamic Subscription (Tối ưu hóa tài nguyên)]:
+ *    - CHỈ `SUBSCRIBE` kênh Redis `channel:drone:raw:full:<id>` khi có Pilot thực sự kết nối điều khiển Drone đó.
+ *    - Tự động `UNSUBSCRIBE` và xóa khỏi `drone:focus_set` khi Pilot ngắt kết nối $\rightarrow$ Tiết kiệm 100% tài nguyên CPU & Socket cho các Drone không có người xem.
  * 
  * Endpoint: ws://<IP_VPS>:10004/mavlink?token=JWT_TOKEN&droneId=DRONE_ID
  */
@@ -31,17 +41,19 @@ import { DeviceService } from '../device/device.service';
   },
 })
 @Injectable()
-export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatewayConnection, OnGatewayDisconnect {
+export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(MavlinkRelayGateway.name);
   private udpSocket: dgram.Socket;
   private readonly uplinkPort: number;
-  // Cờ đánh dấu trạng thái đăng ký Redis Pub/Sub (tránh duplicate subscription)
-  private isRedisSubscribed = false;
+  
   // Lưu danh sách client đang theo dõi từng drone: droneId -> Set<Socket>
   private droneClients = new Map<string, Set<Socket>>();
+  // Tập hợp các kênh raw đang được đăng ký trong Redis (tránh duplicate subscribe)
+  private subscribedRawChannels = new Set<string>();
+  private isSubscriberReady = false;
 
   constructor(
     private readonly redisService: RedisService,
@@ -52,16 +64,10 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
     this.uplinkPort = Number(this.configService.get<number>('DRONE_UPLINK_UDP_PORT', 14551));
   }
 
-  /**
-   * Hook vòng đời Module NestJS: Đảm bảo đăng ký Redis Pub/Sub sau khi các Provider (RedisService) đã khởi tạo
-   */
   onModuleInit() {
-    this.initRedisSubscription();
+    this.initRedisMessageListener();
   }
 
-  /**
-   * Hook vòng đời WebSocket Gateway: Khởi tạo UDP Socket và kích hoạt đăng ký Redis
-   */
   afterInit() {
     this.udpSocket = dgram.createSocket('udp4');
     this.udpSocket.on('error', (err) => {
@@ -69,50 +75,56 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
     });
     this.logger.log(`✅ MAVLink Relay Gateway đã khởi tạo trên namespace /mavlink (Uplink Port: ${this.uplinkPort})`);
 
-    this.initRedisSubscription();
+    this.initRedisMessageListener();
   }
 
   /**
-   * Lắng nghe kênh Redis Pub/Sub chứa luồng byte nhị phân MAVLink thô từ Go Ingestion Service.
-   * Tích hợp cơ chế Auto-Retry (Polling 500ms) để xử lý triệt để Race Condition khi WebSocket Gateway
-   * khởi tạo trước thời điểm Redis Connection sẵn sàng.
+   * ============================================================================
+   * 1. KHỞI TẠO BỘ LẮNG NGHE TIN NHẮN NHỊ PHÂN REDIS PUB/SUB (ON-DEMAND)
+   * ============================================================================
    */
-  private initRedisSubscription() {
-    // Nếu đã đăng ký thành công trước đó thì bỏ qua (tránh double listener)
-    if (this.isRedisSubscribed) return;
+  private initRedisMessageListener() {
+    if (this.isSubscriberReady) return;
 
     const subscriber = this.redisService.getSubscriber();
     if (!subscriber) {
-      this.logger.warn('Redis Subscriber chưa sẵn sàng, sẽ tự động thử lại sau 500ms...');
-      setTimeout(() => this.initRedisSubscription(), 500);
+      setTimeout(() => this.initRedisMessageListener(), 500);
       return;
     }
 
-    this.isRedisSubscribed = true;
+    this.isSubscriberReady = true;
 
-    // Đăng ký pattern tất cả các kênh drone raw: channel:drone:raw:*
-    subscriber.psubscribe('channel:drone:raw:*', (err) => {
-      if (err) {
-        this.logger.error(`Lỗi psubscribe channel:drone:raw:*: ${err.message}`);
-        this.isRedisSubscribed = false; // Reset cờ để cho phép thử lại nếu lỗi
-      } else {
-        this.logger.log('✅ Đã đăng ký lắng nghe Redis Pattern: channel:drone:raw:*');
-      }
-    });
-
-    // Lắng nghe pmessageBuffer để giữ nguyên dạng nhị phân thô không bị lỗi chuỗi UTF-8
-    subscriber.on('pmessageBuffer', (patternBuf: Buffer, channelBuf: Buffer, messageBuf: Buffer) => {
+    // Lắng nghe sự kiện messageBuffer (Buffer nhị phân) để không bị lỗi UTF-8 encoding
+    subscriber.on('messageBuffer', (channelBuf: Buffer, messageBuf: Buffer) => {
       const channel = channelBuf.toString();
-      const prefix = 'channel:drone:raw:';
-      if (channel.startsWith(prefix)) {
-        const droneId = channel.substring(prefix.length);
+      const prefixFull = 'channel:drone:raw:full:';
+      const prefixLite = 'channel:drone:raw:lite:';
+      const prefixLegacy = 'channel:drone:raw:';
+
+      let droneId = '';
+      if (channel.startsWith(prefixFull)) {
+        droneId = channel.substring(prefixFull.length);
+      } else if (channel.startsWith(prefixLite)) {
+        droneId = channel.substring(prefixLite.length);
+      } else if (channel.startsWith(prefixLegacy)) {
+        droneId = channel.substring(prefixLegacy.length);
+      }
+
+      if (droneId) {
         this.broadcastDownlink(droneId, messageBuf);
       }
     });
+
+    this.logger.log('✅ Đã sẵn sàng bộ lắng nghe Redis Buffer cho MAVLink On-Demand Relay');
   }
 
+  /**
+   * ============================================================================
+   * 2. XỬ LÝ KHI PILOT BRIDGE KẾT NỐI (XÁC THỰC VÀ ON-DEMAND SUBSCRIBE)
+   * ============================================================================
+   */
   async handleConnection(client: Socket) {
-    // 1. Lấy droneId và token từ query params hoặc headers
+    // [Bước 1]: Lấy droneId và token từ query params hoặc headers
     const droneId = (client.handshake?.query?.droneId as string) || (client.handshake?.headers?.['x-drone-id'] as string);
     const rawToken =
       (client.handshake?.query?.token as string) ||
@@ -126,7 +138,7 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
       return;
     }
 
-    // 2. Xác thực JWT Token & Quyền sở hữu Drone
+    // [Bước 2]: Xác thực JWT Token & Quyền sở hữu Drone
     let token = rawToken;
     if (token && token.startsWith('Bearer ')) {
       token = token.substring(7);
@@ -143,9 +155,7 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
     try {
       payload = this.jwtService.verify(token);
       if (payload && payload.role !== 'ADMIN') {
-        // Kiểm tra xem User có sở hữu Drone này không
         const device: any = await this.deviceService.findByDeviceId(droneId);
-
         if (!device || device.userId !== payload.sub) {
           this.logger.warn(`Client ${client.id} (User: ${payload.email}) bị từ chối: Không sở hữu Drone [${droneId}]`);
           client.emit('error', { message: `Bạn không có quyền điều khiển Drone [${droneId}]` });
@@ -167,24 +177,72 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
     if (!this.droneClients.has(droneId)) {
       this.droneClients.set(droneId, new Set());
     }
-    this.droneClients.get(droneId)!.add(client);
+    const clientsSet = this.droneClients.get(droneId)!;
+    clientsSet.add(client);
 
-    this.logger.log(`🎮 Pilot Bridge [${client.id}] đã xác thực & kết nối MAVLink Relay cho Drone: ${droneId} (User: ${payload?.email || 'Unknown'})`);
+    // ============================================================================
+    // ON-DEMAND DYNAMIC SUBSCRIPTION:
+    // Khi có Pilot đầu tiên kết nối vào Drone này -> Mới kích hoạt đăng ký kênh Redis
+    // ============================================================================
+    if (clientsSet.size === 1) {
+      const subscriber = this.redisService.getSubscriber();
+      const rawFullChannel = `channel:drone:raw:full:${droneId}`;
+      if (subscriber && !this.subscribedRawChannels.has(rawFullChannel)) {
+        subscriber.subscribe(rawFullChannel, (err) => {
+          if (!err) {
+            this.subscribedRawChannels.add(rawFullChannel);
+            this.logger.log(`🟢 [ON-DEMAND SUB] Đã kích hoạt lắng nghe Redis Raw: ${rawFullChannel}`);
+          }
+        });
+      }
+
+      // Kích hoạt Focus trong Redis để Go Ingestion chuyển sang phát 10Hz Full
+      await this.redisService.addFocusDrone(droneId);
+    }
+
+    this.logger.log(`🎮 Pilot Bridge [${client.id}] đã kết nối MAVLink Relay cho Drone: ${droneId} (Active Viewers: ${clientsSet.size})`);
   }
 
-  handleDisconnect(client: Socket) {
+  /**
+   * ============================================================================
+   * 3. XỬ LÝ KHI PILOT BRIDGE NGẮT KẾT NỐI (ON-DEMAND UNSUBSCRIBE & CLEANUP)
+   * ============================================================================
+   */
+  async handleDisconnect(client: Socket) {
     const droneId = client.data?.droneId;
     if (droneId && this.droneClients.has(droneId)) {
-      this.droneClients.get(droneId)!.delete(client);
-      if (this.droneClients.get(droneId)!.size === 0) {
+      const clientsSet = this.droneClients.get(droneId)!;
+      clientsSet.delete(client);
+
+      // ============================================================================
+      // ON-DEMAND UNSUBSCRIBE:
+      // Khi Pilot cuối cùng ngắt kết nối -> Tự động hủy đăng ký kênh Redis để giải phóng tài nguyên
+      // ============================================================================
+      if (clientsSet.size === 0) {
         this.droneClients.delete(droneId);
+
+        const subscriber = this.redisService.getSubscriber();
+        const rawFullChannel = `channel:drone:raw:full:${droneId}`;
+        if (subscriber && this.subscribedRawChannels.has(rawFullChannel)) {
+          subscriber.unsubscribe(rawFullChannel, (err) => {
+            if (!err) {
+              this.subscribedRawChannels.delete(rawFullChannel);
+              this.logger.log(`⚪ [ON-DEMAND UNSUB] Đã hủy đăng ký Redis Raw: ${rawFullChannel}`);
+            }
+          });
+        }
+
+        // Xóa khỏi Focus Set để Go Ingestion tự động hạ tần số xuống 1Hz Lite
+        await this.redisService.removeFocusDrone(droneId);
       }
     }
     this.logger.log(`🔌 Pilot Bridge [${client.id}] đã ngắt kết nối MAVLink Relay (${droneId || 'unknown'})`);
   }
 
   /**
-   * [Downlink] Bắn byte nhị phân MAVLink từ Drone xuống tất cả Pilot Bridge đang theo dõi Drone này
+   * ============================================================================
+   * 4. DOWNLINK (DRONE -> QGROUNDCONTROL): BẮN BYTE NHỊ PHÂN MAVLINK XUỐNG WEBSOCKET
+   * ============================================================================
    */
   broadcastDownlink(droneId: string, rawBuffer: Buffer) {
     const clients = this.droneClients.get(droneId);
@@ -192,7 +250,6 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
 
     for (const client of clients) {
       if (client.connected) {
-        // Gửi qua sự kiện mavlink:downlink và binary packet
         client.emit('mavlink:downlink', rawBuffer);
         client.send(rawBuffer);
       }
@@ -200,7 +257,9 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
   }
 
   /**
-   * [Uplink] Nhận byte lệnh điều khiển từ Pilot Bridge (QGroundControl) -> Bắn UDP vào IP VPN của Drone
+   * ============================================================================
+   * 5. UPLINK (QGROUNDCONTROL / CẦN LÁI -> DRONE): BẮN LỆNH ĐIỀU KHIỂN UDP XUỐNG DRONE
+   * ============================================================================
    */
   @SubscribeMessage('mavlink:uplink')
   async handleMavlinkUplink(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
@@ -224,9 +283,6 @@ export class MavlinkRelayGateway implements OnGatewayInit, OnModuleInit, OnGatew
     }
   }
 
-  /**
-   * Đóng socket khi module bị hủy
-   */
   onModuleDestroy() {
     if (this.udpSocket) {
       try {

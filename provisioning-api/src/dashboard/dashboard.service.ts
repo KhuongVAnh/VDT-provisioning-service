@@ -58,7 +58,7 @@ export class DashboardService {
     private readonly wireguardService: WireguardService,
     private readonly configService: ConfigService,
     @Optional() private readonly redisService?: RedisService,
-  ) {}
+  ) { }
 
   /**
    * Lấy tổng quan toàn bộ chỉ số KPI của hệ thống phục vụ Dashboard (Lọc theo quyền Pilot/Admin)
@@ -170,9 +170,9 @@ export class DashboardService {
         const peerStats = livePeerMap.get(device.vpnPublicKey);
         const telemetry = redisStates[device.deviceId] || (device.vpnIp ? redisStates[device.vpnIp] : null);
         const now = Date.now();
-        
-        // Drone được coi là ĐANG BAY (Xanh) nếu có telemetry thời gian thực trong vòng 15 giây gần nhất
-        const isOnline = telemetry && telemetry.connected !== false && telemetry.timestamp && (now - telemetry.timestamp < 15000);
+
+        // Drone được coi là ĐANG BAY (Xanh) nếu có telemetry thời gian thực trong vòng 10 giây gần nhất
+        const isOnline = telemetry && telemetry.connected !== false && telemetry.timestamp && (now - telemetry.timestamp < 10000);
 
         matrix.push({
           ip,

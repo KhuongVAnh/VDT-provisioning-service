@@ -190,6 +190,22 @@ function selectDroneForHud(deviceId) {
     DOM.mapSelect.value = deviceId;
   }
 
+  // ==============================================================================
+  // KÍCH HOẠT FOCUS MODE 10Hz QUA WEBSOCKET ROOMS & REDIS FOCUS SET
+  // ==============================================================================
+  if (typeof socket !== 'undefined' && socket && socket.connected) {
+    // 1. Hủy Focus Drone trước đó (nếu có)
+    if (prevDroneId && prevDroneId !== 'all' && prevDroneId !== deviceId) {
+      socket.emit('unsubscribe:drone', { deviceId: prevDroneId });
+    }
+    // 2. Kích hoạt Focus Drone mới (để Go Ingestion chuyển sang phát 10Hz Full)
+    if (deviceId !== 'all') {
+      socket.emit('subscribe:drone', { deviceId: deviceId });
+    } else {
+      socket.emit('subscribe:all');
+    }
+  }
+
   const drone = fleetDevices.find(d => d.deviceId === deviceId);
   if (drone && drone.telemetry) {
     updateHudDisplay(drone.telemetry);

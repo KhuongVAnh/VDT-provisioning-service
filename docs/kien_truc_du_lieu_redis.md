@@ -12,29 +12,29 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │               GOLANG WORKER (telemetry-ingestion-service - Ingest MAVLink)             │
+│               • Micro-Batching Pipeline (Chu kỳ gom 20ms)                              │
 └───────────────┬────────────────────────────────────────┬───────────────────────────────┘
-                │ 1. HSET drone:states & drone:ip_map    │ 2. PUBLISH channel:drone:...
+                │ 1. HSET drone:states & ZADD heartbeats │ 2. PUBLISH channel:drone:...
                 ▼                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                                     REDIS SERVER                                        │
 │   ┌────────────────────────────────────────┐  ┌─────────────────────────────────────┐   │
-│   │ 🗄️ HASHES (Bảng Tra Cứu & Trạng Thái)  │  │ 📢 PUB/SUB (Kênh Sự Kiện Realtime) │   │
-│   │ • drone:ip_map                         │  │ • channel:drone:telemetry:all (JSON)│   │
-│   │ • drone:sys_map                        │  │ • channel:drone:telemetry:<id>(JSON)│   │
-│   │ • drone:states                         │  │ • channel:drone:raw:<id> (Binary)   │   │
-│   │                                        │  │                                     │   │
-│   │                                        │  │ ⏱️ STRINGS WITH TTL (Snapshot Riêng)│   │
-│   │                                        │  │ • drone:state:<deviceId> (TTL 10s)  │   │
+│   │ 🗄️ HASHES & SETS & ZSETS               │  │ 📢 PUB/SUB (Kênh Sự Kiện Realtime) │   │
+│   │ • drone:ip_map (Tra cứu IP WireGuard)  │  │ • channel:drone:telemetry:full:<id> │   │
+│   │ • drone:sys_map (Tra cứu System ID)    │  │ • channel:drone:telemetry:lite:<id> │   │
+│   │ • drone:states (Snapshot trạng thái)   │  │ • channel:drone:raw:full:<id>       │   │
+│   │ • drone:heartbeats (ZSET Liveness 10s) │  │ • channel:drone:raw:lite:<id>       │   │
+│   │ • drone:focus_set (Set Drone xem 10Hz) │  │                                     │   │
 │   └───────────────────┬────────────────────┘  └─────────────────┬───────────────────┘   │
 └───────────────────────┼─────────────────────────────────────────┼───────────────────────┘
-                        │ HGET / HGETALL                          │ SUBSCRIBE
+                        │ HGETALL / SADD / SREM / ZRANGE          │ SUBSCRIBE (On-Demand)
                         ▼                                         ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                        NESTJS BACKEND (provisioning-api Gateway)                       │
-│                        • REST API: GET /api/v1/telemetry/fleet/states                  │
+│                        • L1 In-Memory Cache (RAM Node.js 500ms) + SingleFlight         │
+│                        • REST API: GET /api/v1/telemetry/fleet/states (0ms Redis Lat)  │
 │                        • WebSocket: TelemetryGateway (Socket.IO 'telemetry:update')    │
-│                        • WebSocket: MavlinkRelayGateway (Binary MAVLink cho Pilot)     │
-│                        • Web-SSH  : Tra cứu IP kết nối Terminal                        │
+│                        • WebSocket: MavlinkRelayGateway (On-Demand Binary MAVLink Relay)│
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -97,21 +97,38 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 
 ---
 
-### 3. CHUỖI SNAPSHOT RIÊNG TỪNG DRONE (STRING WITH TTL)
+### 3. TẬP HỢP THEO DÕI NHỊP TIM & DANH SÁCH FOCUS
 
 ---
 
-#### 📌 Key Pattern: `drone:state:<deviceId>` *(Ví dụ: `drone:state:DRONE-001`)*
-* **Kiểu dữ liệu:** `String` (JSON)
-* **Thời gian sống (TTL):** **`10 giây`** (Tự động biến mất nếu Drone mất kết nối).
-* **Mục đích:** Lưu trữ bản chụp trạng thái của riêng một Drone. Key này có gắn thời gian sống (TTL), nếu Drone bị rơi hoặc mất sóng 4G quá 10 giây, Key sẽ tự động bị Redis xóa, đóng vai trò như một cơ chế **Heartbeat Liveness Check**.
+#### 📌 Key 1: `drone:heartbeats`
+* **Kiểu dữ liệu:** `Sorted Set (ZSET)`
+* **Thời gian sống (TTL):** Vĩnh viễn (Score cập nhật liên tục theo Unix timestamp).
+* **Mục đích:** Quản lý **Trạng thái Online / Offline (Liveness Index)** của toàn bộ phi đội siêu tốc ($O(\log N + M)$) mà không cần tạo hàng ngàn key String riêng lẻ.
+* **Cấu trúc lưu trữ:**
+  * **Member:** `deviceId` (ví dụ `"DRONE-001"`).
+  * **Score:** `Unix Timestamp` (thời điểm nhận tin gần nhất).
+  ```redis
+  ZADD drone:heartbeats 1724410500 "DRONE-001"
+  ```
+* **Lệnh tra cứu thường dùng:**
+  * Lọc Drone Online trong 10s: `ZRANGEBYSCORE drone:heartbeats (Now - 10) +inf`
+  * Đếm số Drone đang bay: `ZCOUNT drone:heartbeats (Now - 10) +inf`
+
+---
+
+#### 📌 Key 2: `drone:focus_set`
+* **Kiểu dữ liệu:** `Set (SET)`
+* **Mục đích:** Lưu danh sách các Drone **đang có Pilot/Admin Focus xem chi tiết hoặc lái tay** (để Go Ingestion kích hoạt phát luồng 10Hz Full, còn các Drone khác tự động ép xuống 1Hz Lite).
 * **Cấu trúc lưu trữ:**
   ```redis
-  SET drone:state:DRONE-001 '{"deviceId":"DRONE-001","connected":true,...}' EX 10
+  SADD drone:focus_set "DRONE-001"
+  SREM drone:focus_set "DRONE-001"
+  SMEMBERS drone:focus_set
   ```
 * **Các bên tương tác:**
-  * ✍️ **Bên ghi (Writer):** Go [`RedisPublisher.PublishTelemetry`](../telemetry-ingestion-service/internal/publisher/redis.go).
-  * 👁️ **Bên đọc (Reader):** Dùng khi kiểm tra nhanh trạng thái đơn lẻ `GET drone:state:DRONE-001`.
+  * ✍️ **Bên ghi (Writer):** NestJS [`TelemetryGateway`](../provisioning-api/src/telemetry/telemetry.gateway.ts) và [`MavlinkRelayGateway`](../provisioning-api/src/telemetry/mavlink-relay.gateway.ts).
+  * 👁️ **Bên đọc (Reader):** Go Ingestion [`RedisPublisher`](../telemetry-ingestion-service/internal/publisher/redis.go).
 
 ---
 
@@ -119,31 +136,31 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 
 ---
 
-#### 📢 Channel 1: `channel:drone:telemetry:all`
-* **Kiểu dữ liệu:** `Pub/Sub Channel` (Không lưu trữ dữ liệu, chỉ luân chuyển tin nhắn).
-* **Mục đích:** Kênh phát sóng sự kiện tổng hợp cho **toàn bộ phi đội**. Mỗi khi bất kỳ Drone nào trong hệ thống gửi dữ liệu về, Go Worker sẽ bắn một tin nhắn JSON vào kênh này.
-* **Payload tin nhắn:** Chuỗi JSON `TelemetryPayload` chuẩn hóa.
-* **Các bên tương tác:**
-  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](../telemetry-ingestion-service/internal/publisher/redis.go).
-  * 👂 **Bên nhận (Subscriber):** NestJS [`TelemetryService.startRedisSubscription`](../provisioning-api/src/telemetry/telemetry.service.ts). NestJS nhận tin nhắn và chuyển tiếp ngay lập tức sang Socket.IO (`telemetry:update`) để cập nhật lên Bản đồ Leaflet.
+#### 📢 Channel 1: `channel:drone:telemetry:full:<deviceId>`
+* **Kiểu dữ liệu:** `Pub/Sub Channel` (JSON)
+* **Tần số:** **10Hz** (Phát khi Drone nằm trong `drone:focus_set`).
+* **Mục đích:** Luồng dữ liệu đo xa chi tiết (góc nghiêng 3D, vận tốc, la bàn, HUD, MAVLink) dành riêng cho Pilot đang Focus lái con đó.
 
 ---
 
-#### 📢 Channel 2: `channel:drone:telemetry:<deviceId>` *(Ví dụ: `channel:drone:telemetry:DRONE-001`)*
-* **Kiểu dữ liệu:** `Pub/Sub Channel`
-* **Mục đích:** Kênh phát sóng sự kiện riêng biệt cho **từng Drone cụ thể**. Phục vụ các microservice hoặc AI worker chỉ muốn theo dõi 1 Drone duy nhất mà không bị quá tải bởi dữ liệu của các Drone khác.
-* **Các bên tương tác:**
-  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher`](../telemetry-ingestion-service/internal/publisher/redis.go).
+#### 📢 Channel 2: `channel:drone:telemetry:lite:<deviceId>`
+* **Kiểu dữ liệu:** `Pub/Sub Channel` (Compact JSON)
+* **Tần số:** **1Hz** (Phát định kỳ 1 lần/giây cho các Drone nền).
+* **Mục đích:** Luồng dữ liệu tóm tắt siêu nhẹ (~70 bytes: GPS, % pin, mode) phục vụ hiển thị toàn bộ tiểu đội hoặc màn hình Super Admin (`PSUBSCRIBE channel:drone:telemetry:lite:*`).
 
 ---
 
-#### 📢 Channel 3: `channel:drone:raw:<deviceId>` *(Ví dụ: `channel:drone:raw:DRONE-001`)*
+#### 📢 Channel 3: `channel:drone:raw:full:<deviceId>`
 * **Kiểu dữ liệu:** `Pub/Sub Channel (Raw Binary MAVLink v2 Buffer)`
-* **Mục đích:** Kênh vận chuyển **toàn bộ gói tin nhị phân thô MAVLink v2 (Raw Bytes)** nhận được từ Drone, không qua bước chuyển đổi JSON. Kênh này được **NestJS `MavlinkRelayGateway`** lắng nghe qua `psubscribe('channel:drone:raw:*')` để chuyển tiếp tức thì xuống **Pilot Bridge / QGroundControl** qua WebSocket nhị phân (Cổng 10004).
-* **Payload tin nhắn:** Mảng byte nhị phân MAVLink (`[]byte` / `Buffer`).
-* **Các bên tương tác:**
-  * 📢 **Bên phát (Publisher):** Go [`RedisPublisher.PublishRawFrame`](../telemetry-ingestion-service/internal/publisher/redis.go).
-  * 👂 **Bên nhận (Subscriber):** NestJS [`MavlinkRelayGateway`](../provisioning-api/src/telemetry/mavlink-relay.gateway.ts).
+* **Tần số:** **10Hz – 20Hz**
+* **Mục đích:** Luồng byte nhị phân MAVLink v2 thô đẩy trực tiếp xuống **Pilot Bridge / QGroundControl** qua WebSocket nhị phân On-Demand (Cổng 10004).
+
+---
+
+#### 📢 Channel 4: `channel:drone:raw:lite:<deviceId>`
+* **Kiểu dữ liệu:** `Pub/Sub Channel (Raw Binary MAVLink v2 Buffer)`
+* **Tần số:** **1Hz**
+* **Mục đích:** Luồng byte nhị phân MAVLink tóm tắt (chỉ chứa Heartbeat & GPS) phục vụ tính năng Multi-Vehicle trên QGroundControl.
 
 ---
 
@@ -153,11 +170,13 @@ Trong hệ thống Cloud Provisioning & Telemetry, **Redis Server** (chạy tạ
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | **`drone:ip_map`** | `Hash` | Vĩnh viễn | NestJS / Go | Go / NestJS | Tra cứu: `VPN_IP` $\rightarrow$ `deviceId` (Ví dụ `10.13.37.2` $\rightarrow$ `DRONE-001`). |
 | **`drone:sys_map`** | `Hash` | Vĩnh viễn | Go | Go / NestJS | Tra cứu: `MAVLink_SysID` $\rightarrow$ `deviceId` (Ví dụ `1` $\rightarrow$ `DRONE-001`). |
-| **`drone:states`** | `Hash` | Vĩnh viễn | Go Ingest | NestJS API | Lưu trữ Snapshot trạng thái toàn bộ phi đội (Field: `deviceId`, Value: JSON). |
-| **`drone:state:<id>`** | `String` | 10s | Go Ingest | Go / CLI | Snapshot trạng thái riêng của 1 Drone kèm thời gian sống (TTL Heartbeat Liveness). |
-| **`channel:drone:telemetry:all`** | `Pub/Sub` | - | Go Ingest | NestJS WS | Luồng sự kiện JSON tổng phát cho Web Dashboard (Bản đồ Leaflet). |
-| **`channel:drone:telemetry:<id>`** | `Pub/Sub` | - | Go Ingest | Microservices | Luồng sự kiện JSON riêng phát cho client theo dõi 1 Drone. |
-| **`channel:drone:raw:<id>`** | `Pub/Sub` | - | Go Ingest | NestJS Gateway | Luồng byte nhị phân thô MAVLink v2 cho Pilot Bridge / QGroundControl. |
+| **`drone:states`** | `Hash` | Vĩnh viễn | Go Ingest | NestJS API | Snapshot trạng thái toàn phi đội (Ghi qua Micro-Batching 20ms). |
+| **`drone:heartbeats`** | `Sorted Set` | Vĩnh viễn | Go Ingest | NestJS API | Quản lý Liveness: Lọc siêu tốc Drone Online/Offline qua Score timestamp. |
+| **`drone:focus_set`** | `Set` | Tức thời | NestJS Gateway | Go Ingest | Danh sách Drone đang có Pilot Focus để Go chuyển sang phát 10Hz Full. |
+| **`channel:drone:telemetry:full:<id>`** | `Pub/Sub` | - | Go Ingest | NestJS WS | Luồng JSON chi tiết 10Hz cho Drone đang Focus. |
+| **`channel:drone:telemetry:lite:<id>`** | `Pub/Sub` | - | Go Ingest | NestJS WS | Luồng JSON tóm tắt 1Hz siêu nhẹ cho tiểu đội / Admin. |
+| **`channel:drone:raw:full:<id>`** | `Pub/Sub` | - | Go Ingest | NestJS Gateway | Luồng byte MAVLink thô 10-20Hz cho Pilot Bridge / QGroundControl. |
+| **`channel:drone:raw:lite:<id>`** | `Pub/Sub` | - | Go Ingest | NestJS Gateway | Luồng byte MAVLink thô 1Hz cho QGroundControl Multi-Vehicle. |
 
 ---
 
@@ -175,26 +194,31 @@ HGET drone:states DRONE-001
 # 3. Lấy toàn bộ trạng thái của tất cả Drone đang hoạt động
 HGETALL drone:states
 
-# 4. Kiểm tra thời gian sống còn lại của DRONE-001 (Heartbeat TTL)
-TTL drone:state:DRONE-001
+# 4. Lấy danh sách Drone đang ONLINE trong 10 giây qua
+ZRANGEBYSCORE drone:heartbeats (Now - 10) +inf
 
-# 5. Lắng nghe trực tiếp luồng telemetry JSON đang bắn qua Redis
-redis-cli SUBSCRIBE channel:drone:telemetry:all
+# 5. Xem danh sách các Drone đang được Focus
+SMEMBERS drone:focus_set
 
-# 6. Lắng nghe luồng byte nhị phân thô MAVLink của Drone DRONE-001
-redis-cli --raw SUBSCRIBE channel:drone:raw:DRONE-001
+# 6. Lắng nghe luồng telemetry JSON Full 10Hz của DRONE-001
+redis-cli SUBSCRIBE channel:drone:telemetry:full:DRONE-001
+
+# 7. Lắng nghe luồng telemetry JSON Lite 1Hz của toàn bộ phi đội
+redis-cli PSUBSCRIBE "channel:drone:telemetry:lite:*"
+
+# 8. Lắng nghe luồng byte nhị phân thô MAVLink của DRONE-001
+redis-cli --raw SUBSCRIBE channel:drone:raw:full:DRONE-001
 ```
 
 ---
 
-## V. ĐỊNH HƯỚNG TỐI ƯU HIỆU NĂNG CHO HỆ THỐNG QUY MÔ LỚN
+## V. ĐỊNH HƯỚNG TỐI ƯU HIỆU NĂNG CHO HỆ THỐNG QUY MÔ LỚN (ROADMAP TIẾP THEO)
 
-Khi số lượng Drone và người dùng (Pilots / Dashboard viewers) mở rộng từ hàng chục lên hàng ngàn, kiến trúc Redis trên sẽ được tối ưu hóa theo lộ trình (xem chi tiết tại [`checklist_toi_uu_he_thong.md`](checklist_toi_uu_he_thong.md)):
+Lộ trình nâng cấp hạ tầng phần cứng và cụm đa máy chủ (xem chi tiết tại [`checklist_toi_uu_he_thong.md`](checklist_toi_uu_he_thong.md)):
 
-1. **Triệt tiêu ghi thừa & Gom Micro-Batching (Task 1.4):** Chuyển đổi key String `drone:state:<id>` TTL sang `ZSET drone:heartbeats` và gom micro-batch 20ms–30ms trước khi flush Pipeline.
-2. **Phân luồng kênh Focus 10Hz vs Squad Lite 1Hz & L1 Cache (Task 1.5):** Tránh dồn toàn bộ 1,000 Drone vào kênh `all` làm nghẽn CPU Node.js, đồng thời lưu L1 RAM Cache (500ms) chống Thundering Herd khi nhiều User F5.
-3. **On-Demand Subscription (Task 1.6):** Đăng ký kênh động theo Drone/Tiểu đội khi có người xem, loại bỏ `psubscribe` tĩnh kênh raw.
-4. **Tắt AOF Disk Persistence cho Telemetry (Task 1.7):** Chạy thuần In-Memory `--appendonly no` tránh nghẽn đĩa `fsync`.
-5. **Kích hoạt Multi-Threading I/O & Master-Replica (Task 1.8 & 1.9):** Bật `io-threads 4` và tách Master-Replica cho quy mô lớn.
+1. **Tắt AOF Disk Persistence cho Telemetry (Task 1.7):** Chạy thuần In-Memory `--appendonly no` tránh nghẽn đĩa `fsync`.
+2. **Kích hoạt Multi-Threading I/O & Tinh chỉnh Linux Kernel (Task 1.8):** Bật `io-threads 4` và cấu hình `vm.overcommit_memory = 1`.
+3. **Kiến trúc Tách Đọc/Ghi & Sharded Pub/Sub Redis 7+ (Task 1.9):** Tách Master-Replica cho quy mô 50,000+ người dùng.
+
 
 

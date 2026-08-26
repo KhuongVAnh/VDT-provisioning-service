@@ -11,13 +11,13 @@
 
 /**
  * Kiểm tra xem một Drone có đang Online thời gian thực hay không.
- * Điều kiện: Gói tin Telemetry nhận được cách đây không quá 15 giây hoặc có luồng Socket live.
+ * Điều kiện: Gói tin Telemetry nhận được cách đây không quá 10 giây hoặc có luồng Socket live.
  */
 function isDroneOnline(t) {
   if (!t) return false;
   if (t.connected === false && !t.lastReceivedAt) return false;
-  if (t.lastReceivedAt && (Date.now() - t.lastReceivedAt < 15000)) return true;
-  if (t.timestamp && (Date.now() - t.timestamp < 15000)) return true;
+  if (t.lastReceivedAt && (Date.now() - t.lastReceivedAt < 10000)) return true;
+  if (t.timestamp && (Date.now() - t.timestamp < 10000)) return true;
   if (t.flightMode && t.flightMode !== 'UNKNOWN' && t.connected !== false) return true;
   return !!t.connected;
 }
