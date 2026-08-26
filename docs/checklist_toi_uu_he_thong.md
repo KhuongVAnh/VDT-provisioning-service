@@ -8,10 +8,11 @@
 | Hạng mục | Mức độ ưu tiên | Thành phần liên quan | Lợi ích đạt được |
 | :--- | :---: | :--- | :--- |
 | **1. Lọc dữ liệu Telemetry theo ngưỡng (Deadband Filtering)** | 🔴 **Cao** | `telemetry-ingestion-service` (Go) | Giảm **85% – 90%** tải Redis & CPU trình duyệt. |
-| **2. Nâng cấp Video sang WebRTC WHEP** | 🔴 **Cao** | MediaMTX & `public/index.html` | Giảm độ trễ Video từ **1.2s xuống < 200ms**. |
-| **3. Tối ưu Rendering trên Web Dashboard** | 🟡 **Trung bình** | `public/index.html` (Leaflet / HUD) | Giao diện mượt mà 60 FPS, không đơ khi có 50+ Drone. |
-| **4. Tinh chỉnh Kernel Linux & WireGuard VPN** | 🟡 **Trung bình** | OS Linux VPS & WireGuard | Chống phân mảnh gói tin, tối đa hóa thông lượng 4G. |
-| **5. Chuyển đổi Database & Lưu trữ Time-Series** | 🟢 **Dài hạn** | PostgreSQL / TimescaleDB / Prisma | Phục vụ lưu lịch sử đường bay (Blackbox) lâu dài. |
+| **2. Tối ưu Đọc/Ghi & Hạ tầng Redis Quy Mô Lớn** | 🔴 **Cao** | Redis Server, Go Ingest & NestJS API | Giảm **90% – 95%** I/O Redis, triệt tiêu Stampede khi hàng ngàn User truy cập. |
+| **3. Nâng cấp Video sang WebRTC WHEP** | 🔴 **Cao** | MediaMTX & `public/index.html` | Giảm độ trễ Video từ **1.2s xuống < 200ms**. |
+| **4. Tối ưu Rendering trên Web Dashboard** | 🟡 **Trung bình** | `public/index.html` (Leaflet / HUD) | Giao diện mượt mà 60 FPS, không đơ khi có 50+ Drone. |
+| **5. Tinh chỉnh Kernel Linux & WireGuard VPN** | 🟡 **Trung bình** | OS Linux VPS & WireGuard | Chống phân mảnh gói tin, tối đa hóa thông lượng 4G. |
+| **6. Chuyển đổi Database & Lưu trữ Time-Series** | 🟢 **Dài hạn** | PostgreSQL / TimescaleDB / Prisma | Phục vụ lưu lịch sử đường bay (Blackbox) lâu dài. |
 
 ---
 
@@ -22,11 +23,7 @@
 - **Trạng thái:** ✅ **ĐÃ HOÀN THÀNH** trong `internal/state/filter.go` & `cmd/server/main.go`.
 - **Cơ chế hoạt động:**
   - [x] Lưu `lastSentState` và `lastSentTime` trong RAM cho từng `deviceId`.
-  - [x] Chỉ gọi `PUBLISH channel:drone:telemetry:*` khi:
-    - $\Delta \text{Khoảng cách GPS} \ge 0.5\text{m}$ HOẶC $\Delta \text{Độ cao} \ge 0.3\text{m}$.
-    - $\Delta \text{Heading} \ge 2^\circ$ HOẶC $\Delta \text{Roll/Pitch} \ge 1.5^\circ$.
-    - $\Delta \text{Pin} \ge 1\%$ HOẶC $\Delta \text{Điện áp} \ge 100\text{mV}$.
-    - **Sự kiện khẩn cấp:** Đổi `flightMode`, chuyển `ARMED/DISARMED`, cảnh báo mất GPS $\rightarrow$ Bắn NGAY LẬP TỨC.
+  - [x] Chỉ phát tin khi: $\Delta\text{GPS} \ge 0.5\text{m}$, $\Delta\text{Độ cao} \ge 0.3\text{m}$, $\Delta\text{Góc} \ge 2^\circ$, $\Delta\text{Pin} \ge 1\%$, hoặc đổi chế độ bay.
   - [x] **Heartbeat định kỳ:** Nếu Drone đứng yên 100%, vẫn bắn tối thiểu **1 lần mỗi 2 giây** để báo hiệu Drone còn Online.
 
 ### [x] Task 1.2: Giới hạn tần số phát (Downsampling / Rate Limiting)
@@ -36,6 +33,75 @@
 ### [x] Task 1.3: Gom lệnh Redis Pipeline (Batch Processing)
 - **Mục tiêu:** Giảm thời gian chờ I/O mạng giữa Go Service và Redis.
 - **Trạng thái:** ✅ **ĐÃ HOÀN THÀNH** (`pipe := p.client.Pipeline()` thực thi HSet + Publish trong 1 network roundtrip).
+
+### [ ] Task 1.4: Triệt tiêu ghi thừa & Gom Micro-Batching Pipeline trong Go Ingestion
+- **Hạn chế hiện tại:**
+  1. Ghi đúp dữ liệu vào 2 key khác nhau: vừa ghi Hash `drone:states`, vừa tạo thêm key String TTL `drone:state:<deviceId>`, khiến Redis tốn thêm CPU quản lý hàng ngàn timer hết hạn.
+  2. Gửi lệnh Pipeline ngay lập tức cho từng frame đơn lẻ thay vì gom nhiều frame của các Drone trong một khung thời gian ngắn, gây lãng phí Syscall và Network roundtrips.
+- **Ý tưởng khắc phục cụ thể:**
+  - **Thay thế key String TTL bằng Sorted Set (`ZSET drone:heartbeats`):**
+    - Loại bỏ hoàn toàn key String riêng lẻ `drone:state:<id>`.
+    - Go Ingestion chỉ cập nhật 1 trường số (Score = Unix timestamp) vào `ZSET drone:heartbeats` (Member: `deviceId`, Score: `time.Now().Unix()`).
+    - **Ưu điểm vượt trội:** Backend có thể lọc nhanh danh sách Drone Online (`ZRANGEBYSCORE drone:heartbeats (Now - 10) +inf`), đếm số lượng Drone đang bay (`ZCOUNT`), và dọn rác Drone ngắt kết nối lâu ngày (`ZREMRANGEBYSCORE`) chỉ bằng **1 câu lệnh duy nhất** trong nano-giây mà **không cần parse chuỗi JSON**, giảm ngay **50% tải ghi** cho Redis.
+  - **Gom Micro-Batching tại Go Service:** Dùng bộ đệm hàng đợi (Buffered Channel) kết hợp Background Worker gom tất cả các frame nhận được trong chu kỳ **20ms – 30ms** (hoặc đủ 50 frames) rồi mới thực thi `pipe.Exec()` một lần duy nhất.
+- **Lợi ích đạt được:** Giảm số lần gọi Pipeline từ **2,000 lần/giây xuống còn ~50 lần/giây** (với 200 Drone 10Hz), giải phóng 90% CPU I/O của Redis.
+
+
+### [ ] Task 1.5: Phân luồng kênh Đa tầng (Kênh Focus 10Hz vs Kênh Lite 1Hz) & L1 Cache chống Cache Stampede
+- **Hạn chế hiện tại:**
+  1. Đổ chung toàn bộ dữ liệu 1,000 Drone vào 1 kênh `channel:drone:telemetry:all`, khiến NestJS đơn luồng phải nhận 10,000 tin/s và chạy `JSON.parse()` liên tục chỉ để lọc cho một vài User, gây quá tải CPU Node.js.
+  2. Khi hàng ngàn User cùng F5 trang Web Dashboard (Thundering Herd / Cache Stampede), NestJS nã hàng ngàn lệnh `HGETALL drone:states` vào Redis đơn luồng, làm gián đoạn luồng stream thời gian thực.
+- **Ý tưởng khắc phục cụ thể:**
+  - **Quản lý phân tầng tần số qua Redis Set (`drone:focus_set`):**
+    - Khi Pilot click chọn Focus 1 Drone trên Web Dashboard: Gateway thêm ID vào tập hợp Redis `SADD drone:focus_set "DRONE-001"` (khi bỏ chọn hoặc ngắt kết nối: `SREM`).
+    - Go Ingestion Service đồng bộ `drone:focus_set` trong RAM:
+      - *Nếu Drone nằm trong `focus_set`:* Go nuốt và phát ra **Kênh chi tiết tốc độ cao (`channel:drone:telemetry:full:<id>`) ở tần số 10Hz** (gồm đầy đủ góc nghiêng 3D, vận tốc, MAVLink).
+      - *Nếu Drone KHÔNG nằm trong `focus_set`:* Go tự động bóp xuống **Kênh tóm tắt nhẹ (`channel:drone:telemetry:lite:<id>`) ở tần số 1Hz** (chỉ gửi tọa độ GPS, % pin và cờ cảnh báo cho tiểu đội / Drone nền).
+  - **L1 In-Memory Cache (RAM Node.js) kết hợp SingleFlight Mutex tại NestJS:**
+    - Lưu snapshot trạng thái trong RAM Node.js (TTL 500ms) được cập nhật liên tục từ Pub/Sub.
+    - Khi có hàng ngàn User cùng F5 trang, **99.9% request đọc trực tiếp từ RAM Node.js (0ms Redis Latency)** thay vì gửi lệnh `HGETALL` vào Redis.
+- **Lợi ích đạt được:** Triệt tiêu hoàn toàn nghẽn CPU Node.js và Go Service, tiết kiệm băng thông mạng và bảo vệ Redis an toàn tuyệt đối khi lưu lượng truy cập tăng đột biến.
+
+
+### [ ] Task 1.6: Kiến trúc Đăng ký Kênh Động theo Nhu cầu & Phân quyền Admin / Pilot (On-Demand Dynamic Subscription)
+- **Hạn chế hiện tại:**
+  1. `MavlinkRelayGateway` đang dùng `psubscribe('channel:drone:raw:*')` để bắt toàn bộ byte nhị phân của mọi Drone kể cả khi không có ai xem, gây lãng phí tài nguyên socket và CPU Redis.
+  2. Chưa có cơ chế phân luồng linh hoạt giữa chế độ xem toàn tiểu đội và xem chi tiết từng Drone cho cả luồng JSON lẫn luồng Raw Binary MAVLink.
+- **Ý tưởng khắc phục cụ thể:**
+  - **Chuẩn hóa kênh Raw MAVLink ánh xạ 1-1 với kênh JSON:**
+    - Kênh MAVLink nhị phân được chia thành: `channel:drone:raw:full:<id>` (10–20Hz đầy đủ gói bay/cần lái) và `channel:drone:raw:lite:<id>` (1Hz chỉ lọc Heartbeat & GPS vị trí cho QGroundControl Multi-Vehicle).
+  - **Định tuyến thông minh tại NestJS Gateway (On-Demand Sub):**
+    - **Khi Pilot xem cả tiểu đội (Squad Mode trên Web & QGC):** Gateway gửi lệnh gom nhóm `SUBSCRIBE` các kênh `lite` ($D1, D2, D3$) cả bản JSON lẫn Raw MAVLink Lite. QGC và Web nhận tọa độ nhẹ để vẽ đồng thời 3 máy bay, tắt Video FPV và Raw Full để tiết kiệm 95% băng thông.
+    - **Khi Pilot xem riêng 1 Drone (Focus / Cockpit Mode):**
+      - *Với Drone Focus ($D1$):* Gateway `SUBSCRIBE` kênh `telemetry:full:D1` + kênh Raw MAVLink thô `raw:full:D1` (cho cần lái joystick) + bắt tay WebRTC WHEP phát Video Live FPV (< 200ms).
+      - *Với các Drone nền ($D2, D3$):* Vẫn duy trì kênh `telemetry:lite` và `raw:lite` (1Hz) để cập nhật tọa độ nền, pin và kích hoạt còi báo động khẩn cấp nếu có sự cố.
+    - **Khi Admin xem toàn bộ hệ thống (1,000+ Drone):** Gateway dùng `PSUBSCRIBE channel:drone:telemetry:lite:*` (cho Web) hoặc `PSUBSCRIBE channel:drone:raw:lite:*` (cho QGC) để giám sát toàn cảnh vùng trời ở mức tải nhẹ nhất.
+- **Lợi ích đạt được:** Tiết kiệm tối đa băng thông mạng 4G, triệt tiêu việc xử lý tin nhắn thừa và cho phép hệ thống mở rộng lên hàng chục ngàn Drone.
+
+
+### [ ] Task 1.7: Tinh chỉnh Cấu hình Lưu trữ & Quản lý Bộ nhớ Redis (Disable AOF & Memory Eviction)
+- **Hạn chế hiện tại:**
+  1. `docker-compose.yml` đang bật `--appendonly yes`, khiến mỗi cập nhật Telemetry ở tần số cao (10Hz – 50Hz) đều kích hoạt ghi đĩa AOF `fsync`, gây nghẽn Disk I/O và làm chậm chu trình xử lý RAM của Redis.
+  2. Chưa cấu hình giới hạn dung lượng RAM trần (`maxmemory`) và chính sách dọn dẹp bộ nhớ, có nguy cơ bị Linux Kernel OOM-Killer tắt tiến trình khi đầy RAM.
+- **Ý tưởng khắc phục cụ thể:**
+  - **Tắt AOF cho Redis Telemetry:** Cấu hình `--appendonly no` và `--save ""` trong Docker Compose / `redis.conf`. Vì Telemetry là dữ liệu tức thời (dữ liệu bền vững đã nằm trong PostgreSQL), việc chạy 100% In-Memory giúp triệt tiêu nghẽn đĩa và đạt tốc độ hàng trăm ngàn Ops/giây.
+  - **Cấu hình trần RAM & Eviction Policy:** Thiết lập `maxmemory 2gb` và `maxmemory-policy allkeys-lru` để Redis tự động giải phóng key ít dùng khi đầy bộ nhớ thay vì làm tràn RAM máy chủ.
+  - **Nén bảng băm Listpack:** Cấu hình `hash-max-listpack-entries 1024` giúp nén các bảng băm `drone:ip_map`, `drone:sys_map` và `drone:states` dưới dạng `Listpack`, giảm 60% – 70% dung lượng RAM.
+- **Lợi ích đạt được:** Loại bỏ hoàn toàn nghẽn đĩa `fsync`, tối ưu dung lượng RAM và bảo vệ Redis hoạt động ổn định 24/7.
+
+### [ ] Task 1.8: Kích hoạt Redis Multi-Threading I/O & Tinh chỉnh Linux Kernel cho Redis
+- **Hạn chế hiện tại:** Redis mặc định xử lý socket I/O đơn luồng, khi có hàng ngàn kết nối đồng thời từ các Gateway sẽ bị nghẽn thông lượng mạng. Linux Kernel mặc định có thể chặn cấp phát bộ nhớ khi Redis fork hoặc làm trễ độ trễ (latency spikes) do Transparent Huge Pages.
+- **Ý tưởng khắc phục cụ thể:**
+  - **Bật Redis Multi-Threaded I/O:** Cấu hình `io-threads 4` và `io-threads-do-reads yes` trong `redis.conf` để chia tải đọc/ghi socket mạng trên 4 core CPU (lõi thực thi lệnh vẫn an toàn đơn luồng).
+  - **Tinh chỉnh Linux Kernel OS VPS:** Thiết lập `vm.overcommit_memory = 1` (tránh lỗi cấp phát RAM), `net.core.somaxconn = 1024` (tăng hàng đợi kết nối TCP), và tắt Transparent Huge Pages (`echo never > /sys/kernel/mm/transparent_hugepage/enabled`) để triệt tiêu hiện tượng giật độ trễ.
+- **Lợi ích đạt được:** Tăng 2.5 – 3 lần thông lượng mạng Socket I/O và đảm bảo độ trễ Redis luôn ở mức micro-giây.
+
+### [ ] Task 1.9: Kiến trúc Tách Đọc/Ghi (Master-Replica Replication) & Sharded Pub/Sub (Redis 7+) cho Quy Mô Siêu Lớn
+- **Hạn chế hiện tại:** Một Node Redis duy nhất sẽ cạn kiệt băng thông khi hệ thống mở rộng lên hàng chục ngàn User. Trong cụm Redis Cluster, Pub/Sub truyền thống bị hiện tượng "bão broadcast" (Broadcast storm) làm nghẽn mạng giữa các Node.
+- **Ý tưởng khắc phục cụ thể:**
+  - **Mô hình Master - Read Replicas:** Node Master chỉ nhận luồng Ghi từ Go Ingestion Service; các Node Read Replicas nhận đồng bộ không đồng bộ để phục vụ hàng loạt NestJS Gateway Đọc và Subscribe, chia nhỏ tải mạng.
+  - **Nâng cấp Sharded Pub/Sub (Redis 7.x `SSUBSCRIBE` / `SPUBLISH`):** Giới hạn phạm vi phát tin nhắn trong đúng slot quản lý của từng Drone, triệt tiêu 100% bão broadcast liên node trong cụm Cluster.
+- **Lợi ích đạt được:** Cho phép hệ thống mở rộng quy mô phục vụ **50,000+ người dùng và hàng ngàn Drone đồng thời**.
 
 ---
 
