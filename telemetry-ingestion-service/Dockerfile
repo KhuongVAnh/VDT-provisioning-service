@@ -19,7 +19,6 @@ COPY . .
 
 # Build binary tĩnh (CGO_ENABLED=0)
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/ingest-server ./cmd/server
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/drone-sim ./cmd/simulator
 
 # Stage 2: Production Minimal Image
 FROM alpine:latest
@@ -31,7 +30,6 @@ RUN apk add --no-cache ca-certificates tzdata
 
 # Copy binary từ builder
 COPY --from=builder /app/ingest-server /app/ingest-server
-COPY --from=builder /app/drone-sim /app/drone-sim
 
 # Cấu hình biến môi trường mặc định khớp với hệ thống
 ENV UDP_LISTEN_ADDR="0.0.0.0:14551" \
