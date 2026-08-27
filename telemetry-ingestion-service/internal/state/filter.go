@@ -11,7 +11,7 @@ import (
 // DeadbandFilter quản lý lọc biến thiên Telemetry và giới hạn tần số phát (Deadband & Rate Limiting)
 type DeadbandFilter struct {
 	mu           sync.Mutex
-	lastSent     map[string]*models.TelemetryPayload
+	lastSent     map[string]*models.TelemetryPayload // key: deviceID, value: payload
 	lastSentTime map[string]time.Time
 
 	// Ngưỡng lọc biến thiên
@@ -23,15 +23,15 @@ type DeadbandFilter struct {
 	minVoltageMv  uint16  // 100 mV (0.1V)
 	minSpeedMs    float64 // 0.5 m/s
 
-	minInterval time.Duration // 250ms (Khống chế tần số tối đa 4Hz)
+	minInterval time.Duration // 50ms (Khống chế tần số tối đa 20Hz)
 	maxInterval time.Duration // 2s (Heartbeat Liveness bắt buộc)
 }
 
 // NewDeadbandFilter khởi tạo bộ lọc Deadband với tần số phát tối đa (Hz)
 func NewDeadbandFilter(maxRateHz ...int) *DeadbandFilter {
-	hz := 20
+	hz := 20 // Giá trị mặc định dự phòng (Fallback)
 	if len(maxRateHz) > 0 && maxRateHz[0] > 0 {
-		hz = maxRateHz[0]
+		hz = maxRateHz[0] // nếu truyền thì lấy từ config
 	}
 	minInterval := time.Duration(1000/hz) * time.Millisecond
 

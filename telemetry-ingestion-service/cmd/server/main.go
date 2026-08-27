@@ -95,16 +95,18 @@ func main() {
 	defer node.Close()
 
 	// 4b. Khởi tạo MAVLink Frame Serializer (tuần tự hóa Frame thành raw bytes để bắn vào Redis)
-	dialectRW, err := dialect.NewReadWriter(ardupilotmega.Dialect)
-	if err != nil {
+	dialectRW := &dialect.ReadWriter{
+		Dialect: ardupilotmega.Dialect,
+	}
+	if err := dialectRW.Initialize(); err != nil {
 		log.Fatalf("[FATAL] Không thể khởi tạo MAVLink Dialect ReadWriter: %v", err)
 	}
 	frameBuf := bytes.NewBuffer(make([]byte, 0, 512))
-	frameWriter, err := frame.NewWriter(frame.WriterConf{
-		Writer:    frameBuf,
-		DialectRW: dialectRW,
-	})
-	if err != nil {
+	frameWriter := &frame.Writer{
+		ByteWriter: frameBuf,
+		DialectRW:  dialectRW,
+	}
+	if err := frameWriter.Initialize(); err != nil {
 		log.Fatalf("[FATAL] Không thể khởi tạo MAVLink Frame Writer: %v", err)
 	}
 
@@ -123,6 +125,7 @@ func main() {
 				disconnectedDrones := stateAggregator.CheckHeartbeats(10 * time.Second)
 				for _, drone := range disconnectedDrones {
 					log.Printf("[HEARTBEAT] Cảnh báo: Drone %s (%s) bị mất tín hiệu quá 10s (Offline)!", drone.DeviceID, drone.VpnIP)
+					// bắn gói tin đã đổi trạng thái sang offline kèm trạng thái cuối cùng của nó vào chan của redisPublisher (định kỳ 20ms gửi đi 1 lần)
 					_ = redisPublisher.PublishTelemetry(ctx, drone, time.Duration(cfg.StateTtlSeconds)*time.Second)
 				}
 			}
@@ -193,14 +196,14 @@ func main() {
 			// 2. Trích xuất địa chỉ IP nguồn từ Channel
 			remoteIP := extractIPFromChannel(e.Channel.String())
 
-			// 3. Tra cứu IP/SysID -> DeviceID (Bảo toàn IP nguồn 10.13.37.X qua WireGuard hoặc SystemID khi test qua Docker bridge/local)
-			deviceID := ipResolver.Resolve(ctx, remoteIP, e.SystemID())
+			// 3. Tra cứu IP -> DeviceID từ Redis drone:ip_map
+			deviceID := ipResolver.Resolve(ctx, remoteIP)
 
-			// 4. XUẤT BẢN BYTE MAVLINK NHỊ PHÂN THÔ (RAW BYTES) VÀO REDIS:
+			// 4. XUẤT BẢN BYTE MAVLINK NHỊ PHÂN THÔ (RAW BYTES) VÀO "hòm thư" của redisPublisher:
 			// Kênh `channel:drone:raw:<deviceID>` phục vụ NestJS WebSocket Gateway (Port 10004) chuyển tiếp xuống Pilot Bridge / QGroundControl
 			if deviceID != "" {
 				frameBuf.Reset()
-				if err := frameWriter.WriteFrame(e.Frame); err == nil {
+				if err := frameWriter.Write(e.Frame); err == nil {
 					_ = redisPublisher.PublishRawFrame(ctx, deviceID, frameBuf.Bytes())
 				}
 			}
@@ -208,7 +211,7 @@ func main() {
 			// 5. Cập nhật và giải mã gói tin vào State Aggregator
 			snapshot, modified := stateAggregator.UpdateState(deviceID, e.SystemID(), remoteIP, e.Message())
 
-			// 6. Lọc biến thiên (Deadband Filter) & Khống chế tần số tối đa trước khi đẩy vào Redis:
+			// 6. Lọc biến thiên (Deadband Filter) & Khống chế tần số tối đa trước khi đẩy vào "hòm thư" của redisPublisher:
 			// Giúp giảm tải 85% - 90% cho Redis & Trình duyệt Web Dashboard
 			if modified && deadbandFilter.ShouldPublish(snapshot) {
 				err := redisPublisher.PublishTelemetry(ctx, snapshot, time.Duration(cfg.StateTtlSeconds)*time.Second)

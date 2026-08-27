@@ -71,8 +71,8 @@ func TestFullIngestionPipeline(t *testing.T) {
 				if e.SystemID() == 255 || e.SystemID() == 0 {
 					continue
 				}
-				deviceID := ipResolver.Resolve(ctx, "127.0.0.1", e.SystemID())
-				snapshot, modified := stateAggregator.UpdateState(deviceID, e.SystemID(), "127.0.0.1", e.Message())
+				deviceID := ipResolver.Resolve(ctx, "10.13.37.10")
+				snapshot, modified := stateAggregator.UpdateState(deviceID, e.SystemID(), "10.13.37.10", e.Message())
 				if modified {
 					_ = redisPublisher.PublishTelemetry(ctx, snapshot, 30*time.Second)
 					t.Logf("Server đã giải mã thành công gói tin %T từ %s (Lat: %f, Alt: %f)",
@@ -125,7 +125,7 @@ func TestFullIngestionPipeline(t *testing.T) {
 		}
 	}
 
-	snap, found := stateAggregator.GetSnapshot("DRONE-SYS-01")
+	snap, found := stateAggregator.GetSnapshot("DRONE-IP-10-13-37-10")
 	if !found {
 		t.Fatalf("Không tìm thấy snapshot cho DRONE-SYS-01")
 	}

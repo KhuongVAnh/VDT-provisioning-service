@@ -74,24 +74,6 @@ func (s *StateAggregator) GetSnapshot(deviceID string) (*models.TelemetryPayload
 	return &snapshot, true
 }
 
-// GetAllActiveStates lấy danh sách trạng thái của toàn bộ drone còn hoạt động trong vòng 60 giây qua
-func (s *StateAggregator) GetAllActiveStates() []*models.TelemetryPayload {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	nowMs := time.Now().UnixMilli()
-	var list []*models.TelemetryPayload
-
-	for _, payload := range s.states {
-		// Chỉ lấy các drone có cập nhật trong vòng 60 giây
-		if (nowMs - payload.Timestamp) <= 60000 {
-			snapshot := *payload
-			list = append(list, &snapshot)
-		}
-	}
-	return list
-}
-
 // CheckHeartbeats định kỳ quét và đánh dấu Disconnected cho các drone mất tín hiệu quá thời gian cho phép
 func (s *StateAggregator) CheckHeartbeats(timeout time.Duration) []*models.TelemetryPayload {
 	s.mu.Lock()

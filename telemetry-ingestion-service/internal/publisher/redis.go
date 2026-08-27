@@ -16,7 +16,7 @@ import (
 type telemetryQueueItem struct {
 	DeviceID string
 	Payload  *models.TelemetryPayload
-	JSONData []byte
+	JSONData []byte // lưu định dạng json của payload để tái sử dụng
 }
 
 // rawQueueItem chứa frame byte nhị phân thô MAVLink v2
@@ -186,7 +186,8 @@ func (p *RedisPublisher) flushBatch() {
 
 	// 1. Gom các gói tin Telemetry JSON trong giỏ
 	telemetryCount := 0
-	for len(p.telemetryChan) > 0 && telemetryCount < 100 {
+	for len(p.telemetryChan) > 0 && telemetryCount < 100 { // Mỗi item sinh ra 2-3 lệnh Redis, 100 sẽ tạo ra 300 lệnh redis -> vừa đẹp
+		// mỗi lần flushBatch chỉ gửi tối đa 100 item -> 1s 5000 item -> phục vụ được 250 drone phát ở tần số 20Hz 
 		item := <-p.telemetryChan
 		telemetryCount++
 
@@ -204,12 +205,12 @@ func (p *RedisPublisher) flushBatch() {
 		isFocused := p.IsFocused(item.DeviceID)
 
 		if isFocused {
-			// [DRONE ĐANG ĐƯỢC LÁI TAY / FOCUS]: Bắn luồng 10Hz Full chi tiết
+			// [DRONE ĐANG ĐƯỢC LÁI TAY / FOCUS]: Bắn luồng 20Hz Full chi tiết ( mọi drone trong chan đều có tần số 20Hz rồi)
 			fullChannel := fmt.Sprintf("channel:drone:telemetry:full:%s", item.DeviceID)
 			pipe.Publish(p.ctx, fullChannel, string(item.JSONData))
 		}
 
-		// [LUỒNG LITE CHO TIỂU ĐỘI / DRONE NỀN]: Khống chế tần số 1Hz (1000ms/lần)
+		// [LUỒNG LITE CHO TIỂU ĐỘI / DRONE NỀN]: Khống chế tần số 20Hz xuống 1Hz (1000ms/lần)
 		lastSent, exists := p.lastLiteSent.Load(item.DeviceID)
 		if !exists || now.Sub(lastSent.(time.Time)) >= 1000*time.Millisecond {
 			p.lastLiteSent.Store(item.DeviceID, now)
