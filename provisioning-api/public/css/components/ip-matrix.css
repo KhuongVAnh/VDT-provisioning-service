@@ -1,0 +1,37 @@
+/**
+ * ==============================================================================
+ * MODULE CSS 9: WIREGUARD IP MATRIX (ip-matrix.css)
+ * ==============================================================================
+ * Ma trận cấp phát địa chỉ IP VPN Subnet 254 ô máy chủ.
+ * ==============================================================================
+ */
+
+.ip-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+  margin-top: 1rem;
+}
+
+.ip-cell {
+  background: #0f172a;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.5rem 0.2rem;
+  text-align: center;
+  font-size: 0.72rem;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ip-cell:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  border-color: var(--accent);
+}
+
+.ip-cell.gateway { background: rgba(56, 189, 248, 0.2); border-color: var(--accent); color: var(--accent); }
+.ip-cell.active-online { background: rgba(16, 185, 129, 0.25); border-color: var(--success); color: #6ee7b7; box-shadow: 0 0 8px rgba(16,185,129,0.3); }
+.ip-cell.active-offline { background: rgba(245, 158, 11, 0.15); border-color: var(--warning); color: #fcd34d; }
+.ip-cell.available { opacity: 0.4; }

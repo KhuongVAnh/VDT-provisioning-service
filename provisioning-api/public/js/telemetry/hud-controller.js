@@ -1,78 +1,13 @@
 /**
  * ==============================================================================
- * MODULE 3: COCKPIT HUD & LAYOUT ENGINE (hud.js)
+ * MODULE TELEMETRY 2: COCKPIT HUD CONTROLLER (hud-controller.js)
  * ==============================================================================
  * Mục đích:
- *  - Xử lý chuyển đổi giữa các Tab chính (Tác chiến, Đội Drone, Web SSH, IP Matrix).
- *  - Điều khiển bộ chuyển đổi bố cục 3 chế độ (Map Dominant, Split, Cockpit FPV).
- *  - Cập nhật số liệu bay thời gian thực lên lớp phủ FPV OSD và Quả cầu chân trời 3D.
+ *  - Cập nhật các chỉ số bay thời gian thực lên lớp phủ FPV OSD và Sidebar.
+ *  - Điều khiển chuyển động xoay của Quả cầu Chân trời nhân tạo 3D (Roll/Pitch).
+ *  - Xử lý lựa chọn Drone mục tiêu và phân quyền mở luồng Video.
  * ==============================================================================
  */
-
-/**
- * Chuyển đổi qua lại giữa các Tab điều hướng trên giao diện.
- * 
- * @param {string} tabId ID của Tab cần kích hoạt ('tab-tactical', 'tab-fleet', 'tab-terminal', 'tab-ip-pool')
- */
-function switchTab(tabId) {
-  // Ẩn tất cả các nội dung tab và gỡ bỏ class active trên nút bấm
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-
-  // Kích hoạt tab được chọn
-  const targetTab = document.getElementById(tabId);
-  if (targetTab) targetTab.classList.add('active');
-
-  const activeBtn = Array.from(document.querySelectorAll('.nav-tab')).find(b => b.getAttribute('onclick')?.includes(tabId));
-  if (activeBtn) activeBtn.classList.add('active');
-
-  // Khắc phục lỗi render kích thước của Leaflet Map và làm tươi menu chọn Drone khi mở lại tab Tác chiến
-  if (tabId === 'tab-tactical') {
-    if (typeof populateDroneDropdowns === 'function') {
-      populateDroneDropdowns(fleetDevices);
-    }
-    if (map) {
-      setTimeout(() => map.invalidateSize(), 150);
-    }
-  }
-
-  // Tải lại danh sách thiết bị khi mở tab Đội Drone
-  if (tabId === 'tab-fleet' && typeof fetchFleetData === 'function') {
-    fetchFleetData();
-  }
-
-  // Tải lại ma trận IP khi mở tab IP Matrix
-  if (tabId === 'tab-ip-pool' && typeof fetchIpPoolMatrix === 'function') {
-    fetchIpPoolMatrix();
-  }
-
-  // Khắc phục lỗi co giãn kích thước của Xterm Terminal khi mở lại tab Web SSH
-  if (tabId === 'tab-terminal' && fitAddon) {
-    setTimeout(() => fitAddon.fit(), 150);
-  }
-}
-
-/**
- * Điều khiển bộ máy bố cục 3 chế độ trong giao diện Tác chiến & FPV:
- *  - 'mode-map': Bản đồ chiếm toàn bộ khung nhìn, Video thu nhỏ góc dưới dạng Picture-in-Picture (PiP).
- *  - 'mode-split': Chia đôi màn hình 50/50, quan sát đồng thời cả Bản đồ và FPV Camera.
- *  - 'mode-cockpit': Buồng lái FPV toàn màn hình, Bản đồ thu nhỏ góc trái hỗ trợ phi công BVLOS.
- * 
- * @param {string} mode Chế độ bố cục ('mode-map' | 'mode-split' | 'mode-cockpit')
- */
-function setLayoutMode(mode) {
-  currentLayoutMode = mode;
-  DOM.viewportGrid.className = `tactical-viewport-grid ${mode}`;
-
-  document.querySelectorAll('.layout-btn').forEach(btn => btn.classList.remove('active'));
-  const activeBtn = document.getElementById(`btn-${mode}`);
-  if (activeBtn) activeBtn.classList.add('active');
-
-  // Làm tươi lại kích thước bản đồ Leaflet sau khi hiệu ứng chuyển bố cục hoàn tất
-  if (map) {
-    setTimeout(() => map.invalidateSize(), 250);
-  }
-}
 
 /**
  * Cập nhật toàn bộ thông số bay thời gian thực từ Telemetry lên:
@@ -162,4 +97,95 @@ function resetHudDisplay() {
   if (DOM.hud.heading) DOM.hud.heading.innerText = '000°';
   if (DOM.hud.angles) DOM.hud.angles.innerText = '0.0° / 0.0°';
   if (DOM.hud.horizon) DOM.hud.horizon.style.transform = 'rotate(0deg) translateY(0px)';
+}
+
+/**
+ * Cập nhật trạng thái bật/tắt (Disable) của nút xem Live Video FPV theo quyền sở hữu Drone
+ */
+function updateVideoControlPermission(deviceId) {
+  const btnVideo = document.getElementById('btn-toggle-video');
+  const btnLabel = document.getElementById('btn-video-label');
+  if (!btnVideo) return;
+
+  if (!deviceId || deviceId === 'all') {
+    btnVideo.disabled = false;
+    btnVideo.style.opacity = '1';
+    btnVideo.style.cursor = 'pointer';
+    btnVideo.title = 'Bật/Tắt Live FPV';
+    if (btnLabel && !isFpvVideoActive()) btnLabel.innerText = 'Bật Live FPV';
+    return;
+  }
+
+  const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
+  const drone = fleetDevices.find(d => d.deviceId === deviceId);
+  const isMine = currentUser?.role === 'ADMIN' || (drone && drone.isOwner !== false && (drone.userId === currentUser?.id || drone.isOwner === true));
+
+  if (!isMine) {
+    // Nếu là Drone của người khác -> Tự động đóng Video và Khóa nút
+    if (typeof isFpvVideoActive === 'function' && isFpvVideoActive()) {
+      closeFpvVideoStream(true);
+    }
+    btnVideo.disabled = true;
+    btnVideo.style.opacity = '0.4';
+    btnVideo.style.cursor = 'not-allowed';
+    btnVideo.title = '⚠️ Bạn không có quyền truy cập Live Camera của Drone này';
+    if (btnLabel) btnLabel.innerText = 'Khóa Live FPV';
+  } else {
+    // Drone của mình -> Mở khóa nút bình thường
+    btnVideo.disabled = false;
+    btnVideo.style.opacity = '1';
+    btnVideo.style.cursor = 'pointer';
+    btnVideo.title = 'Bật/Tắt Live FPV';
+    if (btnLabel && !isFpvVideoActive()) btnLabel.innerText = 'Bật Live FPV';
+  }
+}
+
+/**
+ * Chọn Drone để hiển thị thông số chi tiết lên Cockpit HUD.
+ * Đồng thời kích hoạt Focus Mode qua WebSocket và chuyển luồng FPV nếu đang mở xem.
+ * 
+ * @param {string} deviceId Mã Drone
+ */
+function selectDroneForHud(deviceId) {
+  if (!deviceId) return;
+  const prevDroneId = activeDroneId;
+  activeDroneId = deviceId;
+  if (DOM.mapSelect && DOM.mapSelect.value !== deviceId) {
+    const hasOption = Array.from(DOM.mapSelect.options).some(opt => opt.value === deviceId);
+    if (hasOption) {
+      DOM.mapSelect.value = deviceId;
+    }
+  }
+
+  // Cập nhật quyền xem Video FPV
+  updateVideoControlPermission(deviceId);
+
+  // Kích hoạt Focus Mode 10Hz qua WebSocket Rooms
+  if (typeof socket !== 'undefined' && socket && socket.connected) {
+    if (prevDroneId && prevDroneId !== 'all' && prevDroneId !== deviceId) {
+      socket.emit('unsubscribe:drone', { deviceId: prevDroneId });
+    }
+    if (deviceId !== 'all') {
+      socket.emit('subscribe:drone', { deviceId: deviceId });
+    } else {
+      socket.emit('subscribe:all');
+    }
+  }
+
+  const drone = fleetDevices.find(d => d.deviceId === deviceId);
+  if (drone && drone.telemetry) {
+    updateHudDisplay(drone.telemetry);
+  }
+
+  // Chuyển đổi camera FPV nếu đang mở xem
+  const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
+  const isMine = currentUser?.role === 'ADMIN' || (drone && drone.isOwner !== false);
+  const isVideoOpen = typeof isFpvVideoActive === 'function' ? isFpvVideoActive() : !!activeFpvDroneId;
+
+  if (isVideoOpen && deviceId !== 'all' && isMine) {
+    if (activeFpvDroneId !== deviceId) {
+      console.log(`[FPV] Chuyển đổi camera: Ngắt luồng ${activeFpvDroneId || prevDroneId} -> Tự động bật xem ${deviceId}...`);
+      startFpvVideoStream(deviceId);
+    }
+  }
 }

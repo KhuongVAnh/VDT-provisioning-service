@@ -1,15 +1,11 @@
 /**
  * ==============================================================================
- * DRONE MISSION CONTROL & COCKPIT - WEB SSH TERMINAL STYLESHEET
+ * MODULE CSS 10: WEB SSH TERMINAL (terminal.css)
  * ==============================================================================
- * Bao gồm:
- *  1. Khung chứa giao diện dòng lệnh Web SSH (Terminal Tab Container).
- *  2. Thanh công cụ cấu hình kết nối SSH qua mạng riêng ảo WireGuard (10.13.37.X).
- *  3. Khung hiển thị giao diện dòng lệnh nền đen Xterm.js.
+ * Giao diện dòng lệnh Web SSH Xterm.js qua mạng riêng ảo WireGuard.
  * ==============================================================================
  */
 
-/* Khung toàn màn hình của Tab Web SSH */
 .terminal-container {
   background: #060911;
   border: 1px solid var(--border-color);
@@ -21,7 +17,6 @@
   flex-direction: column;
 }
 
-/* Thanh điều khiển kết nối SSH trên đỉnh */
 .terminal-header {
   display: flex;
   justify-content: space-between;
@@ -33,7 +28,6 @@
   gap: 0.5rem;
 }
 
-/* Khung viền chứa màn hình đen dòng lệnh Xterm.js */
 .terminal-box {
   flex: 1;
   border-radius: 8px;

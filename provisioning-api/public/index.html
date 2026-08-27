@@ -15,10 +15,8 @@
   <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
-  <!-- CSS Module của Dự án -->
+  <!-- CSS Module của Dự án (Master Stylesheet tự động nạp tất cả module con) -->
   <link rel="stylesheet" href="/css/main.css">
-  <link rel="stylesheet" href="/css/hud.css">
-  <link rel="stylesheet" href="/css/terminal.css">
 </head>
 <body>
 
@@ -575,16 +573,31 @@
   <script src="/socket.io/socket.io.js"></script>
 
   <!-- ======================================================================== -->
-  <!-- 5. CÁC MODULE JAVASCRIPT CỦA DỰ ÁN                                       -->
+  <!-- 5. CÁC MODULE JAVASCRIPT CỦA DỰ ÁN (PHÂN TẦNG THEO CHỨC NĂNG)             -->
   <!-- ======================================================================== -->
-  <script src="/js/auth.js"></script>
-  <script src="/js/state.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/hud.js"></script>
-  <script src="/js/map.js"></script>
-  <script src="/js/video.js"></script>
-  <script src="/js/terminal.js"></script>
-  <script src="/js/socket.js"></script>
+  <!-- Tầng 1: Core & Quản lý trạng thái, API, Xác thực -->
+  <script src="/js/core/state.js"></script>
+  <script src="/js/core/api.js"></script>
+  <script src="/js/core/auth.js"></script>
+
+  <!-- Tầng 2: Telemetry Stream, 60 FPS Render Queue, Bản đồ & HUD -->
+  <script src="/js/telemetry/map-controller.js"></script>
+  <script src="/js/telemetry/hud-controller.js"></script>
+  <script src="/js/telemetry/render-queue.js"></script>
+  <script src="/js/telemetry/socket-client.js"></script>
+
+  <!-- Tầng 3: FPV Video Player (WebRTC WHEP, HLS Fallback, Self-Healing) -->
+  <script src="/js/video/video-recovery.js"></script>
+  <script src="/js/video/video-webrtc.js"></script>
+  <script src="/js/video/video-hls.js"></script>
+  <script src="/js/video/video-controls.js"></script>
+
+  <!-- Tầng 4: Quản trị Phi đội, Phân quyền & Web SSH Terminal -->
+  <script src="/js/fleet/fleet-table.js"></script>
+  <script src="/js/fleet/fleet-actions.js"></script>
+  <script src="/js/fleet/web-ssh.js"></script>
+
+  <!-- Tầng 5: Entrypoint điều phối ứng dụng chính -->
   <script src="/js/app.js"></script>
 
 </body>

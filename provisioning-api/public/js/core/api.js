@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * MODULE 2: REST API CLIENT & TIỆN ÍCH (api.js)
+ * MODULE CORE 2: REST API CLIENT & DATA REFRESH (api.js)
  * ==============================================================================
  * Mục đích:
  *  - Xử lý các yêu cầu gọi REST API tới NestJS Gateway (Port 10004).

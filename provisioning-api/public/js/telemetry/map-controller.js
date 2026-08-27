@@ -1,12 +1,12 @@
 /**
  * ==============================================================================
- * MODULE 4: TACTICAL LEAFLET MAP (map.js)
+ * MODULE TELEMETRY 1: TACTICAL LEAFLET MAP CONTROLLER (map-controller.js)
  * ==============================================================================
  * Mục đích:
  *  - Khởi tạo bản đồ tác chiến Leaflet với lớp nền tối Dark Tactical (CartoDB DarkMatter).
  *  - Tạo và cập nhật Marker máy bay trực quan: xoay theo hướng bay thật (Heading 0-360°)
  *    và tự đổi màu theo trạng thái Arm (Xanh lá khi Arm / Xanh dương khi Disarm).
- *  - Cung cấp các hàm căn chỉnh và phóng to vị trí Drone trên bản đồ.
+ *  - Cung cấp các hàm căn chỉnh, phóng to và dọn dẹp vị trí Drone trên bản đồ.
  * ==============================================================================
  */
 

@@ -1,0 +1,225 @@
+/**
+ * ==============================================================================
+ * MODULE CSS 6: TACTICAL VIEWPORT & LAYOUT ENGINE (tactical.css)
+ * ==============================================================================
+ * Khung điều khiển tác chiến, bộ máy chuyển đổi bố cục 3 chế độ (Map / Split / Cockpit),
+ * và các khung hiển thị bản đồ / video FPV.
+ * ==============================================================================
+ */
+
+.tactical-mission-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.tactical-control-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.layout-switch-btn-group {
+  display: flex;
+  background: rgba(10, 15, 28, 0.8);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  gap: 3px;
+}
+
+.layout-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.15s;
+}
+
+.layout-btn:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.layout-btn.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+
+.tactical-viewport-grid {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 1rem;
+  height: calc(100vh - 230px);
+  min-height: 620px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- CHẾ ĐỘ 1: BẢN ĐỒ CHÍNH (Map Dominant - Video ở góc nhỏ PiP) --- */
+.tactical-viewport-grid.mode-map .viewport-center {
+  display: grid;
+  grid-template-columns: 1fr;
+  position: relative;
+}
+.tactical-viewport-grid.mode-map .map-frame {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.tactical-viewport-grid.mode-map .fpv-frame {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 380px;
+  height: 220px;
+  z-index: 500;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--accent-glow);
+}
+
+/* --- CHẾ ĐỘ 2: CHIA ĐÔI 50/50 (Split View - Cả Bản đồ và Video đều lớn) --- */
+.tactical-viewport-grid.mode-split .viewport-center {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.tactical-viewport-grid.mode-split .map-frame {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.tactical-viewport-grid.mode-split .fpv-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  bottom: auto;
+  right: auto;
+  z-index: 10;
+}
+
+/* --- CHẾ ĐỘ 3: BUỒNG LÁI FPV (Cockpit Dominant - Bản đồ thu nhỏ góc trái) --- */
+.tactical-viewport-grid.mode-cockpit .viewport-center {
+  display: grid;
+  grid-template-columns: 1fr;
+  position: relative;
+}
+.tactical-viewport-grid.mode-cockpit .fpv-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  bottom: auto;
+  right: auto;
+  z-index: 10;
+}
+.tactical-viewport-grid.mode-cockpit .map-frame {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  width: 320px;
+  height: 200px;
+  z-index: 500;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--primary-glow);
+}
+
+.viewport-center {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+}
+
+.map-frame {
+  background: #090d16;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  flex-direction: column;
+  position: relative;
+}
+
+#tactical-map {
+  width: 100%;
+  height: 100%;
+  background: #090d16;
+}
+
+.fpv-frame {
+  background: #000;
+  border: 1px solid var(--border-accent);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.fpv-video-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#fpv-video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.fpv-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 9, 17, 0.88);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  z-index: 100;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  text-align: center;
+  padding: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+  .tactical-viewport-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .tactical-viewport-grid.mode-split .viewport-center {
+    grid-template-columns: 1fr;
+    height: 800px;
+  }
+  .viewport-center {
+    height: 550px;
+  }
+}

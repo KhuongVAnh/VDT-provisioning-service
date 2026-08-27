@@ -1,72 +1,13 @@
 /**
  * ==============================================================================
- * MODULE 7: WEBSOCKET & TELEMETRY STREAM (socket.js)
+ * MODULE TELEMETRY 3: 60 FPS RENDER QUEUE & DISPATCHER (render-queue.js)
  * ==============================================================================
  * Mục đích:
- *  - Thiết lập kết nối thời gian thực 2 chiều Socket.IO tới Gateway (Port 10004).
- *  - Đăng ký nhận luồng Telemetry nhị phân 10Hz từ Redis Pub/Sub của Ingestion Engine.
- *  - Cập nhật vị trí tọa độ, góc xoay la bàn, đường bay (Flight Trails) và đẩy lên HUD.
+ *  - Hàng đợi micro-batching gom các gói tin Telemetry nhận từ WebSocket.
+ *  - Đồng bộ vẽ Marker, Heading, đường bay và HUD theo chu kỳ làm tươi màn hình (rAF 60 FPS).
+ *  - Tự động xả sạch và tái đồng bộ khi người dùng chuyển qua lại giữa các Tab trình duyệt.
  * ==============================================================================
  */
-
-/**
- * Khởi tạo kết nối Socket.IO tới máy chủ Gateway và lắng nghe các sự kiện thời gian thực.
- */
-function initWebSocket() {
-  const token = typeof getAuthToken === 'function' ? getAuthToken() : '';
-  socket = io({
-    auth: { token },
-    query: { token },
-  });
-
-  // Khi kết nối WebSocket thành công
-  socket.on('connect', () => {
-    console.log('[WEBSOCKET] Đã kết nối Socket.IO thành công (Socket ID:', socket.id, ')');
-    const wsBadge = document.getElementById('ws-status-text');
-    if (wsBadge) wsBadge.innerText = 'GATEWAY 10004 LIVE';
-
-    // Đăng ký nhận luồng Telemetry của toàn bộ phi đội Drone
-    socket.emit('subscribe:all');
-  });
-
-  // Khi mất kết nối tới máy chủ
-  socket.on('disconnect', () => {
-    console.warn('[WEBSOCKET] Mất kết nối Socket.IO! Đang chờ tự động kết nối lại...');
-    const wsBadge = document.getElementById('ws-status-text');
-    if (wsBadge) wsBadge.innerText = 'MẤT KẾT NỐI (RECONNECTING...)';
-  });
-
-  // Khi nhận được gói tin cập nhật Telemetry từ Drone
-  socket.on('telemetry:update', (data) => {
-    queueTelemetryForRender(data);
-  });
-
-  // Nhận dữ liệu stream phản hồi từ phiên Web SSH
-  socket.on('ssh:data', (payload) => {
-    if (term) {
-      const text = typeof payload === 'string' ? payload : (payload?.data || '');
-      if (text) {
-        term.write(text);
-      }
-    }
-  });
-
-  // Nhận thông báo trạng thái kết nối Web SSH (Connecting / Connected / Closed)
-  socket.on('ssh:status', (payload) => {
-    if (DOM.sshStatus) {
-      DOM.sshStatus.innerText = `Trạng thái: ${payload.message || payload.status}`;
-    }
-  });
-}
-
-function disconnectWebSocket() {
-  if (socket) {
-    try {
-      socket.disconnect();
-    } catch (e) {}
-    socket = null;
-  }
-}
 
 // Hàng đợi lưu trữ Telemetry mới nhất chờ vẽ theo chu kỳ làm tươi màn hình (60 FPS)
 const telemetryRenderQueue = new Map();
@@ -74,7 +15,7 @@ let isRenderFrameScheduled = false;
 
 /**
  * Đưa gói tin Telemetry vào hàng đợi và kích hoạt requestAnimationFrame()
- * Giúp tránh re-render DOM liên tục khi có hàng chục gói tin ùa về cùng lúc
+ * Giúp tránh re-render DOM liên tục khi có hàng chục gói tin ùa về cùng lúc.
  */
 function queueTelemetryForRender(t) {
   if (!t || !t.deviceId) return;
@@ -133,7 +74,7 @@ function processTelemetryUpdate(t) {
     fleetDevices.push(existingDevice);
     populateDroneDropdowns(fleetDevices);
   } else {
-    // Nếu là PILOT và drone này không thuộc quyền sở hữu, TUYỆT ĐỐI KHÔNG đưa vào fleetDevices
+    // Nếu là PILOT và drone này không thuộc quyền sở hữu, không đưa vào danh sách
     return;
   }
 
@@ -199,11 +140,11 @@ function processTelemetryUpdate(t) {
         map.setView([lat, lon], 16);
       }
     } else {
-      // 🟢 TỐI ƯU HÓA SIÊU NHẸ:
+      // 🟢 TỐI ƯU HÓA RENDER:
       const marker = droneMarkers[t.deviceId];
       marker.setLatLng([lat, lon]);
 
-      // 1. Xoay góc Heading trực tiếp bằng CSS Transform (không hủy và tạo lại DOM bằng setIcon)
+      // 1. Xoay góc Heading trực tiếp bằng CSS Transform
       const iconEl = marker.getElement();
       if (iconEl) {
         const wrapper = iconEl.querySelector('div');
@@ -219,7 +160,7 @@ function processTelemetryUpdate(t) {
         marker.setIcon(createDroneIcon(heading, t.armed, isMyDrone));
       }
 
-      // 3. Tối ưu đường bay: Dùng trail.addLatLng (O(1)) trực tiếp thay vì gán lại toàn bộ mảng
+      // 3. Tối ưu đường bay: Dùng trail.addLatLng (O(1)) trực tiếp
       const trail = droneFlightTrails[t.deviceId];
       if (trail) {
         trail.addLatLng([lat, lon]);
@@ -238,7 +179,7 @@ function processTelemetryUpdate(t) {
     updateHudDisplay(t);
   }
 
-  // Cập nhật định kỳ nhẹ bảng Đội Drone (nếu tab Đội Drone đang mở, mỗi 1s tối đa 1 lần)
+  // Cập nhật định kỳ bảng Đội Drone (mỗi 1s tối đa 1 lần nếu tab đang mở)
   const now = Date.now();
   const fleetTab = document.getElementById('tab-fleet');
   if (fleetTab && fleetTab.classList.contains('active') && (now - lastFleetTableUpdate > 1000)) {
@@ -246,3 +187,21 @@ function processTelemetryUpdate(t) {
     renderFleetTable(fleetDevices);
   }
 }
+
+// --- 5. TỰ ĐỘNG PHỤC HỒI DỮ LIỆU TELEMETRY KHI ACTIVE LẠI TAB TRÌNH DUYỆT ---
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    if (telemetryRenderQueue.size > 0) {
+      console.log('[WEBSOCKET] Tab active trở lại -> Đang xả hàng đợi Telemetry tồn đọng...');
+      for (const [_, payload] of telemetryRenderQueue.entries()) {
+        processTelemetryUpdate(payload);
+      }
+      telemetryRenderQueue.clear();
+    }
+
+    if (socket && !socket.connected) {
+      console.log('[WEBSOCKET] Phát hiện mất kết nối ngầm khi ẩn tab -> Đang kết nối lại...');
+      socket.connect();
+    }
+  }
+});

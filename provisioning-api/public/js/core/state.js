@@ -1,11 +1,10 @@
 /**
  * ==============================================================================
- * MODULE 1: GLOBAL STATE & DOM CACHE (state.js)
+ * MODULE CORE 1: GLOBAL STATE & DOM CACHE (state.js)
  * ==============================================================================
  * Mục đích:
  *  - Quản lý toàn bộ biến trạng thái toàn cục (State) của Dashboard.
- *  - Lưu trữ tham chiếu (Cache) các phần tử DOM quan trọng để truy cập nhanh,
- *    tránh gọi document.getElementById() nhiều lần gây giảm hiệu năng.
+ *  - Lưu trữ tham chiếu (Cache) các phần tử DOM quan trọng để truy cập nhanh.
  * ==============================================================================
  */
 

@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * MODULE 0: XÁC THỰC & BẢO VỆ ROUTE FRONTEND (auth.js)
+ * MODULE CORE 3: AUTHENTICATION & ROUTE GUARD (auth.js)
  * ==============================================================================
  * Mục đích:
  *  - Quản lý JWT Token và phiên đăng nhập người dùng (Admin / Pilot).
@@ -251,34 +251,6 @@ function fillAdminDemoAccount() {
     emailInput.value = 'admin@gmail.com';
     passwordInput.value = 'admin';
     showAuthScreen('login');
-  }
-}
-
-/**
- * Phi công Claim Drone bằng Device ID
- */
-async function handleClaimDroneSubmit() {
-  const deviceId = prompt('🚁 Nhập Mã định danh Drone (Device ID) bạn muốn nhận quyền quản lý:\n(Ví dụ: DRONE-0001, CPU Serial, MAC)');
-  if (!deviceId || !deviceId.trim()) return;
-
-  try {
-    const res = await authFetch('/api/v1/auth/claim-drone', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId: deviceId.trim() }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.message || 'Không thể thêm Drone');
-    }
-
-    alert(`✅ ${data.message}`);
-    if (typeof refreshAllData === 'function') {
-      refreshAllData();
-    }
-  } catch (err) {
-    alert(`❌ Lỗi: ${err.message}`);
   }
 }
 

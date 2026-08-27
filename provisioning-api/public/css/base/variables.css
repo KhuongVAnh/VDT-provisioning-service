@@ -1,0 +1,46 @@
+/**
+ * ==============================================================================
+ * MODULE CSS 1: THEME VARIABLES & DESIGN TOKENS (variables.css)
+ * ==============================================================================
+ * Định nghĩa bảng màu Cyberpunk / Aerospace Dark Theme, màu trạng thái,
+ * bóng đổ (Glow effect) và các biến giao diện toàn cục.
+ * ==============================================================================
+ */
+
+:root {
+  /* Màu nền & Bề mặt (Deep Space Dark) */
+  --bg-base: #060911;
+  --bg-surface: #0c1220;
+  --bg-surface-elevated: #131b2e;
+  --bg-card: rgba(15, 23, 42, 0.85);
+  --bg-glass: rgba(12, 18, 32, 0.82);
+
+  /* Đường viền & Hiệu ứng hover */
+  --border-color: rgba(255, 255, 255, 0.09);
+  --border-accent: rgba(56, 189, 248, 0.35);
+  --border-hover: rgba(56, 189, 248, 0.6);
+
+  /* Màu chủ đạo (Primary & Cyber Accent) */
+  --primary: #0284c7;
+  --primary-glow: rgba(14, 165, 233, 0.4);
+  --accent: #38bdf8;
+  --accent-cyber: #00f0ff;
+  --accent-glow: rgba(0, 240, 255, 0.35);
+
+  /* Màu trạng thái hệ thống */
+  --success: #10b981;
+  --success-glow: rgba(16, 185, 129, 0.3);
+  --warning: #f59e0b;
+  --warning-glow: rgba(245, 158, 11, 0.3);
+  --danger: #ef4444;
+  --danger-glow: rgba(239, 68, 68, 0.35);
+
+  /* Màu chữ */
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  /* Màu hiển thị Artificial Horizon Cockpit */
+  --hud-sky: #0284c7;
+  --hud-ground: #78350f;
+}

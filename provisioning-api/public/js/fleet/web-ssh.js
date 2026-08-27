@@ -1,12 +1,12 @@
 /**
  * ==============================================================================
- * MODULE 6: WEB SSH TERMINAL CLIENT (terminal.js)
+ * MODULE FLEET 3: WEB SSH TERMINAL CLIENT (web-ssh.js)
  * ==============================================================================
  * Mục đích:
  *  - Khởi tạo và quản lý giao diện dòng lệnh Web SSH trực tiếp trên trình duyệt
  *    sử dụng thư viện Xterm.js và kết nối 2 chiều Socket.IO.
  *  - Cho phép quản trị viên / kỹ sư SSH an toàn vào Drone qua mạng nội bộ
- *    WireGuard VPN (10.13.37.X) mà không cần cấu hình cổng công khai.
+ *    WireGuard VPN (10.13.37.X) mà không cần cấu hình mở cổng công khai.
  * ==============================================================================
  */
 
