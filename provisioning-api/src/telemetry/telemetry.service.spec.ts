@@ -11,6 +11,7 @@ describe('TelemetryService', () => {
   const mockRedisService = {
     getSubscriber: jest.fn().mockReturnValue({
       subscribe: jest.fn((channel, cb) => cb(null)),
+      psubscribe: jest.fn((pattern, cb) => cb(null)),
       on: jest.fn(),
     }),
     getAllTelemetryStates: jest.fn().mockResolvedValue({
@@ -124,5 +125,24 @@ describe('TelemetryService', () => {
     const state = await service.getDeviceState('DRONE-001');
     expect(state.deviceId).toBe('DRONE-001');
     expect(state.telemetry.battery.percentage).toBe(90);
+  });
+
+  it('phải đánh dấu connected = false khi telemetry bị quá hạn 10s', async () => {
+    mockRedisService.getDeviceTelemetryState.mockResolvedValueOnce({
+      deviceId: 'DRONE-001',
+      connected: true,
+      armed: true,
+      timestamp: Date.now() - 15000, // 15s trước
+    });
+
+    const state = await service.getDeviceState('DRONE-001');
+    expect(state.telemetry.connected).toBe(false);
+  });
+
+  it('phải chạy onModuleInit warm-up và onModuleDestroy dọn dẹp interval', async () => {
+    await service.onModuleInit();
+    expect(mockRedisService.getAllTelemetryStates).toHaveBeenCalled();
+
+    service.onModuleDestroy();
   });
 });

@@ -15,10 +15,12 @@
  */
 function isDroneOnline(t) {
   if (!t) return false;
-  if (t.connected === false && !t.lastReceivedAt) return false;
+  // Ưu tiên số 1: Nếu Backend hoặc gói tin đánh dấu đã ngắt kết nối -> Trả về Offline ngay lập tức
+  if (t.connected === false) return false;
+  // Nếu có dữ liệu nhận gần đây (< 10s) và không bị đánh dấu ngắt kết nối -> Online
   if (t.lastReceivedAt && (Date.now() - t.lastReceivedAt < 10000)) return true;
   if (t.timestamp && (Date.now() - t.timestamp < 10000)) return true;
-  if (t.flightMode && t.flightMode !== 'UNKNOWN' && t.connected !== false) return true;
+  if (t.flightMode && t.flightMode !== 'UNKNOWN') return true;
   return !!t.connected;
 }
 

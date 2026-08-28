@@ -54,7 +54,8 @@ export class ProvisioningService implements OnModuleInit {
             await this.wireguardService.addPeer(device.vpnPublicKey, device.vpnIp);
             restoredCount++;
           } catch (err) {
-            this.logger.error(`Không thể khôi phục peer cho thiết bị ${device.deviceId}: ${err.message}`);
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            this.logger.error(`Không thể khôi phục peer cho thiết bị ${device.deviceId}: ${errorMessage}`);
           }
         }
       }
@@ -95,7 +96,8 @@ export class ProvisioningService implements OnModuleInit {
               await this.deviceService.syncManualKernelPeer(ip, peer.publicKey, peer.latestHandshake);
               syncedCount++;
             } catch (err) {
-              this.logger.debug(`Không thể đồng bộ kernel peer ${ip}: ${err.message}`);
+              const errorMessage = err instanceof Error ? err.message : String(err);
+              this.logger.debug(`Không thể đồng bộ kernel peer ${ip}: ${errorMessage}`);
             }
           }
         }
@@ -103,7 +105,8 @@ export class ProvisioningService implements OnModuleInit {
 
       this.logger.log(`Hoàn tất quét Kernel peers! Đã kiểm tra & khóa ${syncedCount} IP trong IP Pool.`);
     } catch (error) {
-      this.logger.warn(`Lỗi khi quét WireGuard kernel peers lúc khởi động: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Lỗi khi quét WireGuard kernel peers lúc khởi động: ${errorMessage}`);
     }
   }
 

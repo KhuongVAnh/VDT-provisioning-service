@@ -25,6 +25,9 @@ describe('RedisService', () => {
   });
 
   it('should gracefully handle empty client operations', async () => {
+    expect(service.getIsConnected()).toBe(false);
+    expect(service.isReady()).toBe(false);
+
     const states = await service.getAllTelemetryStates();
     expect(states).toEqual({});
 

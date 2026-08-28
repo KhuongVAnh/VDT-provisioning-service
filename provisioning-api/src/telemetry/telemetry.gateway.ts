@@ -91,8 +91,9 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
         client.join(userRoom);
         this.logger.log(`👤 [PILOT] Client ${client.id} (${payload.email}) đã tham gia phòng cá nhân '${userRoom}'`);
       }
-    } catch (err) {
-      this.logger.warn(`Client WebSocket [${client.id}] token không hợp lệ: ${err.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Client WebSocket [${client.id}] token không hợp lệ: ${errorMessage}`);
     }
   }
 

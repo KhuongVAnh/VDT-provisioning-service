@@ -47,7 +47,8 @@ export class DeviceService implements OnModuleInit {
       }
       this.logger.log(`Đã đồng bộ ${activeDevices.length} ánh xạ IP Drone vào Redis drone:ip_map`);
     } catch (error) {
-      this.logger.warn(`Không thể đồng bộ IP Mapping lúc khởi động: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Không thể đồng bộ IP Mapping lúc khởi động: ${errorMessage}`);
     }
   }
 

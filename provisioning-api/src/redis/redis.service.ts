@@ -23,7 +23,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private subscriber: Redis | null = null;
   private isConnected = false;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
 
   async onModuleInit() {
     const redisHost = this.configService.get<string>('REDIS_HOST', '127.0.0.1');
@@ -54,32 +58,70 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`Kết nối thành công tới Redis Server tại ${redisHost}:${redisPort}`);
       });
 
+      this.client.on('ready', () => {
+        this.isConnected = true;
+        this.logger.log(`Redis Server đã sẵn sàng nhận lệnh tại ${redisHost}:${redisPort}`);
+      });
+
+      this.client.on('close', () => {
+        this.isConnected = false;
+        this.logger.warn(`Kết nối tới Redis Server (${redisHost}:${redisPort}) đã bị đóng.`);
+      });
+
+      this.client.on('reconnecting', () => {
+        this.isConnected = false;
+        this.logger.log(`Đang thử kết nối lại tới Redis Server (${redisHost}:${redisPort})...`);
+      });
+
+      this.client.on('end', () => {
+        this.isConnected = false;
+        this.logger.warn(`Đã dừng kết nối tới Redis Server (${redisHost}:${redisPort}).`);
+      });
+
       this.client.on('error', (err) => {
-        this.logger.warn(`Lỗi kết nối Redis (${redisHost}:${redisPort}): ${err.message}`);
+        this.isConnected = false;
+        this.logger.warn(`Lỗi kết nối Redis (${redisHost}:${redisPort}): ${this.getErrorMessage(err)}`);
       });
 
       this.subscriber.on('error', (err) => {
-        this.logger.warn(`Lỗi kết nối Redis Subscriber: ${err.message}`);
+        this.logger.warn(`Lỗi kết nối Redis Subscriber: ${this.getErrorMessage(err)}`);
       });
 
       await this.client.connect().catch((err) => {
-        this.logger.warn(`Không thể kết nối ngay tới Redis: ${err.message}. Dịch vụ sẽ tự động thử lại.`);
+        this.isConnected = false;
+        this.logger.warn(`Không thể kết nối ngay tới Redis: ${this.getErrorMessage(err)}. Dịch vụ sẽ tự động thử lại.`);
       });
 
-      await this.subscriber.connect().catch(() => {});
+      await this.subscriber.connect().catch(() => { });
     } catch (error) {
-      this.logger.warn(`Khởi tạo Redis client gặp lỗi: ${error.message}`);
+      this.isConnected = false;
+      this.logger.warn(`Khởi tạo Redis client gặp lỗi: ${this.getErrorMessage(error)}`);
     }
   }
 
   async onModuleDestroy() {
+    this.isConnected = false;
     if (this.client) {
-      await this.client.quit().catch(() => {});
+      await this.client.quit().catch(() => { });
     }
     if (this.subscriber) {
-      await this.subscriber.quit().catch(() => {});
+      await this.subscriber.quit().catch(() => { });
     }
     this.logger.log('Đã đóng toàn bộ kết nối Redis.');
+  }
+
+  /**
+   * Kiểm tra trạng thái kết nối hiện tại tới Redis
+   */
+  getIsConnected(): boolean {
+    return this.isConnected;
+  }
+
+  /**
+   * Kiểm tra xem Redis có sẵn sàng xử lý yêu cầu hay không
+   */
+  isReady(): boolean {
+    return this.isConnected;
   }
 
   /**
@@ -109,7 +151,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.hset('drone:ip_map', vpnIp, deviceId);
       this.logger.debug(`Đã đồng bộ ánh xạ IP ${vpnIp} -> ${deviceId} vào Redis`);
     } catch (error) {
-      this.logger.warn(`Không thể ghi ánh xạ IP vào Redis: ${error.message}`);
+      this.logger.warn(`Không thể ghi ánh xạ IP vào Redis: ${this.getErrorMessage(error)}`);
     }
   }
 
@@ -122,7 +164,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.hdel('drone:ip_map', vpnIp);
       this.logger.debug(`Đã xóa ánh xạ IP ${vpnIp} khỏi Redis`);
     } catch (error) {
-      this.logger.warn(`Không thể xóa ánh xạ IP khỏi Redis: ${error.message}`);
+      this.logger.warn(`Không thể xóa ánh xạ IP khỏi Redis: ${this.getErrorMessage(error)}`);
     }
   }
 
@@ -147,7 +189,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       }
       return parsed;
     } catch (error) {
-      this.logger.warn(`Lỗi khi đọc trạng thái Telemetry từ Redis: ${error.message}`);
+      this.logger.warn(`Lỗi khi đọc trạng thái Telemetry từ Redis: ${this.getErrorMessage(error)}`);
       return {};
     }
   }
@@ -162,7 +204,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       if (!jsonStr) return null;
       return JSON.parse(jsonStr);
     } catch (error) {
-      this.logger.warn(`Lỗi khi đọc trạng thái Drone ${deviceId} từ Redis: ${error.message}`);
+      this.logger.warn(`Lỗi khi đọc trạng thái Drone ${deviceId} từ Redis: ${this.getErrorMessage(error)}`);
       return null;
     }
   }
@@ -180,7 +222,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.sadd('drone:focus_set', deviceId);
       this.logger.debug(`🎯 [FOCUS SET] Đã thêm [${deviceId}] vào drone:focus_set`);
     } catch (error) {
-      this.logger.warn(`Lỗi khi thêm ${deviceId} vào drone:focus_set: ${error.message}`);
+      this.logger.warn(`Lỗi khi thêm ${deviceId} vào drone:focus_set: ${this.getErrorMessage(error)}`);
     }
   }
 
@@ -193,7 +235,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.srem('drone:focus_set', deviceId);
       this.logger.debug(`⚪ [FOCUS SET] Đã xóa [${deviceId}] khỏi drone:focus_set`);
     } catch (error) {
-      this.logger.warn(`Lỗi khi xóa ${deviceId} khỏi drone:focus_set: ${error.message}`);
+      this.logger.warn(`Lỗi khi xóa ${deviceId} khỏi drone:focus_set: ${this.getErrorMessage(error)}`);
     }
   }
 
@@ -205,7 +247,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       return await this.client.smembers('drone:focus_set');
     } catch (error) {
-      this.logger.warn(`Lỗi khi đọc drone:focus_set: ${error.message}`);
+      this.logger.warn(`Lỗi khi đọc drone:focus_set: ${this.getErrorMessage(error)}`);
       return [];
     }
   }
@@ -224,7 +266,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       const minScore = Math.floor(Date.now() / 1000) - withinSeconds;
       return await this.client.zrangebyscore('drone:heartbeats', minScore, '+inf');
     } catch (error) {
-      this.logger.warn(`Lỗi khi truy vấn drone:heartbeats: ${error.message}`);
+      this.logger.warn(
+        `Lỗi khi truy vấn drone:heartbeats: ${this.getErrorMessage(error)}`,
+      );
       return [];
     }
   }
@@ -238,7 +282,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       const minScore = Math.floor(Date.now() / 1000) - withinSeconds;
       return await this.client.zcount('drone:heartbeats', minScore, '+inf');
     } catch (error) {
-      this.logger.warn(`Lỗi khi đếm số lượng heartbeat: ${error.message}`);
+      this.logger.warn(
+        `Lỗi khi đếm số lượng heartbeat: ${this.getErrorMessage(error)}`,
+      );
       return 0;
     }
   }

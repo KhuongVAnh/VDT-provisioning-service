@@ -16,7 +16,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @Controller('api/v1/telemetry')
 @UseGuards(JwtAuthGuard)
 export class TelemetryController {
-  constructor(private readonly telemetryService: TelemetryService) {}
+  constructor(private readonly telemetryService: TelemetryService) { }
 
   /**
    * ============================================================================

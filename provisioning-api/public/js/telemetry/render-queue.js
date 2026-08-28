@@ -57,7 +57,7 @@ function processTelemetryUpdate(t) {
   // Cập nhật trạng thái telemetry trong bộ nhớ fleetDevices
   const currentUser = typeof getAuthUser === 'function' ? getAuthUser() : null;
   let existingDevice = fleetDevices.find(d => d.deviceId === t.deviceId);
-  
+
   if (existingDevice) {
     existingDevice.telemetry = t;
   } else if (currentUser && currentUser.role === 'ADMIN') {
@@ -96,10 +96,21 @@ function processTelemetryUpdate(t) {
     DOM.kpiOnline.innerText = onlineCount;
   }
 
-  // Nếu Drone Offline -> Gỡ bỏ khỏi bản đồ tác chiến và cập nhật menu chọn
+  // Nếu Drone Offline -> Gỡ bỏ khỏi bản đồ tác chiến, cập nhật HUD và Bảng Đội Drone
   if (!online) {
     removeDroneFromMap(t.deviceId);
     populateDroneDropdowns(fleetDevices);
+
+    // Cập nhật HUD sang trạng thái OFFLINE (màu xám) nếu đang chọn Drone này
+    if (activeDroneId === t.deviceId || activeDroneId === 'all') {
+      updateHudDisplay(t);
+    }
+
+    // Cập nhật ngay Bảng Đội Drone nếu đang mở tab
+    const fleetTab = document.getElementById('tab-fleet');
+    if (fleetTab && fleetTab.classList.contains('active')) {
+      renderFleetTable(fleetDevices);
+    }
     return;
   }
 
