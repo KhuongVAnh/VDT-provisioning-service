@@ -55,12 +55,12 @@ services:
       - PUBLISH_INTERVAL_MS=${PUBLISH_INTERVAL_MS:-100}
       - VPN_SUBNET_PREFIX=${VPN_SUBNET_PREFIX:-10.13.37.}
 
-  # 4. NestJS API Gateway, Provisioning & Mission Control Dashboard
-  provisioning-api:
+  # 4. NestJS API Gateway, Fleet Management & Mission Control Dashboard
+  drone-fleet-manager:
     build:
-      context: ./provisioning-api
+      context: ./drone-fleet-manager
       dockerfile: Dockerfile
-    container_name: drone-provisioning-api
+    container_name: drone-fleet-manager
     restart: unless-stopped
     network_mode: "host"
     cap_add:
@@ -76,7 +76,7 @@ services:
     env_file:
       - path: ./.env
         required: false
-      - path: ./provisioning-api/.env
+      - path: ./drone-fleet-manager/.env
         required: false
     environment:
       - POSTGRES_HOST=${POSTGRES_HOST:-127.0.0.1}

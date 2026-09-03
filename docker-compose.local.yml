@@ -51,11 +51,11 @@ services:
       - VPN_SUBNET_PREFIX=10.13.37.
 
   # 4. NestJS API Gateway & Mission Control Dashboard (Local Bridge Mode)
-  provisioning-api:
+  drone-fleet-manager:
     build:
-      context: ./provisioning-api
+      context: ./drone-fleet-manager
       dockerfile: Dockerfile
-    container_name: drone-provisioning-api
+    container_name: drone-fleet-manager
     restart: unless-stopped
     ports:
       - "${PORT:-10004}:10004"

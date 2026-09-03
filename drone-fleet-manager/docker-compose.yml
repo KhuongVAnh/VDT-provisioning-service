@@ -1,7 +1,7 @@
 services:
-  provisioning-api:
+  drone-fleet-manager:
     build: .
-    container_name: drone-provisioning-api
+    container_name: drone-fleet-manager
     # BẮT BUỘC: Dùng chung mạng với Host VPS để cấu hình trực tiếp card mạng thật
     network_mode: "host"
     # BẮT BUỘC: Quyền Admin Mạng để được phép cấu hình WireGuard
