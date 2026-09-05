@@ -17,21 +17,21 @@ export default {
           glow: 'rgba(0, 229, 255, 0.15)',
         },
         obsidian: {
-          950: '#0B1120', // Deep Aerospace Navy background (thay thế màu đen kịt)
-          900: '#131D31', // Deep Aerospace Navy card surface (khối thẻ nổi)
-          850: '#172239', // Elevated surface
-          800: '#1E293B', // Viền Slate Navy
-          700: '#2D3D5E', // Viền sáng
+          950: '#12151B', // Gunmetal Slate background (Xám than chì ấm, hoàn toàn khử ám xanh)
+          900: '#1A202C', // Gunmetal Card surface (Đá phiến sẫm trung tính)
+          850: '#222B3C', // Elevated surface
+          800: '#2D3748', // Viền khung kim loại công nghiệp
+          700: '#4A5568', // Viền sáng
         },
         titanium: {
-          50: '#F8FAFC',  // Nền thẻ sáng (Slate-50 ngà nhạt, thay cho trắng tinh)
-          100: '#EEF2F6', // Nền ứng dụng sáng (Warm Titanium dịu mắt)
-          200: '#E2E8F0', // Nền hover
-          300: '#CBD5E1', // Viền bạc Titan
-          400: '#94A3B8', // Chữ phụ mờ
-          700: '#334155', // Chữ phụ
-          800: '#1E293B', // Chữ đậm
-          900: '#0F172A', // Chữ chính (Slate Navy thẫm)
+          50: '#F4F1EA',  // Nền thẻ sáng (Màu giấy can ngà nhám nhẹ, Tactical Parchment)
+          100: '#EAE6DF', // Nền ứng dụng sáng (Tone cát sa mạc / giấy bản đồ dã chiến)
+          200: '#E0DBD0', // Nền hover
+          300: '#D3CCC0', // Viền màu đá ấm
+          400: '#A39C90', // Chữ phụ mờ
+          700: '#736D64', // Chữ phụ
+          800: '#3D3933', // Chữ đậm
+          900: '#24221E', // Chữ chính (Đen than củi, triệt tiêu 100% độ lóa)
         },
       },
       fontFamily: {

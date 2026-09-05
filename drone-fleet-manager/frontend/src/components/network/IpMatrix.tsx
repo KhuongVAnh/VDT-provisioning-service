@@ -133,7 +133,7 @@ export const IpMatrix: React.FC<IpMatrixProps> = ({
   const activeInfo = hoveredCell || selectedCell;
 
   return (
-    <div className="w-full bg-[#F8FAFC]/90 dark:bg-obsidian-900/90 backdrop-blur-md rounded-2xl border border-slate-300/80 dark:border-slate-800 p-4 sm:p-5 shadow-sm select-none transition-colors">
+    <div className="w-full bg-[#F4F1EA]/90 dark:bg-obsidian-900/90 backdrop-blur-md rounded-2xl border border-slate-300/80 dark:border-slate-800 p-4 sm:p-5 shadow-sm select-none transition-colors">
 
       {/* Header & Description */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-300/80 dark:border-slate-800">
@@ -253,7 +253,7 @@ export const IpMatrix: React.FC<IpMatrixProps> = ({
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-slate-500 dark:text-slate-400 font-sans">Địa chỉ IP:</span>
-              <span className="font-bold text-slate-900 dark:text-white bg-[#F8FAFC] dark:bg-obsidian-950 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700">
+              <span className="font-bold text-slate-900 dark:text-white bg-[#F4F1EA] dark:bg-obsidian-950 px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700">
                 {activeInfo.ip}
               </span>
             </div>

@@ -41,7 +41,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#F8FAFC]/85 dark:bg-obsidian-900/85 backdrop-blur-md rounded-xl border border-slate-300/70 dark:border-slate-800/80 p-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
+    <div className="w-full bg-[#F4F1EA]/85 dark:bg-obsidian-900/85 backdrop-blur-md rounded-xl border border-slate-300/70 dark:border-slate-800/80 p-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
 
       {/* Target Device Status Tag */}
       <div className="flex items-center gap-2.5">

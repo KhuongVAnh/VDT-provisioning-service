@@ -58,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, [devices, telemetrySnapshot]);
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#F8FAFC]/85 dark:bg-obsidian-950/85 backdrop-blur-md border-b border-slate-300/80 dark:border-slate-800/80 px-4 py-2.5 transition-colors duration-200">
+    <header className="sticky top-0 z-40 w-full bg-[#F4F1EA]/85 dark:bg-obsidian-950/85 backdrop-blur-md border-b border-slate-300/80 dark:border-slate-800/80 px-4 py-2.5 transition-colors duration-200">
       <div className="max-w-[1920px] mx-auto flex flex-wrap items-center justify-between gap-3">
 
         {/* Logo & Gateway Status */}
@@ -96,21 +96,21 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-wrap items-center gap-2 bg-slate-100/90 dark:bg-obsidian-900/90 p-1 rounded-xl border border-slate-300/80 dark:border-slate-800">
 
           {/* Quick Target Drone Selector */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F8FAFC] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800 text-xs">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F4F1EA] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800 text-xs">
             <span className="text-slate-400 text-[11px] font-mono">MỤC TIÊU:</span>
             <select
               value={activeDroneId}
               onChange={(e) => onSelectDrone(e.target.value)}
               className="bg-transparent text-xs font-mono font-medium focus:outline-none text-slate-800 dark:text-slate-200 cursor-pointer py-1"
             >
-              <option value="all" className="bg-[#F8FAFC] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200">
+              <option value="all" className="bg-[#F4F1EA] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200">
                 🌐 Toàn Phi Đội ({onlineDevices.length})
               </option>
               {onlineDevices.map((d) => (
                 <option
                   key={d.deviceId}
                   value={d.deviceId}
-                  className="bg-[#F8FAFC] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200 font-mono"
+                  className="bg-[#F4F1EA] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200 font-mono"
                 >
                   🟢 {d.deviceId} {d.vpnIp ? `(${d.vpnIp})` : ''}
                 </option>
@@ -124,7 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onChangeLayoutMode('mode-map')}
               title="Chế độ Bản đồ (Phím 1)"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${layoutMode === 'mode-map'
-                ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
+                ? 'bg-[#F4F1EA] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
@@ -137,7 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onChangeLayoutMode('mode-split')}
               title="Chế độ Chia đôi (Phím 2)"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${layoutMode === 'mode-split'
-                ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
+                ? 'bg-[#F4F1EA] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
@@ -150,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onChangeLayoutMode('mode-cockpit')}
               title="Chế độ Cockpit FPV (Phím 3)"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${layoutMode === 'mode-cockpit'
-                ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
+                ? 'bg-[#F4F1EA] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >

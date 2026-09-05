@@ -64,7 +64,7 @@ export const FleetTable: React.FC<FleetTableProps> = ({
   }, [devices, searchTerm, filterMode, telemetrySnapshot]);
 
   return (
-    <div className="w-full bg-[#F8FAFC]/85 dark:bg-obsidian-900/85 backdrop-blur-md rounded-xl border border-slate-300/70 dark:border-slate-800/80 overflow-hidden shadow-sm flex flex-col">
+    <div className="w-full bg-[#F4F1EA]/85 dark:bg-obsidian-900/85 backdrop-blur-md rounded-xl border border-slate-300/70 dark:border-slate-800/80 overflow-hidden shadow-sm flex flex-col">
 
       {/* Table Header Controls */}
       <div className="p-3 border-b border-slate-300/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
@@ -75,7 +75,7 @@ export const FleetTable: React.FC<FleetTableProps> = ({
             type="button"
             onClick={() => setViewTab('table')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${viewTab === 'table'
-              ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
+              ? 'bg-[#F4F1EA] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
           >
@@ -87,7 +87,7 @@ export const FleetTable: React.FC<FleetTableProps> = ({
             type="button"
             onClick={() => setViewTab('ip-matrix')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${viewTab === 'ip-matrix'
-              ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
+              ? 'bg-[#F4F1EA] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
           >
@@ -106,7 +106,7 @@ export const FleetTable: React.FC<FleetTableProps> = ({
                   key={mode}
                   onClick={() => setFilterMode(mode)}
                   className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${filterMode === mode
-                    ? 'bg-[#F8FAFC] dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-semibold'
+                    ? 'bg-[#F4F1EA] dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-semibold'
                     : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                 >

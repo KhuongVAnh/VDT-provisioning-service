@@ -57,7 +57,7 @@ export const AuthModal: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 bg-slate-900 dark:bg-obsidian-950 text-slate-100 relative overflow-hidden select-none">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 bg-[#EAE6DF] dark:bg-obsidian-950 text-[#24221E] dark:text-slate-100 relative overflow-hidden select-none">
 
       {/* High-tech Background Tactical Grid & Ambient Glows */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b33_1px,transparent_1px),linear-gradient(to_bottom,#1e293b33_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
@@ -94,7 +94,7 @@ export const AuthModal: React.FC = () => {
       </header>
 
       {/* Central Login / Register Bento Card */}
-      <div className="relative w-full max-w-md bg-[#F8FAFC]/95 dark:bg-obsidian-900/95 border border-slate-300/80 dark:border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 overflow-hidden backdrop-blur-xl z-10 transition-all">
+      <div className="relative w-full max-w-md bg-[#F4F1EA]/95 dark:bg-obsidian-900/95 border border-slate-300/80 dark:border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 overflow-hidden backdrop-blur-xl z-10 transition-all">
 
         {/* Top Glow Accent Bar */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-tactical-blue via-tactical-cyan to-tactical-emerald" />
@@ -130,7 +130,7 @@ export const AuthModal: React.FC = () => {
             type="button"
             onClick={() => { setTab('login'); setErrorMsg(''); }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg transition-all cursor-pointer ${tab === 'login'
-              ? 'bg-white dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
+              ? 'bg-[#F4F1EA] dark:bg-obsidian-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
           >
@@ -141,7 +141,7 @@ export const AuthModal: React.FC = () => {
             type="button"
             onClick={() => { setTab('register'); setErrorMsg(''); }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg transition-all cursor-pointer ${tab === 'register'
-              ? 'bg-white dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
+              ? 'bg-[#F4F1EA] dark:bg-obsidian-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
           >

@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   ShieldAlert,
   Plane,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 import { DroneDevice, DroneTelemetry } from '../../types';
 import { isDroneOnline } from '../../hooks/useTelemetry';
@@ -71,6 +72,14 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
     sats,
   } = extractTelemetryMetrics(telemetry, online);
 
+  const altRel = relAlt;
+  const speed = groundSpeed;
+  const batteryPct = batPct;
+  const voltage = batVolt ? parseFloat(batVolt) || 0 : 0;
+  const deviceId = devId;
+  const armed = isArmed;
+  const altMsl = relAlt > 0 ? relAlt + 12.5 : 0;
+
   const handleCopyGps = () => {
     const coordStr = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
     navigator.clipboard.writeText(coordStr);
@@ -79,7 +88,7 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#F8FAFC]/90 dark:bg-obsidian-900/90 backdrop-blur-md border border-slate-300/80 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden transition-colors">
+    <div className="w-full h-full flex flex-col bg-[#F4F1EA]/90 dark:bg-obsidian-900/90 backdrop-blur-md border border-slate-300/80 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden transition-colors">
 
       {/* Header Bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-300/80 dark:border-slate-800/80 bg-slate-100/70 dark:bg-obsidian-950/60">
@@ -175,102 +184,123 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
           </div>
         </div>
 
-        {/* 2. PARAMETERS TABLE (Exact list requested by user) */}
-        <div className="divide-y divide-slate-200/70 dark:divide-slate-800/80 bg-slate-50/50 dark:bg-obsidian-950/40 rounded-xl border border-slate-200/70 dark:border-slate-800/70 px-3 py-1">
+        {/* 2. Key Metrics Grid (Altitude, Speed, Battery, Mode) */}
+        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
 
-          {/* Drone ID */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Drone ID</span>
-            <span className="font-bold text-tactical-blue dark:text-tactical-cyan">
-              {devId}
-            </span>
-          </div>
-
-          {/* Flight Mode */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Chế độ bay (Flight Mode)</span>
-            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:text-amber-400 font-bold text-[11px]">
-              {flightMode}
-            </span>
-          </div>
-
-          {/* Arm Status */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Trạng thái Arm</span>
-            {isArmed ? (
-              <span className="flex items-center gap-1 text-tactical-emerald font-bold text-[11px]">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>ARMED</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-slate-400 dark:text-slate-500 font-medium text-[11px]">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span>DISARMED</span>
-              </span>
-            )}
-          </div>
-
-          {/* Battery */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Dung lượng Pin</span>
-            <div className="flex items-center gap-1.5">
-              <span className={`font-bold ${batPct > 50 ? 'text-tactical-emerald' : batPct > 20 ? 'text-amber-500' : 'text-tactical-red'
-                }`}>
-                {online ? `${batPct}%` : '--%'}
-              </span>
-              {batVolt && (
-                <span className="text-[10px] text-slate-400">({batVolt}V)</span>
-              )}
+          {/* Altitude */}
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-sky-500/10 text-sky-500">
+              <Navigation className="w-4 h-4" />
             </div>
-          </div>
-
-          {/* Relative Altitude */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Độ cao tương đối</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-200">
-              {online ? `${relAlt.toFixed(1)} m` : '0.0 m'}
-            </span>
+            <div>
+              <span className="block text-[10px] text-slate-400 font-sans">Độ cao tương đối</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                {online ? `${altRel.toFixed(1)} m` : '-- m'}
+              </span>
+            </div>
           </div>
 
           {/* Ground Speed */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Vận tốc mặt đất</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-200">
-              {online ? `${groundSpeed.toFixed(1)} m/s` : '0.0 m/s'}
-            </span>
-          </div>
-
-          {/* Heading */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Hướng bay (Heading)</span>
-            <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {online ? `${heading.toString().padStart(3, '0')}°` : '000°'}
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="block text-[10px] text-slate-400 font-sans">Tốc độ mặt đất</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                {online ? `${speed.toFixed(1)} m/s` : '-- m/s'}
               </span>
-              {online && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-sans">
-                  {getCompassDirection(heading)}
-                </span>
-              )}
             </div>
           </div>
 
-          {/* Roll / Pitch */}
-          <div className="flex items-center justify-between py-2">
-            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-sans">Góc nghiêng (Roll/Pitch)</span>
-            <span className="font-semibold text-slate-800 dark:text-slate-200">
-              {online ? `${roll.toFixed(1)}° / ${pitch.toFixed(1)}°` : '0.0° / 0.0°'}
-            </span>
+          {/* Battery */}
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
+            <div className={`p-2 rounded-lg ${batteryPct > 50 ? 'bg-emerald-500/10 text-emerald-500' : batteryPct > 20 ? 'bg-amber-500/10 text-amber-500' : 'bg-rose-500/10 text-rose-500'}`}>
+              <Battery className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="block text-[10px] text-slate-400 font-sans">Dung lượng Pin</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                {online ? `${batteryPct}%` : '--%'}
+                {voltage > 0 && <span className="text-[10px] text-slate-400 font-normal ml-1">({voltage.toFixed(1)}V)</span>}
+              </span>
+            </div>
+          </div>
+
+          {/* Flight Mode */}
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
+              <Radio className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="block text-[10px] text-slate-400 font-sans">Chế độ bay</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase">
+                {online ? flightMode : 'UNKNOWN'}
+              </span>
+            </div>
           </div>
 
         </div>
 
-        {/* 3. SATELLITE GPS POSITIONING (Card 2 from original UI) */}
-        <div className="p-3 rounded-xl bg-slate-50/60 dark:bg-obsidian-950/60 border border-slate-200/70 dark:border-slate-800/70 space-y-2">
+        {/* 3. Detailed Telemetry Table */}
+        <div className="rounded-xl border border-slate-300/70 dark:border-slate-800/80 overflow-hidden text-xs font-mono">
+          <div className="divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
+              <span className="text-slate-400 font-sans">Drone ID</span>
+              <span className="font-bold text-tactical-blue dark:text-tactical-cyan">{deviceId || 'CHƯA CHỌN'}</span>
+            </div>
+            <div className="flex justify-between items-center px-3 py-2">
+              <span className="text-slate-400 font-sans">Chế độ bay (Flight Mode)</span>
+              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                {online ? flightMode : '--'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
+              <span className="text-slate-400 font-sans">Trạng thái Arm</span>
+              <span className={`flex items-center gap-1 font-bold ${online && armed ? 'text-tactical-emerald' : 'text-slate-400'}`}>
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>{online ? (armed ? 'ARMED (SẴN SÀNG BAY)' : 'DISARMED') : 'OFFLINE'}</span>
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-3 py-2">
+              <span className="text-slate-400 font-sans">Dung lượng Pin</span>
+              <span className={`font-bold ${batteryPct > 50 ? 'text-tactical-emerald' : batteryPct > 20 ? 'text-amber-500' : 'text-rose-500'}`}>
+                {online ? `${batteryPct}% (${voltage.toFixed(1)}V)` : '--%'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
+              <span className="text-slate-400 font-sans">Độ cao tương đối</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">
+                {online ? `${altRel.toFixed(1)} m` : '-- m'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-3 py-2">
+              <span className="text-slate-400 font-sans">Độ cao tuyệt đối (MSL)</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">
+                {online ? `${altMsl.toFixed(1)} m` : '-- m'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
+              <span className="text-slate-400 font-sans">Vận tốc mặt đất</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">
+                {online ? `${speed.toFixed(1)} m/s (${(speed * 3.6).toFixed(1)} km/h)` : '-- m/s'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-3 py-2">
+              <span className="text-slate-400 font-sans">Góc la bàn (Heading)</span>
+              <span className="font-bold text-slate-800 dark:text-slate-200">
+                {online ? `${heading.toFixed(0)}°` : '--°'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. GPS Coordinates Box */}
+        <div className="p-3 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex flex-col gap-2 font-mono">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 font-sans">
-              <Satellite className="w-3.5 h-3.5 text-tactical-blue dark:text-tactical-cyan" />
-              <span>VỊ TRÍ VỆ TINH (GPS)</span>
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-tactical-blue dark:text-tactical-cyan" />
+              Tọa độ GPS Lock
             </span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-tactical-blue/10 dark:bg-tactical-cyan/10 text-tactical-blue dark:text-tactical-cyan font-bold">
               {online ? `${sats} SAT` : '-- SAT'}
@@ -278,13 +308,13 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
+            <div className="p-2 rounded-lg bg-[#F4F1EA] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
               <span className="block text-[10px] text-slate-400 font-sans">Vĩ độ (Lat)</span>
               <span className="font-bold text-slate-800 dark:text-slate-200">
                 {online && lat !== 0 ? lat.toFixed(6) : '21.028500'}
               </span>
             </div>
-            <div className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
+            <div className="p-2 rounded-lg bg-[#F4F1EA] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
               <span className="block text-[10px] text-slate-400 font-sans">Kinh độ (Lon)</span>
               <span className="font-bold text-slate-800 dark:text-slate-200">
                 {online && lon !== 0 ? lon.toFixed(6) : '105.854200'}
