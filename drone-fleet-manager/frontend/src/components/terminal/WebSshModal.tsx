@@ -75,7 +75,7 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
   const targetDevice = devices.find((d) => d.deviceId === selectedId);
   const vpnIp = targetDevice?.vpnIp || '';
 
-  // Focus input field when modal opens (DO NOT focus terminal)
+  // Focus input field when modal opens (DO NOT focus terminal or jump to password)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -85,15 +85,11 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
     }
 
     const timer = setTimeout(() => {
-      if (username) {
-        passwordInputRef.current?.focus();
-      } else {
-        usernameInputRef.current?.focus();
-      }
+      usernameInputRef.current?.focus();
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isConnected, username]);
+  }, [isOpen, isConnected]);
 
   // Safe clipboard copy with fallback
   const copyToClipboard = useCallback(async (text: string): Promise<boolean> => {
@@ -681,7 +677,6 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
                           type="button"
                           onClick={() => {
                             setUsername(u);
-                            passwordInputRef.current?.focus();
                           }}
                           className={`px-2 py-0.5 rounded-lg text-[11px] font-mono transition-colors cursor-pointer ${username === u
                             ? 'bg-tactical-cyan/20 text-tactical-cyan border border-tactical-cyan/40 font-bold'
