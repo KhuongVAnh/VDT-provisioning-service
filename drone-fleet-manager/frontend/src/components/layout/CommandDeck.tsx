@@ -8,7 +8,8 @@ import {
   Terminal,
   Copy,
   Crosshair,
-  AlertTriangle
+  AlertTriangle,
+  Lock
 } from 'lucide-react';
 import { DroneDevice, DroneTelemetry } from '../../types';
 import { useToast } from '../../context/ToastContext';
@@ -31,6 +32,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
 }) => {
   const { toast } = useToast();
   const { armed, lat, lon, hasGps } = extractTelemetryMetrics(telemetry);
+  const isAllSelected = activeDroneId === 'all';
 
   const copyCoords = () => {
     if (hasGps) {
@@ -41,7 +43,7 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#F4F1EA]/85 dark:bg-obsidian-900/85 backdrop-blur-md rounded-xl border border-slate-300/70 dark:border-slate-800/80 p-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
+    <div className="w-full bg-titanium-50/90 dark:bg-obsidian-900/90 backdrop-blur-md rounded-xl border border-titanium-300 dark:border-obsidian-800 p-3 shadow-sm flex flex-wrap items-center justify-between gap-3 transition-colors">
 
       {/* Target Device Status Tag */}
       <div className="flex items-center gap-2.5">
@@ -50,21 +52,42 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
-              {activeDroneId === 'all' ? 'TOÀN BỘ PHI ĐỘI' : activeDroneId}
+            <span
+              title={isAllSelected ? 'TOÀN BỘ PHI ĐỘI' : activeDroneId}
+              className="font-mono font-bold text-xs text-slate-900 dark:text-white max-w-[150px] sm:max-w-[220px] md:max-w-[300px] truncate"
+            >
+              {isAllSelected ? 'TOÀN BỘ PHI ĐỘI' : activeDroneId}
             </span>
-            <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${armed
-              ? 'bg-tactical-emerald/20 text-tactical-emerald'
-              : 'bg-tactical-amber/20 text-tactical-amber'
-              }`}>
-              {armed ? 'ARMED' : 'DISARMED'}
-            </span>
-          </div>
-          <div className="text-[10px] font-mono text-slate-400">
-            {hasGps ? (
-              <span className="cursor-pointer hover:underline" onClick={copyCoords} title="Click để sao chép">
-                GPS: {lat.toFixed(5)}, {lon.toFixed(5)} <Copy className="w-2.5 h-2.5 inline opacity-60" />
+            {isAllSelected ? (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" />
+                <span>CHẾ ĐỘ GIÁM SÁT</span>
               </span>
+            ) : (
+              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                armed
+                  ? 'bg-tactical-emerald/20 text-emerald-700 dark:text-tactical-emerald border border-tactical-emerald/30'
+                  : 'bg-tactical-amber/20 text-amber-700 dark:text-tactical-amber border border-tactical-amber/30'
+              }`}>
+                {armed ? 'ARMED' : 'DISARMED'}
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] font-mono text-slate-600 dark:text-slate-400 mt-0.5">
+            {isAllSelected ? (
+              <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                Chọn 1 drone cụ thể trên thanh mục tiêu để mở khóa lệnh bay
+              </span>
+            ) : hasGps ? (
+              <button
+                type="button"
+                className="hover:underline flex items-center gap-1 cursor-pointer focus-visible:ring-1 focus-visible:ring-tactical-cyan focus-visible:outline-none rounded"
+                onClick={copyCoords}
+                title="Click để sao chép tọa độ"
+              >
+                <span>GPS: {lat.toFixed(5)}, {lon.toFixed(5)}</span>
+                <Copy className="w-2.5 h-2.5 opacity-60" />
+              </button>
             ) : (
               'Chưa có tọa độ GPS Lock'
             )}
@@ -77,11 +100,17 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
 
         {/* Arm / Disarm */}
         <button
+          type="button"
+          disabled={isAllSelected}
           onClick={() => onSendCommand(armed ? 'disarm' : 'arm')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${armed
-            ? 'bg-tactical-amber/10 hover:bg-tactical-amber/20 text-tactical-amber border border-tactical-amber/40'
-            : 'bg-tactical-emerald/10 hover:bg-tactical-emerald/20 text-tactical-emerald border border-tactical-emerald/40'
-            }`}
+          title={isAllSelected ? 'Vui lòng chọn 1 Drone cụ thể để phát lệnh ARM/DISARM' : (armed ? 'Hạ vũ trang (Yêu cầu xác nhận an toàn)' : 'Kích hoạt động cơ (Yêu cầu xác nhận an toàn)')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-tactical-cyan focus-visible:outline-none ${
+            isAllSelected
+              ? 'opacity-40 cursor-not-allowed bg-slate-200 dark:bg-slate-800 text-slate-500 border border-slate-300 dark:border-slate-700'
+              : armed
+              ? 'bg-tactical-amber/10 hover:bg-tactical-amber/20 text-amber-700 dark:text-tactical-amber border border-tactical-amber/40 cursor-pointer shadow-sm'
+              : 'bg-tactical-emerald/10 hover:bg-tactical-emerald/20 text-emerald-700 dark:text-tactical-emerald border border-tactical-emerald/40 cursor-pointer shadow-sm'
+          }`}
         >
           {armed ? <ShieldAlert className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
           <span>{armed ? 'HẠ VŨ TRANG' : 'VŨ TRANG (ARM)'}</span>
@@ -89,8 +118,15 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
 
         {/* Takeoff */}
         <button
+          type="button"
+          disabled={isAllSelected}
           onClick={() => onSendCommand('takeoff')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-tactical-blue/10 hover:bg-tactical-blue/20 text-tactical-blue dark:bg-tactical-cyan/10 dark:hover:bg-tactical-cyan/20 dark:text-tactical-cyan border border-tactical-blue/40 dark:border-tactical-cyan/40 transition-all cursor-pointer"
+          title={isAllSelected ? 'Vui lòng chọn 1 Drone cụ thể để phát lệnh Cất cánh' : 'Phát lệnh cất cánh tự động lên 10m'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-tactical-cyan focus-visible:outline-none ${
+            isAllSelected
+              ? 'opacity-40 cursor-not-allowed bg-slate-200 dark:bg-slate-800 text-slate-500 border border-slate-300 dark:border-slate-700'
+              : 'bg-tactical-blue/10 hover:bg-tactical-blue/20 text-tactical-blue dark:bg-tactical-cyan/10 dark:hover:bg-tactical-cyan/20 dark:text-tactical-cyan border border-tactical-blue/40 dark:border-tactical-cyan/40 cursor-pointer shadow-sm'
+          }`}
         >
           <ArrowUpCircle className="w-4 h-4" />
           <span>CẤT CÁNH (10M)</span>
@@ -98,8 +134,15 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
 
         {/* Land */}
         <button
+          type="button"
+          disabled={isAllSelected}
           onClick={() => onSendCommand('land')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition-all cursor-pointer"
+          title={isAllSelected ? 'Vui lòng chọn 1 Drone cụ thể để phát lệnh Hạ cánh' : 'Hạ cánh khẩn cấp tại vị trí hiện tại'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-tactical-cyan focus-visible:outline-none ${
+            isAllSelected
+              ? 'opacity-40 cursor-not-allowed bg-slate-200 dark:bg-slate-800 text-slate-500 border border-slate-300 dark:border-slate-700'
+              : 'bg-slate-200/80 hover:bg-slate-300/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 cursor-pointer shadow-sm'
+          }`}
         >
           <ArrowDownCircle className="w-4 h-4" />
           <span>HẠ CÁNH (LAND)</span>
@@ -107,17 +150,26 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
 
         {/* RTL (Return to Launch) */}
         <button
+          type="button"
+          disabled={isAllSelected}
           onClick={() => onSendCommand('rtl')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-tactical-red/10 hover:bg-tactical-red/20 text-tactical-red border border-tactical-red/40 transition-all cursor-pointer"
+          title={isAllSelected ? 'Vui lòng chọn 1 Drone cụ thể để phát lệnh Bay về Home' : 'Quay về điểm xuất phát (Return-to-Launch)'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all focus-visible:ring-2 focus-visible:ring-tactical-cyan focus-visible:outline-none ${
+            isAllSelected
+              ? 'opacity-40 cursor-not-allowed bg-slate-200 dark:bg-slate-800 text-slate-500 border border-slate-300 dark:border-slate-700'
+              : 'bg-tactical-red/10 hover:bg-tactical-red/20 text-tactical-red border border-tactical-red/40 cursor-pointer shadow-sm'
+          }`}
         >
           <Send className="w-4 h-4" />
           <span>QUAY VỀ (RTL)</span>
         </button>
 
-        {/* Web SSH */}
+        {/* Web SSH Console - Always accessible */}
         <button
+          type="button"
           onClick={onOpenSsh}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-tactical-cyan border border-slate-700 transition-all cursor-pointer"
+          title="Mở bảng điều khiển Web SSH Terminal trực tiếp tới Drone qua WireGuard"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-tactical-cyan border border-slate-700 transition-all cursor-pointer shadow-sm focus-visible:ring-2 focus-visible:ring-tactical-cyan focus-visible:outline-none"
         >
           <Terminal className="w-4 h-4" />
           <span>WEB SSH</span>
@@ -128,4 +180,3 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
     </div>
   );
 };
-

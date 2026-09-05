@@ -51,9 +51,9 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 
       {/* 1. Tổng phi đội */}
-      <div className="relative overflow-hidden rounded-xl bg-[#F4F1EA]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
+      <div className="relative overflow-hidden rounded-xl bg-titanium-50/90 dark:bg-obsidian-900/90 backdrop-blur-md p-3.5 border border-titanium-300 dark:border-obsidian-800 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
             Tổng Phi Đội
           </span>
           <div className="p-1.5 rounded-lg bg-tactical-blue/10 dark:bg-tactical-cyan/10 text-tactical-blue dark:text-tactical-cyan">
@@ -65,21 +65,21 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
           <span className="text-2xl font-bold font-mono text-slate-900 dark:text-white tabular-nums">
             {totalDrones}
           </span>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-mono">
             {stats?.devices?.active || totalDrones} Sẵn sàng
           </span>
         </div>
 
-        <div className="mt-2 flex items-center gap-1.5 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+        <div className="mt-2 flex items-center gap-1.5 text-[10px] font-mono text-slate-600 dark:text-slate-400">
           <span className="w-1.5 h-1.5 rounded-full bg-tactical-blue dark:bg-tactical-cyan" />
           <span>WireGuard Fleet Active</span>
         </div>
       </div>
 
       {/* 2. Đang bay & Trực tuyến */}
-      <div className="relative overflow-hidden rounded-xl bg-[#F4F1EA]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-emerald/40">
+      <div className="relative overflow-hidden rounded-xl bg-titanium-50/90 dark:bg-obsidian-900/90 backdrop-blur-md p-3.5 border border-titanium-300 dark:border-obsidian-800 shadow-sm transition-all hover:border-tactical-emerald/40">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
             Live Telemetry
           </span>
           <div className="p-1.5 rounded-lg bg-tactical-emerald/10 text-tactical-emerald">
@@ -88,40 +88,41 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
         </div>
 
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold font-mono text-tactical-emerald tabular-nums">
+          <span className="text-2xl font-bold font-mono text-emerald-600 dark:text-tactical-emerald tabular-nums">
             {onlineDrones}
           </span>
-          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+          <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
             / {totalDrones} Online
           </span>
         </div>
 
         <div className="mt-2 flex items-center justify-between text-[10px] font-mono">
-          <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
-            <span className={`w-1.5 h-1.5 rounded-full ${armedDrones > 0 ? 'bg-tactical-emerald animate-pulse' : 'bg-slate-400'}`} />
+          <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+            <span className={`w-1.5 h-1.5 rounded-full ${armedDrones > 0 ? 'bg-tactical-emerald animate-pulse motion-reduce:animate-none' : 'bg-slate-400'}`} />
             <span>{armedDrones} Đang vũ trang</span>
           </span>
-          <span className="text-tactical-emerald font-semibold">10Hz Stream</span>
+          <span className="text-emerald-600 dark:text-tactical-emerald font-semibold">10Hz Stream</span>
         </div>
       </div>
 
       {/* 3. Mức Pin Trung bình */}
-      <div className="relative overflow-hidden rounded-xl bg-[#F4F1EA]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-amber/40">
+      <div className="relative overflow-hidden rounded-xl bg-titanium-50/90 dark:bg-obsidian-900/90 backdrop-blur-md p-3.5 border border-titanium-300 dark:border-obsidian-800 shadow-sm transition-all hover:border-tactical-amber/40">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
             Pin Phi Đội TB
           </span>
-          <div className="p-1.5 rounded-lg bg-tactical-amber/10 text-tactical-amber">
+          <div className="p-1.5 rounded-lg bg-tactical-amber/10 text-amber-600 dark:text-tactical-amber">
             <BatteryCharging className="w-4 h-4" />
           </div>
         </div>
 
         <div className="flex items-baseline gap-2">
-          <span className={`text-2xl font-bold font-mono tabular-nums ${avgBattery > 50 ? 'text-tactical-emerald' : avgBattery > 25 ? 'text-tactical-amber' : 'text-tactical-red'
-            }`}>
+          <span className={`text-2xl font-bold font-mono tabular-nums ${
+            avgBattery > 50 ? 'text-emerald-600 dark:text-tactical-emerald' : avgBattery > 25 ? 'text-amber-600 dark:text-tactical-amber' : 'text-rose-600 dark:text-tactical-red'
+          }`}>
             {avgBattery}%
           </span>
-          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+          <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
             LiPo Fleet Avg
           </span>
         </div>
@@ -129,17 +130,18 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
         {/* Mini progress bar */}
         <div className="mt-2 w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-500 ${avgBattery > 50 ? 'bg-tactical-emerald' : avgBattery > 25 ? 'bg-tactical-amber' : 'bg-tactical-red'
-              }`}
+            className={`h-full rounded-full transition-all duration-500 ${
+              avgBattery > 50 ? 'bg-emerald-500' : avgBattery > 25 ? 'bg-amber-500' : 'bg-rose-500'
+            }`}
             style={{ width: `${avgBattery}%` }}
           />
         </div>
       </div>
 
       {/* 4. Hạ tầng WireGuard VPN IP Pool */}
-      <div className="relative overflow-hidden rounded-xl bg-[#F4F1EA]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
+      <div className="relative overflow-hidden rounded-xl bg-titanium-50/90 dark:bg-obsidian-900/90 backdrop-blur-md p-3.5 border border-titanium-300 dark:border-obsidian-800 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
             VPN IP Mesh (10.13.37.X)
           </span>
           <div className="p-1.5 rounded-lg bg-tactical-blue/10 dark:bg-tactical-cyan/10 text-tactical-blue dark:text-tactical-cyan">
@@ -151,12 +153,12 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
           <span className="text-2xl font-bold font-mono text-slate-900 dark:text-white tabular-nums">
             {ipPercent}%
           </span>
-          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+          <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
             {ipUsed}/{ipCapacity} IP
           </span>
         </div>
 
-        <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
+        <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-slate-600 dark:text-slate-400">
           <span>WireGuard Subnet</span>
           <span className="text-tactical-blue dark:text-tactical-cyan font-semibold">256-bit ChaCha</span>
         </div>
@@ -165,4 +167,3 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
     </div>
   );
 };
-

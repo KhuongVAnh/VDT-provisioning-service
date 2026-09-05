@@ -46,4 +46,14 @@ export class AuthController {
   async claimDrone(@CurrentUser() user: any, @Body() dto: ClaimDroneDto) {
     return this.authService.claimDrone(user.id, dto.deviceId);
   }
+
+  /**
+   * Phi công hoặc Admin bàn giao / giải phóng Drone khỏi tài khoản
+   */
+  @Post('unclaim-drone')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async unclaimDrone(@CurrentUser() user: any, @Body() dto: ClaimDroneDto) {
+    return this.authService.unclaimDrone(user.id, dto.deviceId, user.role);
+  }
 }

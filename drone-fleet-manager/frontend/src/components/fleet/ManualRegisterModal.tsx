@@ -54,14 +54,14 @@ export const ManualRegisterModal: React.FC<ManualRegisterModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-slate-300/80 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-tactical-blue/10 dark:bg-tactical-cyan/10 text-tactical-blue dark:text-tactical-cyan">
-              <Plus className="w-4 h-4" />
+              <Network className="w-4 h-4" />
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider font-sans">
-                Ghi Danh Drone Mới (Manual)
+                Cấp Phát Phần Cứng WireGuard
               </h3>
               <p className="text-[10px] font-mono text-slate-400">
-                WireGuard Subnet Provisioning
+                Hardware Subnet Provisioning • Dành cho Admin
               </p>
             </div>
           </div>

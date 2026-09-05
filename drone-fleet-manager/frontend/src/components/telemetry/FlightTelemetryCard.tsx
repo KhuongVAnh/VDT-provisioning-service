@@ -16,11 +16,13 @@ import {
   ShieldAlert,
   Plane,
   X,
-  Zap
+  Zap,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 import { DroneDevice, DroneTelemetry } from '../../types';
 import { isDroneOnline } from '../../hooks/useTelemetry';
-import { extractTelemetryMetrics } from '../../utils/telemetry';
+import { extractTelemetryMetrics, formatTimeAgo } from '../../utils/telemetry';
 
 interface FlightTelemetryCardProps {
   activeDroneId: string;
@@ -56,6 +58,12 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
   const devId = activeDroneId !== 'all' ? activeDroneId : targetDevice?.deviceId || 'CHƯA CHỌN';
   const online = isDroneOnline(telemetry);
 
+  // Stale detection
+  const lastTs = telemetry?.lastReceivedAt || telemetry?.timestamp;
+  const now = Date.now();
+  const isStale = !online || (lastTs ? (now - lastTs > 2500) : false);
+  const timeSinceLastPacket = lastTs ? Math.max(0, Math.round((now - lastTs) / 1000)) : null;
+
   // Flight values extraction using centralized normalizer
   const {
     pitch,
@@ -70,7 +78,7 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
     lat,
     lon,
     sats,
-  } = extractTelemetryMetrics(telemetry, online);
+  } = extractTelemetryMetrics(telemetry, online && !isStale);
 
   const altRel = relAlt;
   const speed = groundSpeed;
@@ -88,35 +96,55 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#F4F1EA]/90 dark:bg-obsidian-900/90 backdrop-blur-md border border-slate-300/80 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden transition-colors">
+    <div className="w-full h-full flex flex-col bg-titanium-50/95 dark:bg-obsidian-900/95 backdrop-blur-md border border-titanium-300 dark:border-obsidian-800 rounded-2xl shadow-lg overflow-hidden transition-colors">
 
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-300/80 dark:border-slate-800/80 bg-slate-100/70 dark:bg-obsidian-950/60">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-tactical-blue/10 dark:bg-tactical-cyan/10 text-tactical-blue dark:text-tactical-cyan">
+      <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-titanium-300 dark:border-obsidian-800 bg-slate-200/60 dark:bg-obsidian-950/60 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="relative p-1.5 rounded-lg bg-tactical-blue/10 dark:bg-tactical-cyan/10 text-tactical-blue dark:text-tactical-cyan shrink-0">
             <Gauge className="w-4 h-4" />
+            <span
+              className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white dark:border-obsidian-900 ${
+                online && !isStale ? 'bg-tactical-emerald animate-pulse motion-reduce:animate-none' : 'bg-amber-500'
+              }`}
+            />
           </div>
-          <div>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-white font-sans flex items-center gap-1.5">
-              <span>GIÁM SÁT BAY TỨC THỜI</span>
-              {online ? (
-                <span className="w-2 h-2 rounded-full bg-tactical-emerald animate-pulse" />
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-slate-400" />
-              )}
+          <div className="min-w-0">
+            <h3 className="font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-white font-sans whitespace-nowrap truncate">
+              GIÁM SÁT PFD
             </h3>
-            <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-              Real-time PFD & Attitude Director
+            <p className="text-[10px] font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap truncate">
+              Real-time Telemetry
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Stale or Live Badge */}
+          {online && !isStale ? (
+            <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-600 dark:text-tactical-emerald bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>LIVE</span>
+            </span>
+          ) : (
+            <span
+              className="flex items-center gap-1 text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/30 whitespace-nowrap"
+              title={`Lần cuối nhận tín hiệu: ${formatTimeAgo(timeSinceLastPacket)}`}
+            >
+              <AlertTriangle className="w-3 h-3 shrink-0" />
+              <span>
+                {timeSinceLastPacket !== null && timeSinceLastPacket >= 86400 ? 'OFFLINE' : 'STALE'}
+                {timeSinceLastPacket !== null ? ` (${formatTimeAgo(timeSinceLastPacket, true)})` : ''}
+              </span>
+            </span>
+          )}
+
           {onClose && (
             <button
+              type="button"
               onClick={onClose}
               title="Thu gọn khung giám sát"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-tactical-cyan focus-visible:outline-none shrink-0"
             >
               <X className="w-4 h-4" />
             </button>
@@ -128,12 +156,14 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-mono">
 
         {/* 1. ARTIFICIAL HORIZON 3D SPHERE (Attitude Director Indicator) */}
-        <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-200/80 dark:border-slate-800 shadow-inner">
+        <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-titanium-300 dark:border-obsidian-800 shadow-inner relative">
           <div className="relative w-32 h-32 rounded-full overflow-hidden border-2 border-tactical-blue/40 dark:border-tactical-cyan/40 shadow-[0_0_15px_rgba(0,229,255,0.15)] bg-slate-950 select-none">
 
             {/* Dynamic Sky / Earth Sphere */}
             <div
-              className="absolute w-[220%] h-[220%] -left-[60%] -top-[60%] transition-transform duration-100 ease-linear"
+              className={`absolute w-[220%] h-[220%] -left-[60%] -top-[60%] transition-transform duration-100 ease-linear ${
+                isStale ? 'opacity-40 grayscale-[50%]' : ''
+              }`}
               style={{
                 background: 'linear-gradient(to bottom, #0284c7 0%, #0284c7 50%, #92400e 50%, #78350f 100%)',
                 transform: `rotate(${-roll}deg) translateY(${pitch * 1.4}px)`,
@@ -170,16 +200,29 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
 
             {/* Top Zero Roll Notch Pointer */}
             <div className="absolute top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-amber-400 pointer-events-none" />
+
+            {/* STALE OVERLAY WATERMARK */}
+            {isStale && (
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-center pointer-events-none z-10 animate-in fade-in duration-200">
+                <AlertTriangle className="w-5 h-5 text-amber-400 animate-pulse mb-1" />
+                <span className="text-[10px] font-extrabold text-amber-400 font-mono tracking-wider leading-tight uppercase">
+                  MẤT TÍN HIỆU
+                </span>
+                <span className="text-[9px] text-slate-200 font-mono mt-0.5 px-2 py-0.5 rounded bg-black/40 border border-white/10">
+                  {formatTimeAgo(timeSinceLastPacket)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Roll & Pitch Digital Badges */}
           <div className="flex items-center gap-3 mt-2 text-[11px] font-mono">
-            <span className="text-slate-500 dark:text-slate-400">
-              ROLL: <b className="text-slate-800 dark:text-white">{roll >= 0 ? `+${roll.toFixed(1)}` : roll.toFixed(1)}°</b>
+            <span className="text-slate-600 dark:text-slate-400">
+              ROLL: <b className="text-slate-900 dark:text-white font-bold">{roll >= 0 ? `+${roll.toFixed(1)}` : roll.toFixed(1)}°</b>
             </span>
             <span className="text-slate-300 dark:text-slate-700">|</span>
-            <span className="text-slate-500 dark:text-slate-400">
-              PITCH: <b className="text-slate-800 dark:text-white">{pitch >= 0 ? `+${pitch.toFixed(1)}` : pitch.toFixed(1)}°</b>
+            <span className="text-slate-600 dark:text-slate-400">
+              PITCH: <b className="text-slate-900 dark:text-white font-bold">{pitch >= 0 ? `+${pitch.toFixed(1)}` : pitch.toFixed(1)}°</b>
             </span>
           </div>
         </div>
@@ -188,53 +231,53 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
         <div className="grid grid-cols-2 gap-2 text-xs font-mono">
 
           {/* Altitude */}
-          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-sky-500/10 text-sky-500">
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-titanium-300 dark:border-obsidian-800 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-sky-500/10 text-sky-500 shrink-0">
               <Navigation className="w-4 h-4" />
             </div>
-            <div>
-              <span className="block text-[10px] text-slate-400 font-sans">Độ cao tương đối</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                {online ? `${altRel.toFixed(1)} m` : '-- m'}
+            <div className="min-w-0">
+              <span className="block text-[10px] text-slate-600 dark:text-slate-400 font-sans truncate">Độ cao tương đối</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {online && !isStale ? `${altRel.toFixed(1)} m` : '-- m'}
               </span>
             </div>
           </div>
 
           {/* Ground Speed */}
-          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-titanium-300 dark:border-obsidian-800 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500 shrink-0">
               <Zap className="w-4 h-4" />
             </div>
-            <div>
-              <span className="block text-[10px] text-slate-400 font-sans">Tốc độ mặt đất</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                {online ? `${speed.toFixed(1)} m/s` : '-- m/s'}
+            <div className="min-w-0">
+              <span className="block text-[10px] text-slate-600 dark:text-slate-400 font-sans truncate">Tốc độ mặt đất</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {online && !isStale ? `${speed.toFixed(1)} m/s` : '-- m/s'}
               </span>
             </div>
           </div>
 
           {/* Battery */}
-          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
-            <div className={`p-2 rounded-lg ${batteryPct > 50 ? 'bg-emerald-500/10 text-emerald-500' : batteryPct > 20 ? 'bg-amber-500/10 text-amber-500' : 'bg-rose-500/10 text-rose-500'}`}>
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-titanium-300 dark:border-obsidian-800 flex items-center gap-2.5">
+            <div className={`p-2 rounded-lg shrink-0 ${batteryPct > 50 ? 'bg-emerald-500/10 text-emerald-500' : batteryPct > 20 ? 'bg-amber-500/10 text-amber-500' : 'bg-rose-500/10 text-rose-500'}`}>
               <Battery className="w-4 h-4" />
             </div>
-            <div>
-              <span className="block text-[10px] text-slate-400 font-sans">Dung lượng Pin</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+            <div className="min-w-0">
+              <span className="block text-[10px] text-slate-600 dark:text-slate-400 font-sans truncate">Dung lượng Pin</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                 {online ? `${batteryPct}%` : '--%'}
-                {voltage > 0 && <span className="text-[10px] text-slate-400 font-normal ml-1">({voltage.toFixed(1)}V)</span>}
+                {voltage > 0 && <span className="text-[10px] text-slate-500 font-normal ml-1">({voltage.toFixed(1)}V)</span>}
               </span>
             </div>
           </div>
 
           {/* Flight Mode */}
-          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
+          <div className="p-2.5 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-titanium-300 dark:border-obsidian-800 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500 shrink-0">
               <Radio className="w-4 h-4" />
             </div>
-            <div>
-              <span className="block text-[10px] text-slate-400 font-sans">Chế độ bay</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase">
+            <div className="min-w-0">
+              <span className="block text-[10px] text-slate-600 dark:text-slate-400 font-sans truncate">Chế độ bay</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase truncate block">
                 {online ? flightMode : 'UNKNOWN'}
               </span>
             </div>
@@ -243,62 +286,62 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
         </div>
 
         {/* 3. Detailed Telemetry Table */}
-        <div className="rounded-xl border border-slate-300/70 dark:border-slate-800/80 overflow-hidden text-xs font-mono">
+        <div className="rounded-xl border border-titanium-300 dark:border-obsidian-800 overflow-hidden text-xs font-mono">
           <div className="divide-y divide-slate-200 dark:divide-slate-800">
             <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
-              <span className="text-slate-400 font-sans">Drone ID</span>
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Drone ID</span>
               <span className="font-bold text-tactical-blue dark:text-tactical-cyan">{deviceId || 'CHƯA CHỌN'}</span>
             </div>
             <div className="flex justify-between items-center px-3 py-2">
-              <span className="text-slate-400 font-sans">Chế độ bay (Flight Mode)</span>
-              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Chế độ bay (Flight Mode)</span>
+              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-200/80 dark:bg-slate-800 text-slate-800 dark:text-slate-300">
                 {online ? flightMode : '--'}
               </span>
             </div>
             <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
-              <span className="text-slate-400 font-sans">Trạng thái Arm</span>
-              <span className={`flex items-center gap-1 font-bold ${online && armed ? 'text-tactical-emerald' : 'text-slate-400'}`}>
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Trạng thái Arm</span>
+              <span className={`flex items-center gap-1 font-bold ${online && armed ? 'text-emerald-700 dark:text-tactical-emerald' : 'text-slate-500'}`}>
                 <ShieldAlert className="w-3.5 h-3.5" />
                 <span>{online ? (armed ? 'ARMED (SẴN SÀNG BAY)' : 'DISARMED') : 'OFFLINE'}</span>
               </span>
             </div>
             <div className="flex justify-between items-center px-3 py-2">
-              <span className="text-slate-400 font-sans">Dung lượng Pin</span>
-              <span className={`font-bold ${batteryPct > 50 ? 'text-tactical-emerald' : batteryPct > 20 ? 'text-amber-500' : 'text-rose-500'}`}>
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Dung lượng Pin</span>
+              <span className={`font-bold ${batteryPct > 50 ? 'text-emerald-700 dark:text-tactical-emerald' : batteryPct > 20 ? 'text-amber-600 dark:text-amber-500' : 'text-rose-600 dark:text-rose-500'}`}>
                 {online ? `${batteryPct}% (${voltage.toFixed(1)}V)` : '--%'}
               </span>
             </div>
             <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
-              <span className="text-slate-400 font-sans">Độ cao tương đối</span>
-              <span className="font-bold text-slate-800 dark:text-slate-200">
-                {online ? `${altRel.toFixed(1)} m` : '-- m'}
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Độ cao tương đối</span>
+              <span className="font-bold text-slate-900 dark:text-slate-200">
+                {online && !isStale ? `${altRel.toFixed(1)} m` : '-- m'}
               </span>
             </div>
             <div className="flex justify-between items-center px-3 py-2">
-              <span className="text-slate-400 font-sans">Độ cao tuyệt đối (MSL)</span>
-              <span className="font-bold text-slate-800 dark:text-slate-200">
-                {online ? `${altMsl.toFixed(1)} m` : '-- m'}
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Độ cao tuyệt đối (MSL)</span>
+              <span className="font-bold text-slate-900 dark:text-slate-200">
+                {online && !isStale ? `${altMsl.toFixed(1)} m` : '-- m'}
               </span>
             </div>
             <div className="flex justify-between items-center px-3 py-2 bg-slate-50/50 dark:bg-obsidian-950/40">
-              <span className="text-slate-400 font-sans">Vận tốc mặt đất</span>
-              <span className="font-bold text-slate-800 dark:text-slate-200">
-                {online ? `${speed.toFixed(1)} m/s (${(speed * 3.6).toFixed(1)} km/h)` : '-- m/s'}
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Vận tốc mặt đất</span>
+              <span className="font-bold text-slate-900 dark:text-slate-200">
+                {online && !isStale ? `${speed.toFixed(1)} m/s (${(speed * 3.6).toFixed(1)} km/h)` : '-- m/s'}
               </span>
             </div>
             <div className="flex justify-between items-center px-3 py-2">
-              <span className="text-slate-400 font-sans">Góc la bàn (Heading)</span>
-              <span className="font-bold text-slate-800 dark:text-slate-200">
-                {online ? `${heading.toFixed(0)}°` : '--°'}
+              <span className="text-slate-600 dark:text-slate-400 font-sans">Góc la bàn (Heading)</span>
+              <span className="font-bold text-slate-900 dark:text-slate-200">
+                {online && !isStale ? `${heading.toFixed(0)}°` : '--°'}
               </span>
             </div>
           </div>
         </div>
 
         {/* 4. GPS Coordinates Box */}
-        <div className="p-3 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-slate-300/70 dark:border-slate-800/80 flex flex-col gap-2 font-mono">
+        <div className="p-3 rounded-xl bg-slate-100/80 dark:bg-obsidian-950/80 border border-titanium-300 dark:border-obsidian-800 flex flex-col gap-2 font-mono">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-tactical-blue dark:text-tactical-cyan" />
               Tọa độ GPS Lock
             </span>
@@ -308,15 +351,15 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="p-2 rounded-lg bg-[#F4F1EA] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
-              <span className="block text-[10px] text-slate-400 font-sans">Vĩ độ (Lat)</span>
-              <span className="font-bold text-slate-800 dark:text-slate-200">
+            <div className="p-2 rounded-lg bg-titanium-50 dark:bg-obsidian-950 border border-titanium-300 dark:border-obsidian-800">
+              <span className="block text-[10px] text-slate-600 dark:text-slate-400 font-sans">Vĩ độ (Lat)</span>
+              <span className="font-bold text-slate-900 dark:text-slate-200">
                 {online && lat !== 0 ? lat.toFixed(6) : '21.028500'}
               </span>
             </div>
-            <div className="p-2 rounded-lg bg-[#F4F1EA] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
-              <span className="block text-[10px] text-slate-400 font-sans">Kinh độ (Lon)</span>
-              <span className="font-bold text-slate-800 dark:text-slate-200">
+            <div className="p-2 rounded-lg bg-titanium-50 dark:bg-obsidian-950 border border-titanium-300 dark:border-obsidian-800">
+              <span className="block text-[10px] text-slate-600 dark:text-slate-400 font-sans">Kinh độ (Lon)</span>
+              <span className="font-bold text-slate-900 dark:text-slate-200">
                 {online && lon !== 0 ? lon.toFixed(6) : '105.854200'}
               </span>
             </div>
@@ -326,16 +369,16 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
           <button
             type="button"
             onClick={handleCopyGps}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300/80 dark:bg-slate-800/80 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-[11px] font-sans font-medium transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300/80 dark:bg-slate-800/80 dark:hover:bg-slate-700/80 text-slate-800 dark:text-slate-200 text-[11px] font-sans font-semibold transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-tactical-cyan focus-visible:outline-none"
           >
             {copiedGps ? (
               <>
-                <Check className="w-3.5 h-3.5 text-tactical-emerald" />
-                <span className="text-tactical-emerald font-bold">Đã sao chép tọa độ!</span>
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-tactical-emerald" />
+                <span className="text-emerald-700 dark:text-tactical-emerald font-bold">Đã sao chép tọa độ!</span>
               </>
             ) : (
               <>
-                <Copy className="w-3.5 h-3.5 text-slate-400" />
+                <Copy className="w-3.5 h-3.5 text-slate-500" />
                 <span>Sao chép tọa độ GPS</span>
               </>
             )}
@@ -347,4 +390,3 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
     </div>
   );
 };
-

@@ -13,7 +13,8 @@ import {
   Wifi,
   WifiOff,
   Filter,
-  Network
+  Network,
+  ArrowRightLeft
 } from 'lucide-react';
 import { DroneDevice, DroneTelemetry } from '../../types';
 import { isDroneOnline } from '../../hooks/useTelemetry';
@@ -27,6 +28,7 @@ interface FleetTableProps {
   telemetrySnapshot: Record<string, DroneTelemetry>;
   onOpenSsh: (deviceId: string) => void;
   onSendCommand: (deviceId: string, cmd: 'arm' | 'disarm' | 'rtl') => void;
+  onUnclaimDrone?: (deviceId: string) => void;
 }
 
 export const FleetTable: React.FC<FleetTableProps> = ({
@@ -36,6 +38,7 @@ export const FleetTable: React.FC<FleetTableProps> = ({
   telemetrySnapshot,
   onOpenSsh,
   onSendCommand,
+  onUnclaimDrone,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'online' | 'armed' | 'offline'>('all');
@@ -324,6 +327,17 @@ export const FleetTable: React.FC<FleetTableProps> = ({
                           >
                             <Send className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Bàn giao / Trả quyền Drone */}
+                          {onUnclaimDrone && (
+                            <button
+                              onClick={() => onUnclaimDrone(devId)}
+                              title="Bàn giao / Trả quyền Drone này"
+                              className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

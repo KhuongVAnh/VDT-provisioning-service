@@ -116,3 +116,34 @@ export const fetchIpPoolMatrix = async (): Promise<any[]> => {
   }
 };
 
+/**
+ * Phi công nhận quyền quản lý (Claim) Drone bằng Device ID
+ */
+export const apiClaimDrone = async (deviceId: string): Promise<any> => {
+  const res = await authFetch('/api/v1/auth/claim-drone', {
+    method: 'POST',
+    body: JSON.stringify({ deviceId: deviceId.trim().toUpperCase() }),
+  });
+  const json = await res.json();
+  if (!res.ok || json.status === 'error') {
+    throw new Error(json.message || `Không thể nhận quyền Drone ${deviceId}`);
+  }
+  return json;
+};
+
+/**
+ * Bàn giao / Giải phóng quyền quản lý Drone
+ */
+export const apiUnclaimDrone = async (deviceId: string): Promise<any> => {
+  const res = await authFetch('/api/v1/auth/unclaim-drone', {
+    method: 'POST',
+    body: JSON.stringify({ deviceId: deviceId.trim().toUpperCase() }),
+  });
+  const json = await res.json();
+  if (!res.ok || json.status === 'error') {
+    throw new Error(json.message || `Không thể bàn giao Drone ${deviceId}`);
+  }
+  return json;
+};
+
+

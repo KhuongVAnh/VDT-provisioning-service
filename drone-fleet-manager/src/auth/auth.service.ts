@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
@@ -181,6 +181,44 @@ export class AuthService {
 
     return {
       message: `Đã thêm Drone ${deviceId} vào danh sách quản lý của bạn thành công`,
+      device: updatedDevice,
+    };
+  }
+
+  /**
+   * Bàn giao / Giải phóng Drone khỏi tài khoản phi công để trả về trạng thái tự do
+   */
+  async unclaimDrone(userId: string, deviceId: string, role?: string) {
+    const device = await this.prisma.device.findUnique({
+      where: { deviceId },
+    });
+
+    if (!device) {
+      throw new NotFoundException(`Không tìm thấy Drone với mã định danh: ${deviceId}`);
+    }
+
+    // Nếu không phải ADMIN và không phải chủ sở hữu thì không có quyền giải phóng Drone
+    if (role !== 'ADMIN' && device.userId !== userId) {
+      throw new ForbiddenException(`Bạn không có quyền bàn giao Drone [${deviceId}] vì không phải người quản lý Drone này!`);
+    }
+
+    const updatedDevice = await this.prisma.device.update({
+      where: { deviceId },
+      data: { userId: null },
+      select: {
+        deviceId: true,
+        hardwareModel: true,
+        vpnIp: true,
+        status: true,
+        userId: true,
+        updatedAt: true,
+      },
+    });
+
+    this.logger.log(`🚁 Drone [${deviceId}] đã được bàn giao (giải phóng) thành công bởi User [${userId}]`);
+
+    return {
+      message: `Đã bàn giao Drone ${deviceId} thành công`,
       device: updatedDevice,
     };
   }

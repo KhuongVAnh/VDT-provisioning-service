@@ -4,7 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { useToast } from './context/ToastContext';
 import { useSocket } from './hooks/useSocket';
 import { useTelemetry, isDroneOnline } from './hooks/useTelemetry';
-import { fetchFleetStates, fetchDashboardStats, sendDroneCommand } from './services/api';
+import { fetchFleetStates, fetchDashboardStats, sendDroneCommand, apiUnclaimDrone } from './services/api';
 import { Header } from './components/layout/Header';
 import { KpiDeck } from './components/kpi/KpiDeck';
 import { CommandDeck } from './components/layout/CommandDeck';
@@ -13,6 +13,7 @@ import { FpvPlayer } from './components/video/FpvPlayer';
 import { FleetTable } from './components/fleet/FleetTable';
 import { WebSshModal } from './components/terminal/WebSshModal';
 import { ManualRegisterModal } from './components/fleet/ManualRegisterModal';
+import { ClaimDroneModal } from './components/fleet/ClaimDroneModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { FlightTelemetryCard } from './components/telemetry/FlightTelemetryCard';
 
@@ -32,6 +33,9 @@ export const App: React.FC = () => {
   const [sshOutput, setSshOutput] = useState<string | null>(null);
   const [sshStatus, setSshStatus] = useState('');
   const [isManualRegisterOpen, setIsManualRegisterOpen] = useState(false);
+  const [isClaimDroneOpen, setIsClaimDroneOpen] = useState(false);
+
+  const [isCompactView, setIsCompactView] = useState(false);
 
   // Telemetry Hook
   const {
@@ -77,7 +81,7 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [refreshData]);
 
-  // Keyboard Shortcuts (1: Map, 2: Split, 3: Cockpit, Esc: Close modals)
+  // Keyboard Shortcuts (1: Map, 2: Split, 3: Cockpit, 4: Toggle Compact, Esc: Close modals)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger when user is typing in inputs or textarea
@@ -86,9 +90,11 @@ export const App: React.FC = () => {
       if (e.key === '1') setLayoutMode('mode-map');
       if (e.key === '2') setLayoutMode('mode-split');
       if (e.key === '3') setLayoutMode('mode-cockpit');
+      if (e.key === '4') setIsCompactView((prev) => !prev);
       if (e.key === 'Escape') {
         setIsSshOpen(false);
         setIsManualRegisterOpen(false);
+        setIsClaimDroneOpen(false);
       }
     };
 
@@ -96,11 +102,11 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Drone Command Trigger Handler
+  // Drone Command Trigger Handler with Strict Target Verification
   const handleSendCommand = async (cmd: 'arm' | 'disarm' | 'takeoff' | 'land' | 'rtl', targetId?: string) => {
-    const target = targetId || (activeDroneId !== 'all' ? activeDroneId : devices[0]?.deviceId);
+    const target = targetId || (activeDroneId !== 'all' ? activeDroneId : undefined);
     if (!target) {
-      toast.warning('Vui lòng chọn 1 Drone cụ thể trong phi đội để phát lệnh!', 'Chưa Chọn Mục Tiêu');
+      toast.warning('Vui lòng chọn 1 Drone mục tiêu cụ thể trên Header trước khi phát lệnh bay!', 'Chưa Chọn Mục Tiêu');
       return;
     }
 
@@ -108,32 +114,37 @@ export const App: React.FC = () => {
       arm: {
         title: 'KÍCH HOẠT VŨ TRANG (ARM)',
         message: `Xác nhận KÍCH HOẠT VŨ TRANG (ARM) cho drone "${target}"? Động cơ sẽ bắt đầu quay và sẵn sàng bay. Hãy đảm bảo khu vực xung quanh an toàn.`,
-        confirmText: 'KÍCH HOẠT ARM',
+        confirmText: 'NHẤN GIỮ KÍCH HOẠT ARM',
         variant: 'danger' as const,
+        requiresHold: true,
       },
       disarm: {
-        title: 'HẠ VŨ TRANG (DISARM)',
-        message: `Xác nhận HẠ VŨ TRANG (DISARM) cho drone "${target}"? Nguồn điện động cơ sẽ bị ngắt ngay lập tức.`,
-        confirmText: 'HẠ VŨ TRANG NGAY',
+        title: 'HẠ VŨ TRANG KHẨN CẤP (DISARM)',
+        message: `CẢNH BÁO NGUY HIỂM: Xác nhận HẠ VŨ TRANG (DISARM) cho drone "${target}"? Nguồn điện động cơ sẽ bị ngắt ngay lập tức, máy bay sẽ rơi nếu đang trên không!`,
+        confirmText: 'NHẤN GIỮ HẠ VŨ TRANG',
         variant: 'danger' as const,
+        requiresHold: true,
       },
       takeoff: {
         title: 'LỆNH CẤT CÁNH (TAKEOFF)',
         message: `Xác nhận phát lệnh CẤT CÁNH tự động (Takeoff 10m) cho drone "${target}"?`,
         confirmText: 'CẤT CÁNH (10M)',
         variant: 'warning' as const,
+        requiresHold: false,
       },
       land: {
         title: 'HẠ CÁNH KHẨN CẤP (LAND)',
         message: `Xác nhận HẠ CÁNH KHẨN CẤP (LAND) cho drone "${target}"? Máy bay sẽ tự động hạ độ cao và đáp ngay tại vị trí hiện tại.`,
-        confirmText: 'HẠ CÁNH NGAY',
+        confirmText: 'NHẤN GIỮ HẠ CÁNH',
         variant: 'danger' as const,
+        requiresHold: true,
       },
       rtl: {
         title: 'QUAY VỀ ĐIỂM XUẤT PHÁT (RTL)',
         message: `Xác nhận phát lệnh RETURN-TO-LAUNCH (RTL) cho drone "${target}"? Máy bay sẽ bay về điểm xuất phát (Home position).`,
         confirmText: 'BAY VỀ HOME (RTL)',
         variant: 'warning' as const,
+        requiresHold: false,
       },
     }[cmd];
 
@@ -154,6 +165,31 @@ export const App: React.FC = () => {
     const target = deviceId || (activeDroneId !== 'all' ? activeDroneId : devices[0]?.deviceId || '');
     setSshTargetDrone(target);
     setIsSshOpen(true);
+  };
+
+  // Bàn giao / Giải phóng Drone khỏi quyền quản lý của phi công
+  const handleUnclaimDrone = async (deviceId: string) => {
+    const isConfirmed = await confirm({
+      title: 'BÀN GIAO / TRẢ QUYỀN DRONE',
+      message: `Xác nhận bàn giao Drone "${deviceId}" khỏi quyền quản lý của bạn? Drone sẽ chuyển về trạng thái tự do để phi công khác hoặc kho có thể tiếp nhận.`,
+      confirmText: 'XÁC NHẬN BÀN GIAO',
+      cancelText: 'HỦY BỎ',
+      variant: 'warning',
+      requiresHold: false,
+    });
+
+    if (!isConfirmed) return;
+
+    try {
+      const res = await apiUnclaimDrone(deviceId);
+      toast.success(res.message || `Đã bàn giao Drone ${deviceId} thành công!`, 'Bàn Giao Drone');
+      if (activeDroneId === deviceId) {
+        setActiveDroneId('all');
+      }
+      refreshData();
+    } catch (err: any) {
+      toast.error(err.message || 'Không thể bàn giao Drone này', 'Lỗi Bàn Giao');
+    }
   };
 
   // Danh sách Drone đang Online dựa theo telemetry thời gian thực
@@ -208,7 +244,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#EAE6DF] dark:bg-obsidian-950 text-[#24221E] dark:text-[#E2E8F0] transition-colors duration-200">
+    <div className="min-h-screen flex flex-col bg-titanium-100 dark:bg-obsidian-950 text-titanium-900 dark:text-slate-100 transition-colors duration-200 selection:bg-tactical-cyan/20 selection:text-tactical-cyan">
 
       {/* Main Mission Control Header */}
       <Header
@@ -220,20 +256,27 @@ export const App: React.FC = () => {
         isSocketConnected={isSocketConnected}
         latencyMs={latencyMs}
         onOpenManualRegister={() => setIsManualRegisterOpen(true)}
+        onOpenClaimDrone={() => setIsClaimDroneOpen(true)}
         isTelemetryOpen={isTelemetryOpen}
         onToggleTelemetry={() => setIsTelemetryOpen((prev) => !prev)}
         telemetrySnapshot={telemetrySnapshot}
+        isCompactView={isCompactView}
+        onToggleCompactView={() => setIsCompactView((prev) => !prev)}
       />
 
       {/* Cockpit Canvas Main Viewport */}
       <main className="flex-1 max-w-[1920px] w-full mx-auto p-3 sm:p-4 flex flex-col gap-3">
 
-        {/* Row 1: KPI Overview Bento Deck */}
-        <KpiDeck
-          stats={stats}
-          devices={devices}
-          telemetrySnapshot={telemetrySnapshot}
-        />
+        {/* Row 1: KPI Overview Bento Deck (Collapsible in Compact View) */}
+        {!isCompactView && (
+          <div className="transition-all animate-in fade-in duration-200">
+            <KpiDeck
+              stats={stats}
+              devices={devices}
+              telemetrySnapshot={telemetrySnapshot}
+            />
+          </div>
+        )}
 
         {/* Row 2: Quick Command Deck */}
         <CommandDeck
@@ -330,6 +373,7 @@ export const App: React.FC = () => {
           telemetrySnapshot={telemetrySnapshot}
           onOpenSsh={(id) => handleOpenSsh(id)}
           onSendCommand={(id, cmd) => handleSendCommand(cmd, id)}
+          onUnclaimDrone={(id) => handleUnclaimDrone(id)}
         />
 
       </main>
@@ -348,10 +392,17 @@ export const App: React.FC = () => {
         sshStatus={sshStatus}
       />
 
-      {/* Manual Device Register Modal */}
+      {/* Manual Device Register Modal (Admin) */}
       <ManualRegisterModal
         isOpen={isManualRegisterOpen}
         onClose={() => setIsManualRegisterOpen(false)}
+        onSuccess={refreshData}
+      />
+
+      {/* Claim Drone Modal (Pilots & Admins) */}
+      <ClaimDroneModal
+        isOpen={isClaimDroneOpen}
+        onClose={() => setIsClaimDroneOpen(false)}
         onSuccess={refreshData}
       />
 
