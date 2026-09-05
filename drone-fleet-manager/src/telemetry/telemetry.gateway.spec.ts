@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TelemetryGateway } from './telemetry.gateway';
 import { JwtService } from '@nestjs/jwt';
 import { DeviceService } from '../device/device.service';
+import { RedisService } from '../redis/redis.service';
 
 describe('TelemetryGateway', () => {
   let gateway: TelemetryGateway;
   let jwtService: any;
   let deviceService: any;
+  let redisService: any;
 
   beforeEach(async () => {
     jwtService = {
@@ -17,11 +19,17 @@ describe('TelemetryGateway', () => {
       findByDeviceId: jest.fn(),
     };
 
+    redisService = {
+      addFocusDrone: jest.fn().mockResolvedValue(true),
+      removeFocusDrone: jest.fn().mockResolvedValue(true),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TelemetryGateway,
         { provide: JwtService, useValue: jwtService },
         { provide: DeviceService, useValue: deviceService },
+        { provide: RedisService, useValue: redisService },
       ],
     }).compile();
 

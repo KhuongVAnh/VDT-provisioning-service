@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LayoutMode, DroneDevice, DashboardStats, DroneTelemetry } from './types';
 import { useAuth } from './context/AuthContext';
 import { useToast } from './context/ToastContext';
 import { useSocket } from './hooks/useSocket';
-import { useTelemetry } from './hooks/useTelemetry';
+import { useTelemetry, isDroneOnline } from './hooks/useTelemetry';
 import { fetchFleetStates, fetchDashboardStats, sendDroneCommand } from './services/api';
 import { Header } from './components/layout/Header';
 import { KpiDeck } from './components/kpi/KpiDeck';
@@ -156,7 +156,26 @@ export const App: React.FC = () => {
     setIsSshOpen(true);
   };
 
-  // Kích hoạt Focus Mode 10Hz qua WebSocket Rooms khi chọn Drone mục tiêu
+  // Danh sách Drone đang Online dựa theo telemetry thời gian thực
+  const onlineDevices = useMemo(() => {
+    return devices.filter((d) => {
+      const t = telemetrySnapshot[d.deviceId] || d.telemetry;
+      return isDroneOnline(t);
+    });
+  }, [devices, telemetrySnapshot]);
+
+  // Tự động chuyển về 'all' nếu Drone đang xem bỗng nhiên mất kết nối (Offline)
+  useEffect(() => {
+    if (activeDroneId !== 'all') {
+      const isStillOnline = onlineDevices.some((d) => d.deviceId === activeDroneId);
+      if (!isStillOnline && onlineDevices.length > 0) {
+        setActiveDroneId('all');
+      }
+    }
+  }, [activeDroneId, onlineDevices]);
+
+  // Kích hoạt Focus Mode 20Hz qua WebSocket Rooms khi chọn Drone mục tiêu
+  // Hoặc quay về chế độ Toàn Phi Đội 1Hz khi chọn 'all'
   useEffect(() => {
     if (!socket || !isSocketConnected) return;
 
@@ -203,6 +222,7 @@ export const App: React.FC = () => {
         onOpenManualRegister={() => setIsManualRegisterOpen(true)}
         isTelemetryOpen={isTelemetryOpen}
         onToggleTelemetry={() => setIsTelemetryOpen((prev) => !prev)}
+        telemetrySnapshot={telemetrySnapshot}
       />
 
       {/* Cockpit Canvas Main Viewport */}

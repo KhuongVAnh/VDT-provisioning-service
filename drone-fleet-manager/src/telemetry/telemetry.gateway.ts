@@ -49,7 +49,7 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
     private readonly redisService: RedisService,
     @Inject(forwardRef(() => DeviceService))
     private readonly deviceService: DeviceService,
-  ) {}
+  ) { }
 
   /**
    * ============================================================================
@@ -111,7 +111,7 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
       for (const devId of focusedDrones) {
         const room = `drone:${devId}`;
         const remainingClients = this.server?.sockets?.adapter?.rooms?.get(room)?.size || 0;
-        
+
         // Nếu không còn client nào khác trong phòng này -> Xóa khỏi Redis Set `drone:focus_set`
         if (remainingClients <= 1) {
           await this.redisService.removeFocusDrone(devId);
@@ -198,18 +198,43 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   /**
    * ============================================================================
-   * 5. SỰ KIỆN: ĐĂNG KÝ THEO DÕI TOÀN BỘ PHI ĐỘI
+   * 5. SỰ KIỆN: ĐĂNG KÝ THEO DÕI TOÀN BỘ PHI ĐỘI (HẠ TẦN SỐ VỀ 1Hz LITE)
    * ============================================================================
+   * Khi client chuyển sang xem "Toàn Phi Đội":
+   *  -> Rời khỏi phòng các Drone đang Focus
+   *  -> Tự động gọi Redis SREM `drone:focus_set` để Go Ingestion chuyển sang phát 1Hz Lite
+   *  -> Đưa client vào phòng 'admin' / 'all' (với Admin) hoặc 'user:<id>' (với Pilot)
    */
   @SubscribeMessage('subscribe:all')
-  handleSubscribeAll(@ConnectedSocket() client: Socket) {
+  async handleSubscribeAll(@ConnectedSocket() client: Socket) {
     const user = client.data?.user;
-    if (user && user.role === 'ADMIN') {
+    if (!user) {
+      return { status: 'error', message: 'Yêu cầu đăng nhập trước khi theo dõi phi đội' };
+    }
+
+    // Tự động giải phóng các Drone đang Focus trước đó để Go hạ tần số về 1Hz Lite
+    const focusedDrones: Set<string> = client.data?.focusedDrones;
+    if (focusedDrones && focusedDrones.size > 0) {
+      for (const devId of focusedDrones) {
+        const room = `drone:${devId}`;
+        client.leave(room);
+        const remainingClients = this.server?.sockets?.adapter?.rooms?.get(room)?.size || 0;
+        if (remainingClients === 0) {
+          await this.redisService.removeFocusDrone(devId);
+          this.logger.debug(`⚪ [UNFOCUS] Đã xóa Drone [${devId}] khỏi drone:focus_set khi Client chuyển về xem Toàn Phi Đội`);
+        }
+      }
+      client.data.focusedDrones.clear();
+    }
+
+    if (user.role === 'ADMIN') {
       client.join('admin');
       client.join('all');
+      this.logger.debug(`🌐 Client ${client.id} (${user.email}) đã tham gia phòng Toàn Phi Đội 'admin'`);
       return { status: 'subscribed', room: 'admin' };
+    } else {
+      return { status: 'subscribed', room: `user:${user.sub}` };
     }
-    return { status: 'error', message: 'Chỉ Quản trị viên (ADMIN) mới có quyền theo dõi toàn bộ phi đội' };
   }
 
   /**
@@ -244,7 +269,7 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
         if (userId) {
           this.server.to(`user:${userId}`).emit('telemetry:update', telemetryData);
         }
-      }).catch(() => {});
+      }).catch(() => { });
     } else if (ownerId) {
       // 4. Bắn tới phòng cá nhân của Phi công sở hữu Drone (để cập nhật vị trí tiểu đội trên bản đồ)
       this.server.to(`user:${ownerId}`).emit('telemetry:update', telemetryData);

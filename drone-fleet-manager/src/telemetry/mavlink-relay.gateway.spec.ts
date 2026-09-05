@@ -13,11 +13,15 @@ describe('MavlinkRelayGateway', () => {
   beforeEach(async () => {
     const mockSubscriber = {
       psubscribe: jest.fn(),
+      subscribe: jest.fn().mockImplementation((channel, cb) => cb && cb(null)),
+      unsubscribe: jest.fn(),
       on: jest.fn(),
     };
 
     redisService = {
       getSubscriber: jest.fn().mockReturnValue(mockSubscriber),
+      addFocusDrone: jest.fn().mockResolvedValue(true),
+      removeFocusDrone: jest.fn().mockResolvedValue(true),
     };
 
     deviceService = {

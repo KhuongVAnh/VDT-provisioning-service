@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Radio,
   Map as MapIcon,
@@ -14,9 +14,10 @@ import {
   Plane,
   Gauge
 } from 'lucide-react';
-import { LayoutMode, DroneDevice } from '../../types';
+import { LayoutMode, DroneDevice, DroneTelemetry } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { isDroneOnline } from '../../hooks/useTelemetry';
 
 interface HeaderProps {
   devices: DroneDevice[];
@@ -29,6 +30,7 @@ interface HeaderProps {
   onOpenManualRegister: () => void;
   isTelemetryOpen?: boolean;
   onToggleTelemetry?: () => void;
+  telemetrySnapshot?: Record<string, DroneTelemetry>;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,9 +44,18 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenManualRegister,
   isTelemetryOpen,
   onToggleTelemetry,
+  telemetrySnapshot,
 }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+
+  // Chỉ lọc và giữ lại những Drone đang Online
+  const onlineDevices = useMemo(() => {
+    return devices.filter((d) => {
+      const t = telemetrySnapshot?.[d.deviceId] || d.telemetry;
+      return isDroneOnline(t);
+    });
+  }, [devices, telemetrySnapshot]);
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#F8FAFC]/85 dark:bg-obsidian-950/85 backdrop-blur-md border-b border-slate-300/80 dark:border-slate-800/80 px-4 py-2.5 transition-colors duration-200">
@@ -93,15 +104,15 @@ export const Header: React.FC<HeaderProps> = ({
               className="bg-transparent text-xs font-mono font-medium focus:outline-none text-slate-800 dark:text-slate-200 cursor-pointer py-1"
             >
               <option value="all" className="bg-[#F8FAFC] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200">
-                🌐 Toàn Phi Đội ({devices.length})
+                🌐 Toàn Phi Đội ({onlineDevices.length})
               </option>
-              {devices.map((d) => (
+              {onlineDevices.map((d) => (
                 <option
                   key={d.deviceId}
                   value={d.deviceId}
                   className="bg-[#F8FAFC] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200 font-mono"
                 >
-                  {d.deviceId} {d.vpnIp ? `(${d.vpnIp})` : ''}
+                  🟢 {d.deviceId} {d.vpnIp ? `(${d.vpnIp})` : ''}
                 </option>
               ))}
             </select>

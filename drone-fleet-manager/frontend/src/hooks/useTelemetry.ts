@@ -4,12 +4,13 @@ import { DroneTelemetry, DroneDevice } from '../types';
 export const isDroneOnline = (t?: DroneTelemetry): boolean => {
   if (!t) return false;
   if (t.connected === false) return false;
+  const now = Date.now();
+  // Nếu có dấu vết thời gian nhưng đã quá 10 giây không có bản tin đo xa mới -> Offline
+  if (t.lastReceivedAt && Math.abs(now - t.lastReceivedAt) > 10000) return false;
+  if (t.timestamp && Math.abs(now - t.timestamp) > 10000) return false;
   if (t.connected === true) return true;
   if (t.flightMode && t.flightMode !== 'UNKNOWN') return true;
-  const now = Date.now();
-  if (t.lastReceivedAt && Math.abs(now - t.lastReceivedAt) < 15000) return true;
-  if (t.timestamp && Math.abs(now - t.timestamp) < 15000) return true;
-  return true;
+  return false;
 };
 
 export const useTelemetry = (devices: DroneDevice[]) => {
