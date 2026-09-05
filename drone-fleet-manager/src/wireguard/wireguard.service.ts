@@ -43,7 +43,7 @@ export class WireguardService {
    */
   async getServerPublicKey(): Promise<string> {
     try {
-      const { stdout } = await execAsync(`sudo wg show ${this.interfaceName} public-key 2>/dev/null || wg show ${this.interfaceName} public-key 2>/dev/null`);
+      const { stdout } = await execAsync(`sudo -n wg show ${this.interfaceName} public-key 2>/dev/null || wg show ${this.interfaceName} public-key 2>/dev/null`);
       const kernelKey = stdout.trim();
       if (kernelKey.length === 44 && kernelKey.endsWith('=')) {
         return kernelKey;
@@ -73,7 +73,8 @@ export class WireguardService {
 
       return { privateKey, publicKey };
     } catch (error) {
-      this.logger.error(`Failed to generate WireGuard keypair: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to generate WireGuard keypair: ${errorMessage}`);
       throw new Error('Failed to generate WireGuard keypair');
     }
   }
@@ -88,7 +89,8 @@ export class WireguardService {
       await execAsync(command);
       this.logger.log(`Successfully added peer ${publicKey} with IP ${assignedIp} to ${this.interfaceName}`);
     } catch (error) {
-      this.logger.error(`Failed to add WireGuard peer: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to add WireGuard peer: ${errorMessage}`);
       throw new Error('Failed to configure WireGuard peer');
     }
   }
@@ -108,7 +110,8 @@ export class WireguardService {
       this.logger.log(`Successfully removed peer ${publicKey} from ${this.interfaceName}`);
     } catch (error) {
       // Ghi log lỗi nhưng không ném ra exception vì hàm này thường dùng để rollback
-      this.logger.error(`Failed to remove WireGuard peer ${publicKey}: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to remove WireGuard peer ${publicKey}: ${errorMessage}`);
     }
   }
 
@@ -122,7 +125,7 @@ export class WireguardService {
 
     let isKernelActive = false;
     try {
-      const { stdout } = await execAsync(`sudo wg show ${this.interfaceName} 2>/dev/null || wg show ${this.interfaceName} 2>/dev/null`);
+      const { stdout } = await execAsync(`sudo -n wg show ${this.interfaceName} 2>/dev/null || wg show ${this.interfaceName} 2>/dev/null`);
       if (stdout.trim().length > 0) {
         isKernelActive = true;
       }
@@ -148,7 +151,7 @@ export class WireguardService {
     const nowEpoch = Math.floor(Date.now() / 1000);
 
     try {
-      const { stdout } = await execAsync(`sudo wg show ${this.interfaceName} dump 2>/dev/null || wg show ${this.interfaceName} dump 2>/dev/null`);
+      const { stdout } = await execAsync(`sudo -n wg show ${this.interfaceName} dump 2>/dev/null || wg show ${this.interfaceName} dump 2>/dev/null`);
       const lines = stdout.trim().split('\n');
 
       // Bỏ qua dòng đầu tiên (dòng cấu hình của interface server)
@@ -181,7 +184,8 @@ export class WireguardService {
         }
       }
     } catch (error) {
-      this.logger.debug(`Could not read kernel WireGuard stats (normal in non-Linux dev env): ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.debug(`Could not read kernel WireGuard stats (normal in non-Linux dev env): ${errorMessage}`);
     }
 
     return statsMap;

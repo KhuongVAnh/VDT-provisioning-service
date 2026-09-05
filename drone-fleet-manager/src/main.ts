@@ -8,17 +8,17 @@ import { join } from 'path';
 async function bootstrap() {
   // 1. Khởi tạo ứng dụng NestJS dựa trên Express Application
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  
+
   // 2. Kích hoạt ValidationPipe toàn cầu. 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
 
   // 3. Cấu hình phục vụ file tĩnh cho giao diện SPA Dashboard tại thư mục public/
   app.useStaticAssets(join(process.cwd(), 'public'));
-  
+
   // 4. Lấy cấu hình cổng lắng nghe từ file .env (mặc định là 10004)
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') || 10004;
-  
+
   // 5. Mở cổng cho các request đi vào (0.0.0.0 để chấp nhận mọi kết nối)
   await app.listen(port, '0.0.0.0');
   console.log(`=============================================================`);

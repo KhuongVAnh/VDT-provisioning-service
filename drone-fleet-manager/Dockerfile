@@ -14,9 +14,11 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY package*.json ./
+COPY frontend/package*.json ./frontend/
 COPY prisma ./prisma/
 
 RUN npm ci
+RUN npm ci --prefix frontend
 RUN npx prisma generate
 
 COPY . .
