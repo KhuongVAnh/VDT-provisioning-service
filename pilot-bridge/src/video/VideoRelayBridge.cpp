@@ -26,9 +26,102 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+namespace
+{
+
+  /**
+   * @brief Kiểm tra xem địa chỉ IP có thuộc dải mạng nội bộ (RFC 1918) hay không.
+   */
+  bool isPrivateIp(const QString &ip)
+  {
+    static const QRegularExpression privRe(
+        "^(10\\.|192\\.168\\.|127\\.|169\\.254\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.)");
+    return privRe.match(ip).hasMatch();
+  }
+
+  /**
+   * @brief Chuẩn hóa bản tin SDP Answer:
+   *        1. Lọc bỏ các candidate IP nội bộ của Cloud VPS (10.1.10.189, 172.x).
+   *        2. Ép c=IN IP4 và candidate UDP về đúng Public IP của máy chủ VPS (103.253.20.32:10005).
+   */
+  QString sanitizeWhepAnswerSdp(const QString &sdp, const QString &fallbackServerHost)
+  {
+    if (sdp.isEmpty())
+      return sdp;
+
+    const QStringList lines = sdp.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+    QString publicHost;
+
+    // 1. Quét tìm IP Public đầu tiên do MediaMTX gửi về (không thuộc dải Private RFC 1918)
+    static const QRegularExpression candRegex(
+        "^a=candidate:[^\\s]+\\s+\\d+\\s+(?:udp|tcp)\\s+\\d+\\s+([^\\s]+)\\s+\\d+",
+        QRegularExpression::CaseInsensitiveOption);
+
+    for (const QString &line : lines)
+    {
+      auto match = candRegex.match(line);
+      if (match.hasMatch())
+      {
+        QString host = match.captured(1);
+        if (!isPrivateIp(host))
+        {
+          publicHost = host;
+          break;
+        }
+      }
+    }
+
+    // Nếu MediaMTX chỉ gửi IP nội bộ (như 10.1.10.189), fallback về IP Public của máy chủ
+    if (publicHost.isEmpty() && !fallbackServerHost.isEmpty())
+    {
+      publicHost = fallbackServerHost;
+    }
+
+    QString result = sdp;
+
+    // 2. Cập nhật dòng c=IN IP4 thành IP Public đó
+    if (!publicHost.isEmpty())
+    {
+      static const QRegularExpression cLineRe("c=IN IP4 [0-9.]+");
+      result.replace(cLineRe, QString("c=IN IP4 %1").arg(publicHost));
+    }
+
+    // 3. Tự động lọc bỏ các candidate thuộc dải Private (RFC 1918)
+    const QStringList updatedLines = result.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+    QStringList filteredLines;
+    bool hasPublicCandidate = false;
+
+    for (const QString &line : updatedLines)
+    {
+      if (line.startsWith("a=candidate:"))
+      {
+        auto match = candRegex.match(line);
+        if (match.hasMatch() && isPrivateIp(match.captured(1)))
+        {
+          continue; // Lọc bỏ IP nội bộ của VPS (như 10.1.10.189)
+        }
+        hasPublicCandidate = true;
+      }
+      filteredLines.append(line);
+    }
+
+    // 4. Nếu toàn bộ candidate bị lọc bỏ vì là Private IP, bổ sung 1 candidate UDP trỏ vào Public Host :10005
+    if (!hasPublicCandidate && !publicHost.isEmpty())
+    {
+      // MediaMTX sử dụng cổng 10005 UDP cho WebRTC Media
+      QString injectedCandidate = QString("a=candidate:1 1 udp 2130706431 %1 10005 typ host").arg(publicHost);
+      filteredLines.append(injectedCandidate);
+    }
+
+    return filteredLines.join("\r\n") + "\r\n";
+  }
+
+} // anonymous namespace
+
 VideoRelayBridge::VideoRelayBridge(QObject *parent)
     : QObject(parent), m_httpNet(new QNetworkAccessManager(this)),
-      m_statsTimer(new QTimer(this)) {
+      m_statsTimer(new QTimer(this))
+{
 
   // Kết nối timer 1s để cập nhật số liệu tốc độ KB/s và định kỳ yêu cầu Keyframe (RTCP PLI)
   connect(m_statsTimer, &QTimer::timeout, this,
@@ -50,9 +143,11 @@ VideoRelayBridge::~VideoRelayBridge() { stopRelay(); }
 void VideoRelayBridge::startRelay(const QString &serverUrl,
                                   const QString &deviceId,
                                   const QString &jwtToken,
-                                  quint16 localQgcPort) {
+                                  quint16 localQgcPort)
+{
   // Nếu đang có phiên stream trước đó, dọn dẹp sạch sẽ trước khi tạo phiên mới
-  if (m_isRunning) {
+  if (m_isRunning)
+  {
     stopRelay();
   }
 
@@ -60,11 +155,13 @@ void VideoRelayBridge::startRelay(const QString &serverUrl,
   // BƯỚC 1: Chuẩn hóa địa chỉ URL máy chủ Backend
   // -------------------------------------------------------------------------
   m_serverUrl = serverUrl.trimmed();
-  if (m_serverUrl.endsWith('/')) {
+  if (m_serverUrl.endsWith('/'))
+  {
     m_serverUrl.chop(1);
   }
   if (!m_serverUrl.startsWith("http://") &&
-      !m_serverUrl.startsWith("https://")) {
+      !m_serverUrl.startsWith("https://"))
+  {
     m_serverUrl = "http://" + m_serverUrl;
   }
 
@@ -82,7 +179,7 @@ void VideoRelayBridge::startRelay(const QString &serverUrl,
 
   // -------------------------------------------------------------------------
   // BƯỚC 3: Khởi tạo POSIX / BSD Socket UDP thuần của hệ điều hành
-  // LÝ DO KIẾN TRÚC: 
+  // LÝ DO KIẾN TRÚC:
   // Các gói tin video SRTP sau khi giải mã sẽ được đẩy vào Worker Thread của libdatachannel.
   // Nếu dùng QUdpSocket của Qt, sẽ bị lỗi "Qt Thread Affinity" (thao tác QObject từ sai Thread).
   // Dùng socket native ::sendto đảm bảo an toàn 100% đa luồng (Thread-safe), không khóa Mutex.
@@ -118,13 +215,15 @@ void VideoRelayBridge::startRelay(const QString &serverUrl,
 /**
  * @brief Cấu hình PeerConnection, STUN Server, Video Track và các Callbacks xử lý gói tin.
  */
-void VideoRelayBridge::setupPeerConnection() {
+void VideoRelayBridge::setupPeerConnection()
+{
   // -------------------------------------------------------------------------
   // 1. Cấu hình WebRTC & STUN Server (Hỗ trợ đục lỗ NAT)
   // -------------------------------------------------------------------------
   rtc::Configuration config;
-  config.iceServers.emplace_back(
-      "stun:stun.l.google.com:19302"); // Máy chủ STUN công cộng của Google
+  config.iceServers.emplace_back("stun:stun.l.google.com:19302"); // Máy chủ STUN công cộng của Google
+  config.iceServers.emplace_back("stun:stun1.l.google.com:19302");
+  config.iceServers.emplace_back("stun:stun.cloudflare.com:3478"); // Máy chủ STUN Cloudflare
   config.enableIceUdpMux = true;
 
   // 2. Tạo đối tượng kết nối PeerConnection từ libdatachannel
@@ -133,7 +232,8 @@ void VideoRelayBridge::setupPeerConnection() {
   // -------------------------------------------------------------------------
   // 3. Lắng nghe trạng thái thay đổi của kết nối WebRTC (State Machine)
   // -------------------------------------------------------------------------
-  m_peerConnection->onStateChange([this](rtc::PeerConnection::State state) {
+  m_peerConnection->onStateChange([this](rtc::PeerConnection::State state)
+                                  {
     if (!m_isRunning)
       return;
 
@@ -152,8 +252,7 @@ void VideoRelayBridge::setupPeerConnection() {
       emit logMessage("WARN",
                       "⚠️ [WebRTC] Kết nối WebRTC đã đóng hoặc mất kết nối.");
       emit statusChanged(false, "⚪ Video FPV Đã Tắt");
-    }
-  });
+    } });
 
   // -------------------------------------------------------------------------
   // 4. Lắng nghe quá trình thu thập địa chỉ ứng viên ICE (ICE Candidate Gathering)
@@ -162,21 +261,27 @@ void VideoRelayBridge::setupPeerConnection() {
   // -------------------------------------------------------------------------
   m_peerConnection->onGatheringStateChange(
       [this, weakPc = std::weak_ptr<rtc::PeerConnection>(m_peerConnection)](
-          rtc::PeerConnection::GatheringState state) {
-        if (state == rtc::PeerConnection::GatheringState::Complete) {
-          if (auto pc = weakPc.lock()) {
-            if (!m_offerSent && m_isRunning) {
+          rtc::PeerConnection::GatheringState state)
+      {
+        if (state == rtc::PeerConnection::GatheringState::Complete)
+        {
+          if (auto pc = weakPc.lock())
+          {
+            if (!m_offerSent && m_isRunning)
+            {
               auto localDesc = pc->localDescription();
-              if (localDesc.has_value()) {
+              if (localDesc.has_value())
+              {
                 m_offerSent = true;
                 QString sdp =
                     QString::fromStdString(std::string(localDesc.value()));
-                
+
                 // ĐẨY VỀ MAIN THREAD: Vì callback này chạy trên Worker Thread của WebRTC,
                 // ta dùng QMetaObject::invokeMethod (QueuedConnection) để gọi hàm gửi HTTP
                 // trên Main GUI Thread một cách an toàn.
                 QMetaObject::invokeMethod(
-                    this, [this, sdp]() { sendWhepOffer(sdp); },
+                    this, [this, sdp]()
+                    { sendWhepOffer(sdp); },
                     Qt::QueuedConnection);
               }
             }
@@ -187,7 +292,8 @@ void VideoRelayBridge::setupPeerConnection() {
   // -------------------------------------------------------------------------
   // 5. Thiết lập Callback nhận gói tin Video RTP (Data Plane Callback)
   // -------------------------------------------------------------------------
-  auto setupTrackCallbacks = [this](std::shared_ptr<rtc::Track> track) {
+  auto setupTrackCallbacks = [this](std::shared_ptr<rtc::Track> track)
+  {
     if (!track)
       return;
     emit logMessage("INFO",
@@ -195,11 +301,13 @@ void VideoRelayBridge::setupPeerConnection() {
 
     // Khi libdatachannel nhận gói tin SRTP qua UDP 10005, giải mã bảo mật xong -> Bắn vào onMessage:
     track->onMessage(
-        [this](rtc::binary rtpPacket) {
+        [this](rtc::binary rtpPacket)
+        {
           if (!m_isRunning || m_rawUdpSock < 0 || rtpPacket.empty())
             return;
 
-          if (m_totalPacketsReceived == 0) {
+          if (m_totalPacketsReceived == 0)
+          {
             emit logMessage(
                 "SUCCESS",
                 QString("🎉 [WebRTC] Đã nhận gói tin Video RTP đầu tiên (%1 "
@@ -218,9 +326,8 @@ void VideoRelayBridge::setupPeerConnection() {
         },
         [](std::string) {});
 
-    track->onClosed([this]() {
-      emit logMessage("INFO", "⏹ [WebRTC] Video Track đã đóng.");
-    });
+    track->onClosed([this]()
+                    { emit logMessage("INFO", "⏹ [WebRTC] Video Track đã đóng."); });
   };
 
   // -------------------------------------------------------------------------
@@ -234,13 +341,13 @@ void VideoRelayBridge::setupPeerConnection() {
 
   // Đăng ký dự phòng nếu MediaMTX khởi tạo track phía remote
   m_peerConnection->onTrack([this, setupTrackCallbacks](
-                                std::shared_ptr<rtc::Track> track) {
+                                std::shared_ptr<rtc::Track> track)
+                            {
     if (track && track->description().type() == "video") {
       emit logMessage("INFO", "🎥 [WebRTC] Nhận Video Track từ MediaMTX! Đang "
                               "giải mã SRTP và chuyển tiếp RTP sang UDP...");
       setupTrackCallbacks(track);
-    }
-  });
+    } });
 
   // -------------------------------------------------------------------------
   // 7. Yêu cầu PeerConnection sinh bản tin SDP Offer cục bộ
@@ -250,7 +357,8 @@ void VideoRelayBridge::setupPeerConnection() {
   // -------------------------------------------------------------------------
   // 8. Fallback Timer 300ms đề phòng mạng cục bộ không kích hoạt GatheringState::Complete
   // -------------------------------------------------------------------------
-  QTimer::singleShot(300, this, [this]() {
+  QTimer::singleShot(300, this, [this]()
+                     {
     if (!m_offerSent && m_isRunning && m_peerConnection) {
       auto localDesc = m_peerConnection->localDescription();
       if (localDesc.has_value()) {
@@ -258,15 +366,15 @@ void VideoRelayBridge::setupPeerConnection() {
         QString sdp = QString::fromStdString(std::string(localDesc.value()));
         sendWhepOffer(sdp);
       }
-    }
-  });
+    } });
 }
 
 /**
  * @brief Gửi bản tin SDP Offer chuẩn RFC 8829 (WHEP) lên NestJS Gateway qua HTTP POST.
  * @param sdpOffer Chuỗi SDP Offer do libdatachannel sinh ra
  */
-void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
+void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer)
+{
   if (m_deviceId.isEmpty() || !m_isRunning)
     return;
 
@@ -281,41 +389,68 @@ void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
       QString("🎥 [WebRTC] Gửi SDP Offer WHEP lên Cloud: %1").arg(whepUrlStr));
 
   // -------------------------------------------------------------------------
-  // 2. Thiết lập Header HTTP theo chuẩn IETF WHEP (Content-Type: application/sdp)
+  // 2. KỸ THUẬT CLIENT-FIRST UDP HOLE PUNCHING:
+  // Lọc bỏ toàn bộ candidate khỏi SDP Offer trước khi gửi lên Cloud Gateway.
+  // Điều này ngăn MediaMTX trên VPS bắn bất kỳ gói UDP nào ra trước (tránh bị Cloud NAT đổi cổng).
+  // Client sẽ là bên chủ động bắn gói tin UDP STUN đầu tiên vào cổng 10005 của VPS!
+  // -------------------------------------------------------------------------
+  const QStringList offerLines = sdpOffer.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+  QStringList clientFirstLines;
+  for (const QString &line : offerLines)
+  {
+    if (!line.startsWith("a=candidate:"))
+    {
+      clientFirstLines.append(line);
+    }
+  }
+  QString clientFirstOfferSdp = clientFirstLines.join("\r\n") + "\r\n";
+
+  // -------------------------------------------------------------------------
+  // 3. Thiết lập Header HTTP theo chuẩn IETF WHEP (Content-Type: application/sdp)
   // -------------------------------------------------------------------------
   QUrl whepUrl(whepUrlStr);
   QNetworkRequest request(whepUrl);
   request.setHeader(QNetworkRequest::ContentTypeHeader, "application/sdp");
-  if (!m_jwtToken.isEmpty()) {
+  if (!m_jwtToken.isEmpty())
+  {
     request.setRawHeader("Authorization",
                          QString("Bearer %1").arg(m_jwtToken).toUtf8());
   }
 
   // -------------------------------------------------------------------------
-  // 3. Thực hiện gửi bản tin SDP Offer bằng HTTP POST bất đồng bộ
+  // 4. Thực hiện gửi bản tin SDP Offer bằng HTTP POST bất đồng bộ
   // -------------------------------------------------------------------------
-  QNetworkReply *reply = m_httpNet->post(request, sdpOffer.toUtf8());
-  connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+  QNetworkReply *reply = m_httpNet->post(request, clientFirstOfferSdp.toUtf8());
+  connect(reply, &QNetworkReply::finished, this, [this, reply]()
+          {
     reply->deleteLater();
     if (!m_isRunning || !m_peerConnection)
       return;
 
     // -----------------------------------------------------------------------
-    // 4. Tiếp nhận phản hồi SDP Answer từ MediaMTX (HTTP 200 OK)
+    // 5. Tiếp nhận phản hồi SDP Answer từ MediaMTX (HTTP 200 OK)
     // -----------------------------------------------------------------------
     if (reply->error() == QNetworkReply::NoError) {
       QByteArray rawAnswer = reply->readAll();
       QString sdpAnswer = QString::fromUtf8(rawAnswer);
 
+      // Trích xuất host công khai của máy chủ VPS từ m_serverUrl (ví dụ "103.253.20.32")
+      QUrl serverQUrl(m_serverUrl);
+      QString serverHost = serverQUrl.host();
+
+      // Làm sạch SDP Answer: Thay thế IP Private nội bộ (10.1.10.189) bằng Public IP VPS (:10005)
+      QString cleanAnswerSdp = sanitizeWhepAnswerSdp(sdpAnswer, serverHost);
+
       emit logMessage("SUCCESS",
-                      "🟢 [WebRTC] Nhận SDP Answer từ MediaMTX thành công! Bắt "
-                      "đầu kết nối PeerConnection...");
+                      QString("🟢 [WebRTC] Nhận SDP Answer từ MediaMTX thành công! "
+                              "Đã chuẩn hóa IP đích về [%1:10005] và bắt đầu kết nối PeerConnection...")
+                          .arg(serverHost));
 
       try {
         // NẠP SDP ANSWER: Kích hoạt quá trình đục lỗ NAT ICE và bắt tay DTLS 1.2 Handshake
         // trên cổng UDP 10005 của VPS
         m_peerConnection->setRemoteDescription(
-            rtc::Description(sdpAnswer.toStdString(), "answer"));
+            rtc::Description(cleanAnswerSdp.toStdString(), "answer"));
       } catch (const std::exception &e) {
         emit logMessage(
             "ERROR",
@@ -337,14 +472,14 @@ void VideoRelayBridge::sendWhepOffer(const QString &sdpOffer) {
                           .arg(errStr)
                           .arg(bodyDetail));
       emit statusChanged(false, QString("Lỗi WHEP HTTP %1").arg(statusCode));
-    }
-  });
+    } });
 }
 
 /**
  * @brief Slot timer định kỳ mỗi giây: Cập nhật bitrate và gửi yêu cầu Keyframe.
  */
-void VideoRelayBridge::onStatsTimer() {
+void VideoRelayBridge::onStatsTimer()
+{
   if (!m_isRunning)
     return;
 
@@ -355,7 +490,8 @@ void VideoRelayBridge::onStatsTimer() {
   // ĐỊNH KỲ YÊU CẦU KEYFRAME (RTCP PLI / Picture Loss Indication):
   // Giúp QGroundControl ngay khi vừa kết nối nhận được ngay khung hình IDR/Keyframe (SPS/PPS)
   // để bắt đầu vẽ video tức thì mà không phải chờ đợi.
-  if (m_videoTrack && m_videoTrack->isOpen()) {
+  if (m_videoTrack && m_videoTrack->isOpen())
+  {
     m_videoTrack->requestKeyframe();
   }
 }
@@ -363,7 +499,8 @@ void VideoRelayBridge::onStatsTimer() {
 /**
  * @brief Dừng toàn bộ phiên WebRTC, đóng socket và dọn dẹp bộ nhớ.
  */
-void VideoRelayBridge::stopRelay() {
+void VideoRelayBridge::stopRelay()
+{
   if (!m_isRunning)
     return;
 
@@ -372,19 +509,22 @@ void VideoRelayBridge::stopRelay() {
   m_statsTimer->stop();
 
   // 1. Đóng socket UDP hệ điều hành
-  if (m_rawUdpSock >= 0) {
+  if (m_rawUdpSock >= 0)
+  {
     ::close(m_rawUdpSock);
     m_rawUdpSock = -1;
   }
 
   // 2. Đóng Video Track
-  if (m_videoTrack) {
+  if (m_videoTrack)
+  {
     m_videoTrack->close();
     m_videoTrack.reset();
   }
 
   // 3. Đóng phiên WebRTC PeerConnection
-  if (m_peerConnection) {
+  if (m_peerConnection)
+  {
     m_peerConnection->close();
     m_peerConnection.reset();
   }
@@ -392,4 +532,3 @@ void VideoRelayBridge::stopRelay() {
   emit logMessage("INFO", "⏹ [WebRTC] Đã dừng chuyển tiếp Video FPV.");
   emit statusChanged(false, "⚪ Đã tắt Video");
 }
-
