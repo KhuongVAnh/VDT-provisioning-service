@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   const { user, logout } = useAuth();
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/80 dark:bg-obsidian-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/80 px-4 py-2.5 transition-colors duration-200">
+    <header className="sticky top-0 z-40 w-full bg-[#F8FAFC]/85 dark:bg-obsidian-950/85 backdrop-blur-md border-b border-slate-300/80 dark:border-slate-800/80 px-4 py-2.5 transition-colors duration-200">
       <div className="max-w-[1920px] mx-auto flex flex-wrap items-center justify-between gap-3">
 
         {/* Logo & Gateway Status */}
@@ -63,48 +63,43 @@ export const Header: React.FC<HeaderProps> = ({
                 MISSION CONTROL
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">
-                v2.0
+                v2.0 PRO
               </span>
             </div>
 
-            <div className="flex items-center gap-2 text-xs">
-              <span className="flex items-center gap-1 font-mono text-[11px]">
-                {isSocketConnected ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-tactical-emerald animate-pulse" />
-                    <span className="text-tactical-emerald font-medium">LIVE</span>
-                    <span className="text-slate-400 dark:text-slate-500">({latencyMs}ms)</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-tactical-red" />
-                    <span className="text-tactical-red font-medium">DISCONNECTED</span>
-                  </>
-                )}
+            <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1">
+                <span
+                  className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-tactical-emerald animate-pulse' : 'bg-tactical-red'
+                    }`}
+                />
+                <span>{isSocketConnected ? 'ONLINE' : 'DISCONNECTED'}</span>
               </span>
+              <span>•</span>
+              <span>PING: {latencyMs}ms</span>
             </div>
           </div>
         </div>
 
-        {/* Tactical View Switcher & Drone Selector */}
-        <div className="flex items-center gap-2 bg-slate-100 dark:bg-obsidian-900/90 p-1 rounded-xl border border-slate-200 dark:border-slate-800/80">
+        {/* Tactical Control Bar (Center) */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-100/90 dark:bg-obsidian-900/90 p-1 rounded-xl border border-slate-300/80 dark:border-slate-800">
 
-          {/* Drone Selector Dropdown */}
-          <div className="flex items-center gap-1 px-2 border-r border-slate-200 dark:border-slate-800">
-            <Crosshair className="w-4 h-4 text-tactical-blue dark:text-tactical-cyan" />
+          {/* Quick Target Drone Selector */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F8FAFC] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800 text-xs">
+            <span className="text-slate-400 text-[11px] font-mono">MỤC TIÊU:</span>
             <select
               value={activeDroneId}
               onChange={(e) => onSelectDrone(e.target.value)}
               className="bg-transparent text-xs font-mono font-medium focus:outline-none text-slate-800 dark:text-slate-200 cursor-pointer py-1"
             >
-              <option value="all" className="bg-white dark:bg-obsidian-900 text-slate-800 dark:text-slate-200">
+              <option value="all" className="bg-[#F8FAFC] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200">
                 🌐 Toàn Phi Đội ({devices.length})
               </option>
               {devices.map((d) => (
                 <option
                   key={d.deviceId}
                   value={d.deviceId}
-                  className="bg-white dark:bg-obsidian-900 text-slate-800 dark:text-slate-200 font-mono"
+                  className="bg-[#F8FAFC] dark:bg-obsidian-900 text-slate-800 dark:text-slate-200 font-mono"
                 >
                   {d.deviceId} {d.vpnIp ? `(${d.vpnIp})` : ''}
                 </option>
@@ -118,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onChangeLayoutMode('mode-map')}
               title="Chế độ Bản đồ (Phím 1)"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${layoutMode === 'mode-map'
-                ? 'bg-white dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
+                ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
@@ -131,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onChangeLayoutMode('mode-split')}
               title="Chế độ Chia đôi (Phím 2)"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${layoutMode === 'mode-split'
-                ? 'bg-white dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
+                ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
@@ -144,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onChangeLayoutMode('mode-cockpit')}
               title="Chế độ Cockpit FPV (Phím 3)"
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${layoutMode === 'mode-cockpit'
-                ? 'bg-white dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
+                ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-semibold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
@@ -158,8 +153,8 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={onToggleTelemetry}
                 title="Bật / Tắt Khung Giám Sát Bay Tức Thời (PFD)"
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${isTelemetryOpen
-                    ? 'bg-tactical-blue/15 text-tactical-blue dark:text-tactical-cyan font-bold border border-tactical-blue/30 dark:border-tactical-cyan/30'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-tactical-blue/15 text-tactical-blue dark:text-tactical-cyan font-bold border border-tactical-blue/30 dark:border-tactical-cyan/30'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
               >
                 <Gauge className="w-3.5 h-3.5" />

@@ -94,7 +94,7 @@ export const AuthModal: React.FC = () => {
       </header>
 
       {/* Central Login / Register Bento Card */}
-      <div className="relative w-full max-w-md bg-white/95 dark:bg-obsidian-900/95 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 overflow-hidden backdrop-blur-xl z-10 transition-all">
+      <div className="relative w-full max-w-md bg-[#F8FAFC]/95 dark:bg-obsidian-900/95 border border-slate-300/80 dark:border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 overflow-hidden backdrop-blur-xl z-10 transition-all">
 
         {/* Top Glow Accent Bar */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-tactical-blue via-tactical-cyan to-tactical-emerald" />

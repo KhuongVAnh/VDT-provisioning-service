@@ -163,7 +163,7 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
         fontSize: 13,
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
         theme: {
-          background: '#060911',
+          background: '#0B1120',
           foreground: '#f8fafc',
           cursor: '#00e5ff',
           selectionBackground: 'rgba(0, 229, 255, 0.35)',
@@ -373,17 +373,17 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
       <div
-        className={`relative bg-slate-900 border border-slate-700/80 shadow-2xl flex flex-col overflow-hidden transition-all duration-200 ${isFullscreen
-            ? 'w-full h-full rounded-none border-none'
-            : 'w-full max-w-5xl h-[88vh] rounded-2xl'
+        className={`relative bg-[#131D31] border border-slate-800 shadow-2xl flex flex-col overflow-hidden transition-all duration-200 ${isFullscreen
+          ? 'w-full h-full rounded-none border-none'
+          : 'w-full max-w-5xl h-[88vh] rounded-2xl'
           }`}
       >
         {/* ========================================================================= */}
         {/* 1. TERMINAL TOP HEADER BAR                                                */}
         {/* ========================================================================= */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950 border-b border-slate-800 text-white select-none">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#0B1120] border-b border-slate-800 text-white select-none">
           <div className="flex items-center gap-3">
             <div className="p-1.5 rounded-lg bg-tactical-cyan/10 text-tactical-cyan border border-tactical-cyan/30">
               <TerminalIcon className="w-4.5 h-4.5" />
@@ -427,8 +427,8 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
               onClick={() => setShowConfig((prev) => !prev)}
               title={showConfig ? 'Thu gọn bảng cấu hình' : 'Mở bảng cấu hình kết nối'}
               className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${showConfig
-                  ? 'bg-tactical-cyan text-black font-bold shadow-sm'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
+                ? 'bg-tactical-cyan text-black font-bold shadow-sm'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
                 }`}
             >
               <Settings className="w-3.5 h-3.5" />
@@ -505,7 +505,7 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
         {/* 3. ACTIVE SESSION QUICK TOOLBAR (WHEN CONNECTED)                          */}
         {/* ========================================================================= */}
         {isConnected && !showConfig && (
-          <div className="px-3 py-2 bg-slate-950/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+          <div className="px-3 py-2 bg-[#0B1120]/95 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-tactical-emerald animate-pulse" />
               <span className="text-slate-200 font-semibold">
@@ -566,7 +566,7 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
         {/* ========================================================================= */}
         {/* 4. MAIN TERMINAL VIEWPORT WITH SMART CONNECTION SETUP OVERLAY             */}
         {/* ========================================================================= */}
-        <div className="flex-1 w-full bg-[#060911] relative overflow-hidden flex flex-col">
+        <div className="flex-1 w-full bg-[#0B1120] relative overflow-hidden flex flex-col">
 
           {/* Xterm Canvas Container */}
           <div
@@ -580,8 +580,8 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
           {/* CONNECTION SETUP CARD (Displayed when !isConnected or showConfig=true)  */}
           {/* ======================================================================= */}
           {showConfig && (
-            <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
-              <div className="w-full max-w-lg bg-slate-900 border border-slate-700/90 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 text-slate-100 font-sans">
+            <div className="absolute inset-0 z-20 bg-[#0B1120]/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+              <div className="w-full max-w-lg bg-[#131D31] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-2xl space-y-5 text-slate-100 font-sans">
 
                 {/* Card Title */}
                 <div className="flex items-start justify-between border-b border-slate-800 pb-3">
@@ -615,8 +615,8 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
                 {/* Status Notice if disconnected or error */}
                 {sshStatus && (
                   <div className={`p-2.5 rounded-xl text-xs font-mono flex items-center gap-2 border ${sshStatus.toLowerCase().includes('lỗi') || sshStatus.toLowerCase().includes('error') || sshStatus.toLowerCase().includes('kết thúc')
-                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                      : 'bg-tactical-cyan/10 border-tactical-cyan/30 text-cyan-300'
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                    : 'bg-tactical-cyan/10 border-tactical-cyan/30 text-cyan-300'
                     }`}>
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{sshStatus}</span>
@@ -635,10 +635,10 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
                       <select
                         value={selectedId}
                         onChange={(e) => setSelectedId(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 font-mono focus:outline-none focus:border-tactical-cyan focus:ring-2 focus:ring-tactical-cyan/30 cursor-pointer appearance-none"
+                        className="w-full bg-[#0B1120] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 font-mono focus:outline-none focus:border-tactical-cyan focus:ring-2 focus:ring-tactical-cyan/30 cursor-pointer appearance-none"
                       >
                         {devices.map((d) => (
-                          <option key={d.deviceId} value={d.deviceId} className="bg-slate-900 text-white">
+                          <option key={d.deviceId} value={d.deviceId} className="bg-[#131D31] text-white">
                             {d.deviceId} — IP VPN: {d.vpnIp || '10.13.37.X'} {d.hardwareModel ? `(${d.hardwareModel})` : ''}
                           </option>
                         ))}
@@ -669,7 +669,7 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
                           if (e.key === 'Enter') passwordInputRef.current?.focus();
                         }}
                         placeholder="Nhập tên tài khoản (mặc định: root)"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 font-mono focus:outline-none focus:border-tactical-cyan focus:ring-2 focus:ring-tactical-cyan/30 placeholder:text-slate-600"
+                        className="w-full bg-[#0B1120] border border-slate-700 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 font-mono focus:outline-none focus:border-tactical-cyan focus:ring-2 focus:ring-tactical-cyan/30 placeholder:text-slate-600"
                       />
                     </div>
                     {/* Quick Username Tags */}
@@ -684,8 +684,8 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
                             passwordInputRef.current?.focus();
                           }}
                           className={`px-2 py-0.5 rounded-lg text-[11px] font-mono transition-colors cursor-pointer ${username === u
-                              ? 'bg-tactical-cyan/20 text-tactical-cyan border border-tactical-cyan/40 font-bold'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                            ? 'bg-tactical-cyan/20 text-tactical-cyan border border-tactical-cyan/40 font-bold'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                             }`}
                         >
                           {u}
@@ -710,7 +710,7 @@ export const WebSshModal: React.FC<WebSshModalProps> = ({
                           if (e.key === 'Enter') handleStartConnect();
                         }}
                         placeholder="Nhập mật khẩu truy cập..."
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-sm text-slate-100 font-mono focus:outline-none focus:border-tactical-cyan focus:ring-2 focus:ring-tactical-cyan/30 placeholder:text-slate-600"
+                        className="w-full bg-[#0B1120] border border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-sm text-slate-100 font-mono focus:outline-none focus:border-tactical-cyan focus:ring-2 focus:ring-tactical-cyan/30 placeholder:text-slate-600"
                       />
                       <button
                         type="button"

@@ -51,7 +51,7 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 
       {/* 1. Tổng phi đội */}
-      <div className="relative overflow-hidden rounded-xl bg-white/70 dark:bg-obsidian-900/80 backdrop-blur-md p-3.5 border border-slate-200/80 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
+      <div className="relative overflow-hidden rounded-xl bg-[#F8FAFC]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             Tổng Phi Đội
@@ -77,7 +77,7 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
       </div>
 
       {/* 2. Đang bay & Trực tuyến */}
-      <div className="relative overflow-hidden rounded-xl bg-white/70 dark:bg-obsidian-900/80 backdrop-blur-md p-3.5 border border-slate-200/80 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-emerald/40">
+      <div className="relative overflow-hidden rounded-xl bg-[#F8FAFC]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-emerald/40">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             Live Telemetry
@@ -106,7 +106,7 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
       </div>
 
       {/* 3. Mức Pin Trung bình */}
-      <div className="relative overflow-hidden rounded-xl bg-white/70 dark:bg-obsidian-900/80 backdrop-blur-md p-3.5 border border-slate-200/80 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-amber/40">
+      <div className="relative overflow-hidden rounded-xl bg-[#F8FAFC]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-amber/40">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             Pin Phi Đội TB
@@ -137,7 +137,7 @@ export const KpiDeck: React.FC<KpiDeckProps> = ({ stats, devices, telemetrySnaps
       </div>
 
       {/* 4. Hạ tầng WireGuard VPN IP Pool */}
-      <div className="relative overflow-hidden rounded-xl bg-white/70 dark:bg-obsidian-900/80 backdrop-blur-md p-3.5 border border-slate-200/80 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
+      <div className="relative overflow-hidden rounded-xl bg-[#F8FAFC]/85 dark:bg-obsidian-900/85 backdrop-blur-md p-3.5 border border-slate-300/70 dark:border-slate-800/80 shadow-sm transition-all hover:border-tactical-blue/40 dark:hover:border-tactical-cyan/40">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             VPN IP Mesh (10.13.37.X)

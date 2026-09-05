@@ -221,17 +221,17 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
   }, [devices, telemetrySnapshot, activeDroneId, getFlightTrail, onSelectDrone]);
 
   return (
-    <div className="relative isolate w-full h-full min-h-[350px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner">
+    <div className="relative isolate w-full h-full min-h-[350px] rounded-xl overflow-hidden border border-slate-300/80 dark:border-slate-800 shadow-inner">
       <div ref={mapContainerRef} className="w-full h-full" />
 
       {/* Mini Tactical HUD Grid Overlay */}
-      <div className="absolute top-3 left-3 z-[400] pointer-events-none flex items-center gap-2 bg-white/85 dark:bg-obsidian-900/85 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 text-[10px] font-mono text-slate-700 dark:text-slate-300 shadow-sm">
+      <div className="absolute top-3 left-3 z-[400] pointer-events-none flex items-center gap-2 bg-[#F8FAFC]/90 dark:bg-obsidian-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-slate-300/80 dark:border-slate-800 text-[10px] font-mono text-slate-700 dark:text-slate-300 shadow-sm">
         <span className="w-2 h-2 rounded-full bg-tactical-cyan animate-pulse" />
         <span className="font-semibold">TACTICAL GIS GRID: WGS-84</span>
       </div>
 
       {/* Tactical Layer Switcher (Satellite / Tactical Canvas / Street OSM) */}
-      <div className="absolute top-3 right-3 z-[400] flex items-center gap-1 bg-white/90 dark:bg-obsidian-900/90 backdrop-blur-md p-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-md">
+      <div className="absolute top-3 right-3 z-[400] flex items-center gap-1 bg-[#F8FAFC]/90 dark:bg-obsidian-900/90 backdrop-blur-md p-1 rounded-xl border border-slate-300/80 dark:border-slate-800 shadow-md">
         <button
           type="button"
           onClick={() => setLayerStyle('tactical')}

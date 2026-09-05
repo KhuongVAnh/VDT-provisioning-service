@@ -43,7 +43,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  
+
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -143,7 +143,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return (
             <div
               key={t.id}
-              className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-2xl bg-white/95 dark:bg-obsidian-900/95 border ${config.border} ${config.glow} shadow-xl backdrop-blur-xl transition-all animate-in slide-in-from-top-2 fade-in duration-200`}
+              className={`pointer-events-auto flex items-start gap-3 p-3.5 rounded-2xl bg-[#F8FAFC]/95 dark:bg-obsidian-900/95 border ${config.border} ${config.glow} shadow-xl backdrop-blur-xl transition-all animate-in slide-in-from-top-2 fade-in duration-200`}
             >
               <div className="mt-0.5">{config.icon}</div>
 
@@ -173,29 +173,27 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {/* 2. TACTICAL CONFIRMATION MODAL (Replaces window.confirm) */}
       {confirmDialog?.isOpen && (
         <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-none">
-          <div className="relative w-full max-w-md bg-white dark:bg-obsidian-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6">
+          <div className="relative w-full max-w-md bg-[#F8FAFC] dark:bg-obsidian-900 border border-slate-300 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6">
 
             {/* Top Accent Glow */}
             <div
-              className={`absolute top-0 left-0 right-0 h-1.5 ${
-                confirmDialog.options.variant === 'danger'
+              className={`absolute top-0 left-0 right-0 h-1.5 ${confirmDialog.options.variant === 'danger'
                   ? 'bg-gradient-to-r from-red-600 via-rose-500 to-amber-500'
                   : confirmDialog.options.variant === 'warning'
-                  ? 'bg-gradient-to-r from-amber-500 to-yellow-400'
-                  : 'bg-gradient-to-r from-tactical-blue to-tactical-cyan'
-              }`}
+                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400'
+                    : 'bg-gradient-to-r from-tactical-blue to-tactical-cyan'
+                }`}
             />
 
             {/* Header with Icon */}
             <div className="flex items-start gap-3.5 mb-4">
               <div
-                className={`p-3 rounded-2xl ${
-                  confirmDialog.options.variant === 'danger'
+                className={`p-3 rounded-2xl ${confirmDialog.options.variant === 'danger'
                     ? 'bg-tactical-red/10 text-tactical-red'
                     : confirmDialog.options.variant === 'warning'
-                    ? 'bg-amber-400/10 text-amber-400'
-                    : 'bg-tactical-cyan/10 text-tactical-cyan'
-                }`}
+                      ? 'bg-amber-400/10 text-amber-400'
+                      : 'bg-tactical-cyan/10 text-tactical-cyan'
+                  }`}
               >
                 {confirmDialog.options.variant === 'danger' ? (
                   <AlertOctagon className="w-6 h-6" />
@@ -236,13 +234,12 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               <button
                 type="button"
                 onClick={() => confirmDialog.resolve(true)}
-                className={`flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-lg transition-all cursor-pointer ${
-                  confirmDialog.options.variant === 'danger'
+                className={`flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-lg transition-all cursor-pointer ${confirmDialog.options.variant === 'danger'
                     ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 shadow-red-600/25'
                     : confirmDialog.options.variant === 'warning'
-                    ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-yellow-500 shadow-amber-600/25'
-                    : 'bg-gradient-to-r from-tactical-blue to-cyan-500 hover:opacity-95 shadow-cyan-500/25'
-                }`}
+                      ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-yellow-500 shadow-amber-600/25'
+                      : 'bg-gradient-to-r from-tactical-blue to-cyan-500 hover:opacity-95 shadow-cyan-500/25'
+                  }`}
               >
                 <span>{confirmDialog.options.confirmText || 'Xác Nhận Phát Lệnh'}</span>
                 <ArrowRight className="w-3.5 h-3.5" />

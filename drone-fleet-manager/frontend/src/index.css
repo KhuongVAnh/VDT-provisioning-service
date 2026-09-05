@@ -7,6 +7,13 @@
     margin: 0;
     padding: 0;
     overflow-x: hidden;
+    background-color: #EEF2F6;
+    color: #0F172A;
+  }
+
+  .dark body {
+    background-color: #0B1120;
+    color: #F1F5F9;
   }
 }
 
@@ -21,35 +28,35 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #CBD5E1;
   border-radius: 9999px;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #1E293B;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #0284c7;
+  background: #0284C7;
 }
 
 /* Leaflet Custom Tactical Theme Overrides */
 .leaflet-container {
   font-family: 'Inter', sans-serif !important;
-  background-color: #080c14 !important;
+  background-color: #0B1120 !important;
 }
 
 .leaflet-popup-content-wrapper {
-  background: rgba(15, 23, 42, 0.95) !important;
-  color: #f8fafc !important;
+  background: rgba(19, 29, 49, 0.96) !important;
+  color: #F8FAFC !important;
   border-radius: 12px !important;
-  border: 1px solid rgba(0, 229, 255, 0.3) !important;
-  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(0, 229, 255, 0.35) !important;
+  backdrop-filter: blur(10px) !important;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
 }
 
 .leaflet-popup-tip {
-  background: rgba(15, 23, 42, 0.95) !important;
+  background: rgba(19, 29, 49, 0.96) !important;
 }
 
 .custom-drone-marker {

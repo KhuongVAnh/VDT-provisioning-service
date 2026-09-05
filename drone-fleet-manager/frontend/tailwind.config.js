@@ -17,11 +17,21 @@ export default {
           glow: 'rgba(0, 229, 255, 0.15)',
         },
         obsidian: {
-          950: '#080C14',
-          900: '#0D1322',
-          850: '#11182A',
-          800: '#161F36',
-          700: '#222F4C',
+          950: '#0B1120', // Deep Aerospace Navy background (thay thế màu đen kịt)
+          900: '#131D31', // Deep Aerospace Navy card surface (khối thẻ nổi)
+          850: '#172239', // Elevated surface
+          800: '#1E293B', // Viền Slate Navy
+          700: '#2D3D5E', // Viền sáng
+        },
+        titanium: {
+          50: '#F8FAFC',  // Nền thẻ sáng (Slate-50 ngà nhạt, thay cho trắng tinh)
+          100: '#EEF2F6', // Nền ứng dụng sáng (Warm Titanium dịu mắt)
+          200: '#E2E8F0', // Nền hover
+          300: '#CBD5E1', // Viền bạc Titan
+          400: '#94A3B8', // Chữ phụ mờ
+          700: '#334155', // Chữ phụ
+          800: '#1E293B', // Chữ đậm
+          900: '#0F172A', // Chữ chính (Slate Navy thẫm)
         },
       },
       fontFamily: {

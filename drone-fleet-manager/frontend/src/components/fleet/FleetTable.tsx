@@ -64,18 +64,18 @@ export const FleetTable: React.FC<FleetTableProps> = ({
   }, [devices, searchTerm, filterMode, telemetrySnapshot]);
 
   return (
-    <div className="w-full bg-white/80 dark:bg-obsidian-900/80 backdrop-blur-md rounded-xl border border-slate-200/80 dark:border-slate-800/80 overflow-hidden shadow-sm flex flex-col">
+    <div className="w-full bg-[#F8FAFC]/85 dark:bg-obsidian-900/85 backdrop-blur-md rounded-xl border border-slate-300/70 dark:border-slate-800/80 overflow-hidden shadow-sm flex flex-col">
 
       {/* Table Header Controls */}
-      <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="p-3 border-b border-slate-300/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
 
         {/* View Switcher Tabs: Danh Sách Phi Đội vs Ma Trận IP Subnet */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-obsidian-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-obsidian-950 p-1 rounded-xl border border-slate-300/70 dark:border-slate-800">
           <button
             type="button"
             onClick={() => setViewTab('table')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${viewTab === 'table'
-              ? 'bg-white dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
+              ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
           >
@@ -87,7 +87,7 @@ export const FleetTable: React.FC<FleetTableProps> = ({
             type="button"
             onClick={() => setViewTab('ip-matrix')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${viewTab === 'ip-matrix'
-              ? 'bg-white dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
+              ? 'bg-[#F8FAFC] dark:bg-slate-800 text-tactical-blue dark:text-tactical-cyan shadow-sm font-bold'
               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
           >
@@ -100,13 +100,13 @@ export const FleetTable: React.FC<FleetTableProps> = ({
         {viewTab === 'table' && (
           <div className="flex items-center gap-2">
             {/* Filter tabs */}
-            <div className="flex items-center bg-slate-100 dark:bg-obsidian-950 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
+            <div className="flex items-center bg-slate-100 dark:bg-obsidian-950 p-0.5 rounded-lg border border-slate-300/70 dark:border-slate-800 text-xs">
               {(['all', 'online', 'armed', 'offline'] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => setFilterMode(mode)}
                   className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${filterMode === mode
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-semibold'
+                    ? 'bg-[#F8FAFC] dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-semibold'
                     : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                 >

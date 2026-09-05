@@ -189,7 +189,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-obsidian-950 text-slate-800 dark:text-slate-100 transition-colors duration-200">
+    <div className="min-h-screen flex flex-col bg-[#EEF2F6] dark:bg-obsidian-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
 
       {/* Main Mission Control Header */}
       <Header

@@ -79,10 +79,10 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-white/90 dark:bg-obsidian-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden transition-colors">
+    <div className="w-full h-full flex flex-col bg-[#F8FAFC]/90 dark:bg-obsidian-900/90 backdrop-blur-md border border-slate-300/80 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden transition-colors">
 
       {/* Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/70 dark:bg-obsidian-950/60">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-300/80 dark:border-slate-800/80 bg-slate-100/70 dark:bg-obsidian-950/60">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-tactical-blue/10 dark:bg-tactical-cyan/10 text-tactical-blue dark:text-tactical-cyan">
             <Gauge className="w-4 h-4" />
@@ -278,13 +278,13 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <div className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
               <span className="block text-[10px] text-slate-400 font-sans">Vĩ độ (Lat)</span>
               <span className="font-bold text-slate-800 dark:text-slate-200">
                 {online && lat !== 0 ? lat.toFixed(6) : '21.028500'}
               </span>
             </div>
-            <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <div className="p-2 rounded-lg bg-[#F8FAFC] dark:bg-obsidian-950 border border-slate-300/80 dark:border-slate-800">
               <span className="block text-[10px] text-slate-400 font-sans">Kinh độ (Lon)</span>
               <span className="font-bold text-slate-800 dark:text-slate-200">
                 {online && lon !== 0 ? lon.toFixed(6) : '105.854200'}
