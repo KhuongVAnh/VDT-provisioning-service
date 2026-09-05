@@ -10,6 +10,7 @@ import {
   Gauge
 } from 'lucide-react';
 import { DroneTelemetry } from '../../types';
+import { extractTelemetryMetrics } from '../../utils/telemetry';
 
 interface HudOverlayProps {
   telemetry?: DroneTelemetry;
@@ -17,17 +18,21 @@ interface HudOverlayProps {
 }
 
 export const HudOverlay: React.FC<HudOverlayProps> = ({ telemetry, activeDroneId }) => {
-  const pitch = telemetry?.attitude?.pitch ?? 0;
-  const roll = telemetry?.attitude?.roll ?? 0;
-  const yaw = telemetry?.attitude?.yaw ?? 0;
-  const altitude = telemetry?.gps?.relativeAlt ?? telemetry?.gps?.alt ?? 0;
-  const speed = telemetry?.velocity?.groundSpeed ?? 0;
-  const climbRate = telemetry?.velocity?.climbRate ?? 0;
-  const batteryPct = telemetry?.battery?.percentage ?? 100;
-  const voltage = telemetry?.battery?.voltage ?? 16.8;
-  const flightMode = telemetry?.flightMode || 'LOITER';
-  const armed = telemetry?.armed ?? false;
-  const sats = telemetry?.gps?.satellites ?? 0;
+  const isOnline = telemetry?.connected !== false;
+  const {
+    pitch,
+    roll,
+    yaw,
+    altitude,
+    groundSpeed: speed,
+    climbRate,
+    batteryPct,
+    batteryVoltage,
+    flightMode,
+    armed,
+    sats,
+  } = extractTelemetryMetrics(telemetry, isOnline);
+  const voltage = batteryVoltage ?? 16.8;
 
   // Heading cardinal string
   const cardinalDirection = useMemo(() => {

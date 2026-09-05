@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { DroneDevice, DroneTelemetry } from '../../types';
 import { useToast } from '../../context/ToastContext';
+import { extractTelemetryMetrics } from '../../utils/telemetry';
 
 interface CommandDeckProps {
   activeDroneId: string;
@@ -29,13 +30,11 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
   onOpenSsh,
 }) => {
   const { toast } = useToast();
-  const armed = !!telemetry?.armed;
-  const lat = telemetry?.gps?.lat;
-  const lon = telemetry?.gps?.lon;
+  const { armed, lat, lon, hasGps } = extractTelemetryMetrics(telemetry);
 
   const copyCoords = () => {
-    if (lat && lon) {
-      navigator.clipboard.writeText(`${lat}, ${lon}`)
+    if (hasGps) {
+      navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lon.toFixed(6)}`)
         .then(() => toast.success(`Đã sao chép tọa độ GPS: ${lat.toFixed(6)}, ${lon.toFixed(6)}`, 'GPS Copied'))
         .catch(() => { });
     }
@@ -55,14 +54,14 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
               {activeDroneId === 'all' ? 'TOÀN BỘ PHI ĐỘI' : activeDroneId}
             </span>
             <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${armed
-                ? 'bg-tactical-emerald/20 text-tactical-emerald'
-                : 'bg-tactical-amber/20 text-tactical-amber'
+              ? 'bg-tactical-emerald/20 text-tactical-emerald'
+              : 'bg-tactical-amber/20 text-tactical-amber'
               }`}>
               {armed ? 'ARMED' : 'DISARMED'}
             </span>
           </div>
           <div className="text-[10px] font-mono text-slate-400">
-            {lat && lon ? (
+            {hasGps ? (
               <span className="cursor-pointer hover:underline" onClick={copyCoords} title="Click để sao chép">
                 GPS: {lat.toFixed(5)}, {lon.toFixed(5)} <Copy className="w-2.5 h-2.5 inline opacity-60" />
               </span>
@@ -80,8 +79,8 @@ export const CommandDeck: React.FC<CommandDeckProps> = ({
         <button
           onClick={() => onSendCommand(armed ? 'disarm' : 'arm')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${armed
-              ? 'bg-tactical-amber/10 hover:bg-tactical-amber/20 text-tactical-amber border border-tactical-amber/40'
-              : 'bg-tactical-emerald/10 hover:bg-tactical-emerald/20 text-tactical-emerald border border-tactical-emerald/40'
+            ? 'bg-tactical-amber/10 hover:bg-tactical-amber/20 text-tactical-amber border border-tactical-amber/40'
+            : 'bg-tactical-emerald/10 hover:bg-tactical-emerald/20 text-tactical-emerald border border-tactical-emerald/40'
             }`}
         >
           {armed ? <ShieldAlert className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}

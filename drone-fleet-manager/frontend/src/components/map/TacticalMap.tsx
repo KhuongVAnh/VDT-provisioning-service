@@ -147,13 +147,13 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
       const devId = dev.deviceId;
       const t = telemetrySnapshot[devId] || dev.telemetry;
       const online = isDroneOnline(t);
-      const lat = t?.gps?.lat;
-      const lon = t?.gps?.lon;
-      const heading = t?.attitude?.yaw ?? 0;
+      const lat = t?.gps?.lat ?? t?.lat;
+      const lon = t?.gps?.lon ?? t?.lon;
+      const heading = t?.attitude?.yawDeg ?? t?.headingDeg ?? t?.gps?.headingDeg ?? t?.attitude?.yaw ?? 0;
       const armed = t?.armed ?? false;
       const isSelected = activeDroneId === devId;
 
-      if (lat && lon && (lat !== 0 || lon !== 0)) {
+      if (typeof lat === 'number' && typeof lon === 'number' && (lat !== 0 || lon !== 0)) {
         validPositions.push([lat, lon]);
 
         // Tạo hoặc cập nhật Marker
@@ -171,16 +171,21 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
           marker.setIcon(icon);
         }
 
+        const altVal = t?.gps?.altRelativeM ?? t?.altRelativeM ?? t?.gps?.altMslM ?? t?.gps?.relativeAlt ?? t?.gps?.alt ?? 0;
+        const spdVal = t?.gps?.groundSpeedMs ?? t?.groundSpeedMs ?? t?.velocity?.groundSpeed ?? 0;
+        const batVal = t?.battery?.percentage ?? t?.batteryPct ?? 100;
+        const modeVal = (t?.flightMode && t.flightMode !== 'UNKNOWN') ? t.flightMode : (online ? 'ONLINE' : 'LOITER');
+
         // Tạo hoặc cập nhật Popup thông tin
         const popupContent = `
           <div class="p-1 font-sans text-xs">
             <div class="font-bold font-mono text-sm text-slate-900">${devId}</div>
             <div class="text-slate-600 font-mono text-[11px] mb-1">${dev.vpnIp || '10.13.37.X'}</div>
             <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] font-mono border-t pt-1">
-              <div>Độ cao: <b>${t?.gps?.relativeAlt?.toFixed(1) || t?.gps?.alt?.toFixed(1) || 0} m</b></div>
-              <div>Vận tốc: <b>${t?.velocity?.groundSpeed?.toFixed(1) || 0} m/s</b></div>
-              <div>Pin: <b>${t?.battery?.percentage ?? 100}%</b></div>
-              <div>Chế độ: <b>${t?.flightMode || 'LOITER'}</b></div>
+              <div>Độ cao: <b>${altVal.toFixed(1)} m</b></div>
+              <div>Vận tốc: <b>${spdVal.toFixed(1)} m/s</b></div>
+              <div>Pin: <b>${batVal}%</b></div>
+              <div>Chế độ: <b>${modeVal}</b></div>
             </div>
           </div>
         `;
@@ -188,7 +193,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
 
         // Cập nhật đường bay (Flight Trail Polyline)
         const trail = getFlightTrail(devId);
-        if (trail.length > 1) {
+        if (trail.length >= 1) {
           if (!polylinesRef.current[devId]) {
             const polyline = L.polyline(trail, {
               color: isSelected ? '#00E5FF' : '#38BDF8',

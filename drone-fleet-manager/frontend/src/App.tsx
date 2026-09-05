@@ -156,10 +156,32 @@ export const App: React.FC = () => {
     setIsSshOpen(true);
   };
 
+  // Kích hoạt Focus Mode 10Hz qua WebSocket Rooms khi chọn Drone mục tiêu
+  useEffect(() => {
+    if (!socket || !isSocketConnected) return;
+
+    if (activeDroneId && activeDroneId !== 'all') {
+      socket.emit('subscribe:drone', { deviceId: activeDroneId });
+    } else {
+      socket.emit('subscribe:all');
+    }
+
+    return () => {
+      if (activeDroneId && activeDroneId !== 'all') {
+        socket.emit('unsubscribe:drone', { deviceId: activeDroneId });
+      }
+    };
+  }, [socket, isSocketConnected, activeDroneId]);
+
   // Selected Drone Telemetry (for HUD / CommandDeck)
+  const targetDevice = activeDroneId !== 'all'
+    ? devices.find((d) => d.deviceId === activeDroneId)
+    : devices[0];
+  const targetDevId = targetDevice?.deviceId;
+
   const currentTelemetry = activeDroneId !== 'all'
-    ? (telemetrySnapshot[activeDroneId] || getLatestTelemetry(activeDroneId))
-    : (devices[0]?.deviceId ? (telemetrySnapshot[devices[0].deviceId] || getLatestTelemetry(devices[0].deviceId)) : undefined);
+    ? (telemetrySnapshot[activeDroneId] || getLatestTelemetry(activeDroneId) || targetDevice?.telemetry)
+    : (targetDevId ? (telemetrySnapshot[targetDevId] || getLatestTelemetry(targetDevId) || targetDevice?.telemetry) : undefined);
 
   // Route Guard: Nếu chưa đăng nhập, chỉ hiển thị màn hình Đăng nhập / Đăng ký
   if (!isAuthenticated) {

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { DroneDevice, DroneTelemetry } from '../../types';
 import { isDroneOnline } from '../../hooks/useTelemetry';
+import { extractTelemetryMetrics } from '../../utils/telemetry';
 
 interface FlightTelemetryCardProps {
   activeDroneId: string;
@@ -54,19 +55,21 @@ export const FlightTelemetryCard: React.FC<FlightTelemetryCardProps> = ({
   const devId = activeDroneId !== 'all' ? activeDroneId : targetDevice?.deviceId || 'CHƯA CHỌN';
   const online = isDroneOnline(telemetry);
 
-  // Flight values extraction
-  const pitch = telemetry?.attitude?.pitch ?? 0;
-  const roll = telemetry?.attitude?.roll ?? 0;
-  const heading = Math.round(telemetry?.attitude?.yaw ?? 0);
-  const flightMode = telemetry?.flightMode || (online ? 'LOITER' : '--');
-  const isArmed = telemetry?.armed ?? false;
-  const batPct = Math.min(100, Math.max(0, Math.round(telemetry?.battery?.percentage ?? 0)));
-  const batVolt = telemetry?.battery?.voltage ? (telemetry.battery.voltage).toFixed(1) : undefined;
-  const relAlt = telemetry?.gps?.relativeAlt ?? telemetry?.gps?.alt ?? 0;
-  const groundSpeed = telemetry?.velocity?.groundSpeed ?? 0;
-  const lat = telemetry?.gps?.lat ?? 0;
-  const lon = telemetry?.gps?.lon ?? 0;
-  const sats = telemetry?.gps?.satellites ?? 14;
+  // Flight values extraction using centralized normalizer
+  const {
+    pitch,
+    roll,
+    heading,
+    altitude: relAlt,
+    groundSpeed,
+    batteryPct: batPct,
+    batteryVoltageStr: batVolt,
+    flightMode,
+    armed: isArmed,
+    lat,
+    lon,
+    sats,
+  } = extractTelemetryMetrics(telemetry, online);
 
   const handleCopyGps = () => {
     const coordStr = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;

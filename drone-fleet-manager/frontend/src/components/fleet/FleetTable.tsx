@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { DroneDevice, DroneTelemetry } from '../../types';
 import { isDroneOnline } from '../../hooks/useTelemetry';
+import { extractTelemetryMetrics } from '../../utils/telemetry';
 import { IpMatrix } from '../network/IpMatrix';
 
 interface FleetTableProps {
@@ -161,15 +162,17 @@ export const FleetTable: React.FC<FleetTableProps> = ({
                   const devId = dev.deviceId;
                   const t = telemetrySnapshot[devId] || dev.telemetry;
                   const online = isDroneOnline(t);
-                  const armed = !!t?.armed;
                   const isSelected = activeDroneId === devId;
 
-                  const batPct = t?.battery?.percentage ?? 0;
-                  const alt = t?.gps?.relativeAlt ?? t?.gps?.alt ?? 0;
-                  const spd = t?.velocity?.groundSpeed ?? 0;
-                  const lat = t?.gps?.lat ?? 0;
-                  const lon = t?.gps?.lon ?? 0;
-                  const mode = t?.flightMode || (online ? 'LOITER' : '--');
+                  const {
+                    altitude: alt,
+                    groundSpeed: spd,
+                    batteryPct: batPct,
+                    flightMode: mode,
+                    armed,
+                    lat,
+                    lon,
+                  } = extractTelemetryMetrics(t, online);
 
                   return (
                     <tr
@@ -202,7 +205,7 @@ export const FleetTable: React.FC<FleetTableProps> = ({
                           {devId}
                           {isSelected && (
                             <span className="ml-1.5 text-[9px] px-1 py-0.2 rounded bg-tactical-cyan text-black font-extrabold">
-                              ACTIVE
+                              FOCUS
                             </span>
                           )}
                         </button>
